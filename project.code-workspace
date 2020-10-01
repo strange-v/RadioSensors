@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "climate-node",
+			"path": "climate-node"
+		},
+		{
+			"name": "gateway",
+			"path": "gateway"
+		}
+	],
+	"settings": {}
+}
