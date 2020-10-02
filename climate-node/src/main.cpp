@@ -98,9 +98,10 @@ void transmitData(NodeData data)
   {
     nodeData.errors++;
   #ifdef NODE_DEBUG
-    Serial.println(F("Sent err..."));
+    Serial.println(F("Sent err"));
   #endif
   }
+  delay(10); //ToDo: Research why it is required VF
 }
 
 void handleSleepState()
