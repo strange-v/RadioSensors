@@ -131,7 +131,7 @@ void handleReadyState(float vcc)
   nodeData.humidity = humidity;
   nodeData.vcc = vcc;
 
-  //transmitData(data);
+  transmitData(nodeData);
   Serial.print("T:");
   Serial.println(nodeData.temperature, 2);
   Serial.print("H:");
