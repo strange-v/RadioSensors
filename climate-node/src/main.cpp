@@ -13,6 +13,7 @@ HTU21D htu;
 
 NodeState nodeState = NodeState::Ready;
 uint8_t sleepCounter = 0;
+uint16_t currentSendInterval;
 uint32_t time;
 NodeData nodeData;
 
@@ -68,9 +69,8 @@ void doSleep(period_t period)
   wdt_enable(WDTO_8S);
 }
 
-void nodeSleep()
+void nodeSleep(float vcc)
 {
-  nodeState = NodeState::Sleep;
   radio.sleep();
 
   uint32_t max = 4294967295;
@@ -79,7 +79,9 @@ void nodeSleep()
   nodeData.uptime += t > time
     ? (t - time) / 1000
     : (max - time + t) / 1000;
-
+  
+  currentSendInterval = getSendInterval(vcc);
+  nodeState = NodeState::Sleep;
   doSleep(SLEEP_8S);
 }
 
@@ -101,14 +103,14 @@ void transmitData(NodeData data)
   }
 }
 
-void handleSleepState(float vcc)
+void handleSleepState()
 {
 #ifdef NODE_DEBUG  
   digitalWrite(3, sleepCounter % 2 ? HIGH : LOW);
   Serial.println(sleepCounter);
 #endif
 
-  if (sleepCounter >= getSendInterval(vcc))
+  if (sleepCounter >= currentSendInterval)
   {
     sleepCounter = 0;
     nodeState = NodeState::Ready;
@@ -122,8 +124,9 @@ void handleSleepState(float vcc)
   }
 }
 
-void handleReadyState(float vcc)
+void handleReadyState()
 {
+  float vcc = Vcc::getValue();
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
 
@@ -131,7 +134,7 @@ void handleReadyState(float vcc)
   nodeData.humidity = humidity;
   nodeData.vcc = vcc;
 
-  transmitData(nodeData);
+#ifdef NODE_DEBUG
   Serial.print("T:");
   Serial.println(nodeData.temperature, 2);
   Serial.print("H:");
@@ -140,8 +143,10 @@ void handleReadyState(float vcc)
   Serial.println(nodeData.vcc, 2);
   Serial.print("U:");
   Serial.println(nodeData.uptime);
+#endif
+  transmitData(nodeData);
 
-  nodeSleep();
+  nodeSleep(vcc);
 }
 #pragma endregion
 
@@ -166,19 +171,20 @@ void setup()
   radio.sleep();
 
   htu.begin();
+
+  float vcc = Vcc::getValue();
+  currentSendInterval = getSendInterval(vcc);
 }
 
 void loop()
 {
-  float vcc = Vcc::getValue();
-
   switch (nodeState)
   {
   case NodeState::Sleep:
-    handleSleepState(vcc);
+    handleSleepState();
     break;
   case NodeState::Ready:
-    handleReadyState(vcc);
+    handleReadyState();
     break;
   default:
     break;
