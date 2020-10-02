@@ -15,6 +15,7 @@ extern "C"
 #include <JsonData.h>
 
 #define TaskStack10K 10000
+#define TaskStack15K 15000
 #define Priority1 1
 #define Priority2 2
 #define Priority3 3
@@ -23,6 +24,7 @@ extern "C"
 #define Core0 0
 #define Core1 1
 #define TICKS_TO_WAIT12 12
+#define QUEUE_RECEIVE_DELAY 10
 
 #define EVENT_WIFI_CONNECT (1 << 0)             //1
 #define EVENT_MQTT_CONNECT (1 << 1)             //10
@@ -47,34 +49,29 @@ void proccessNodeA()
 {
   NodeAData data;
   memcpy(&data, &radio.DATA, radio.DATALEN);
+
+  StaticJsonDocument<256> doc;
+  JsonObject object = doc.to<JsonObject>();
+  object["id"] = radio.SENDERID;
+  object["t"] = round2(data.temperature);
+  object["h"] = round2(data.humidity);
+  object["v"] = round2(data.vcc);
+  object["e"] = data.errors;
+  object["u"] = data.uptime;
+
+  JsonData jsonData{radio.SENDERID};
 #ifdef GW_DEBUG
-  Serial.print(F("RSSI:"));
-  Serial.println(radio.RSSI);
-  Serial.print(F("T:"));
-  Serial.println(data.temperature);
-  Serial.print(F("H:"));
-  Serial.println(data.humidity);
-  Serial.print(F("V:"));
-  Serial.println(data.vcc);
-  Serial.print(F("U:"));
-  Serial.println(data.uptime);
+  serializeJsonPretty(doc, Serial);
+  Serial.println();
 #endif
+  serializeJson(doc, jsonData.msg, sizeof(jsonData.msg));
 
-//   StaticJsonDocument<256> doc;
-//   JsonObject object = doc.to<JsonObject>();
-//   object["id"] = radio.SENDERID;
-//   object["t"] = round2(data.temperature);
-//   object["h"] = round2(data.humidity);
-//   object["v"] = round2(data.vcc);
-//   object["e"] = data.errors;
-//   object["u"] = data.uptime;
-
-//   JsonData jsonData{radio.SENDERID};
-// #ifdef GW_DEBUG
-//   serializeJsonPretty(doc, Serial);
-// #endif
-//   serializeJson(doc, jsonData.msg, sizeof(jsonData.msg));
-  //xQueueSendToBack(xQ_Data, &jsonData, TICKS_TO_WAIT12);
+  if (xQueueSendToBack(xQ_Data, &jsonData, TICKS_TO_WAIT12) != pdPASS)
+  {
+#ifdef GW_DEBUG
+    Serial.println(F("Failed to add to the data queue"));
+#endif
+  }
 }
 
 void radioLoop()
@@ -194,14 +191,15 @@ void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties 
 
 void sendReconnectTelemetry()
 {
-  char dataBuffer[64];
-  char lineBuffer[24];
-  dataBuffer[0] = '\0';
-  lineBuffer[0] = '\0';
+  char dataBuffer[64]{'\0'};
+  char lineBuffer[24]{'\0'};
 
-  WiFi.localIP().toString().toCharArray(lineBuffer, 24);
+  WiFi.localIP().toString().toCharArray(lineBuffer, sizeof(lineBuffer));
   sprintf(dataBuffer, "%s;%s;%lu\n", Cfg::mqttNodeId, lineBuffer, millis());
   mqttClient.publish("/reboot", 2, false, dataBuffer);
+#ifdef GW_DEBUG
+      Serial.println(F("Telemetry sent"));
+#endif
 }
 
 void TaskConnectToMqtt(void *pvParameters)
@@ -219,19 +217,36 @@ void TaskSendTelemetry(void *pvParameters)
 {
   for (;;)
   {
+    xEventGroupWaitBits(eg, EVENT_SEND_RECONNECT_TELEMETRY, pdFALSE, pdTRUE, portMAX_DELAY);
     if (xSemaphoreTake(sema_MQTT, TICKS_TO_WAIT12) == pdTRUE)
     {
-      xEventGroupWaitBits(eg, EVENT_SEND_RECONNECT_TELEMETRY, pdTRUE, pdTRUE, portMAX_DELAY);
       sendReconnectTelemetry();
       xSemaphoreGive(sema_MQTT);
+      xEventGroupClearBits(eg, EVENT_SEND_RECONNECT_TELEMETRY);
     }
   }
 }
 
 void TaskSendData(void *pvParameters)
 {
+  JsonData jsonData;
+  char topic[16]{'\0'};
+
+  sprintf(topic, "/%s", Cfg::mqttNodeId);
+
   for (;;)
   {
+    if (xQueueReceive(xQ_Data, &jsonData, QUEUE_RECEIVE_DELAY))
+    {
+      if (xSemaphoreTake(sema_MQTT, portMAX_DELAY) == pdTRUE)
+      {
+#ifdef GW_DEBUG
+        Serial.println(F("Send data via MQTT"));
+#endif
+        mqttClient.publish(topic, 2, false, jsonData.msg);
+        xSemaphoreGive(sema_MQTT);
+      }
+    }
   }
 }
 #pragma endregion
@@ -253,14 +268,13 @@ void setup()
   eg = xEventGroupCreate();
 
   sema_MQTT = xSemaphoreCreateMutex();
-  xSemaphoreGive(sema_MQTT);
 
-  //xQ_Data = xQueueCreate(10, sizeof(JsonData));
+  xQ_Data = xQueueCreate(10, sizeof(JsonData));
 
   xTaskCreatePinnedToCore(TaskConnectToWifi, "tConnectToWiFi", TaskStack10K, NULL, Priority1, NULL, Core1);
   xTaskCreatePinnedToCore(TaskConnectToMqtt, "tConnectToMqtt", TaskStack10K, NULL, Priority2, NULL, Core1);
   xTaskCreatePinnedToCore(TaskSendTelemetry, "tSendTelemetry", TaskStack10K, NULL, Priority5, NULL, Core1);
-  //xTaskCreatePinnedToCore(TaskSendData, "tSendData", TaskStack10K, NULL, Priority2, NULL, Core1);
+  xTaskCreatePinnedToCore(TaskSendData, "tSendData", TaskStack15K, NULL, Priority2, NULL, Core1);
 
   bool radioState = radio.initialize(RF69_868MHZ, RADIO_NODE_ID, RADIO_NETWORK_ID);
 #ifdef GW_DEBUG
