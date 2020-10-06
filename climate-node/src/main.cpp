@@ -27,10 +27,10 @@ uint16_t getSendInterval(float vcc)
 
 void doSleep(period_t period)
 {
+  wdt_disable();
 #ifdef NODE_TRUE_SLEEP
   LowPower.powerDown(period, ADC_OFF, BOD_OFF);
 #else
-
   switch (period)
   {
   case SLEEP_15MS:
@@ -65,8 +65,8 @@ void doSleep(period_t period)
     break;
   }
 #endif
-
-  wdt_enable(WDTO_8S);
+  time = millis();
+  wdt_enable(WDTO_4S);
 }
 
 void nodeSleep(float vcc)
@@ -77,9 +77,14 @@ void nodeSleep(float vcc)
   uint32_t t = millis();
 
   nodeData.uptime += t > time
-    ? (t - time) / 1000
-    : (max - time + t) / 1000;
-  
+                         ? (t - time) / 1000
+                         : (max - time + t) / 1000;
+#ifdef NODE_DEBUG
+  uint32_t awake = t > time
+                       ? t - time
+                       : max - time + t;
+  Serial.printf("Node was awake: %d ms\n", awake);
+#endif
   currentSendInterval = getSendInterval(vcc);
   nodeState = NodeState::Sleep;
   doSleep(SLEEP_8S);
@@ -87,26 +92,26 @@ void nodeSleep(float vcc)
 
 void transmitData(NodeData data)
 {
-	if(radio.sendWithRetry(RADIO_GATEWAY_ID, &data, sizeof(data)))
+  if (radio.sendWithRetry(RADIO_GATEWAY_ID, &data, sizeof(data)))
   {
     nodeData.errors = 0;
-  #ifdef NODE_DEBUG
+#ifdef NODE_DEBUG
     Serial.println(F("Sent ok"));
-  #endif
+#endif
   }
   else
   {
     nodeData.errors++;
-  #ifdef NODE_DEBUG
+#ifdef NODE_DEBUG
     Serial.println(F("Sent err"));
-  #endif
+#endif
   }
-  delay(10); //ToDo: Research why it is required VF
+  delay(1); //ToDo: Research why it is required VF
 }
 
 void handleSleepState()
 {
-#ifdef NODE_DEBUG  
+#ifdef NODE_DEBUG
   digitalWrite(3, sleepCounter % 2 ? HIGH : LOW);
   Serial.println(sleepCounter);
 #endif
@@ -115,7 +120,6 @@ void handleSleepState()
   {
     sleepCounter = 0;
     nodeState = NodeState::Ready;
-    time = millis();
   }
   else
   {
@@ -153,11 +157,13 @@ void handleReadyState()
 
 void setup()
 {
+  wdt_enable(WDTO_4S);
+
 #ifdef NODE_DEBUG
   Serial.begin(9600);
   delay(1000);
   Serial.println(F("Starting..."));
-  
+
   pinMode(3, OUTPUT);
 #endif
 
@@ -179,6 +185,8 @@ void setup()
 
 void loop()
 {
+  wdt_reset();
+
   switch (nodeState)
   {
   case NodeState::Sleep:
