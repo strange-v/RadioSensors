@@ -18,6 +18,27 @@ uint32_t time;
 NodeData nodeData;
 
 #pragma region Functions
+float getVcc()
+{
+  pinMode(Cfg::pinDivider, OUTPUT);
+  digitalWrite(Cfg::pinDivider, LOW);
+  delay(10);
+
+  float vcc = Vcc::getValue();
+  int value = analogRead(Cfg::pinVcc);
+  float vout = (value * vcc) / 1024.0;
+  float vin = vout / (Cfg::r2 / (Cfg::r1 + Cfg::r2));
+
+#ifdef NODE_DEBUG
+  if (vin < 1)
+    vin = 6.66;
+#endif
+
+  pinMode(Cfg::pinDivider, INPUT);
+
+  return vin;
+}
+
 uint16_t getSendInterval(float vcc)
 {
   uint16_t interval = vcc > Cfg::lowVoltageThreshold ? Cfg::sendIntervalHigh : Cfg::sendIntervalLow;
@@ -131,7 +152,8 @@ void handleSleepState()
 
 void handleReadyState()
 {
-  float vcc = Vcc::getValue();
+  //float vcc = Vcc::getValue();
+  float vcc = getVcc();
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
 
@@ -179,7 +201,8 @@ void setup()
 
   htu.begin();
 
-  float vcc = Vcc::getValue();
+  //float vcc = Vcc::getValue();
+  float vcc = getVcc();
   currentSendInterval = getSendInterval(vcc);
 }
 
