@@ -58,6 +58,7 @@ void proccessNodeA()
   object["v"] = round2(data.vcc);
   object["e"] = data.errors;
   object["u"] = data.uptime;
+  object["rssi"] = radio.RSSI;
 
   JsonData jsonData{radio.SENDERID};
 #ifdef GW_DEBUG
