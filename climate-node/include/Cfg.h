@@ -14,4 +14,6 @@ namespace Cfg
     const uint8_t pinDivider = 15;
     const float r1 = 10000;
     const float r2 = 10000;
+
+    const int16_t addrVccCalibration = 0x3E8;
 }

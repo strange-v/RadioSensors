@@ -10,6 +10,7 @@
 
 RFM69 radio;
 HTU21D htu;
+Vcc vcc;
 
 NodeState nodeState = NodeState::Ready;
 uint8_t sleepCounter = 0;
@@ -20,23 +21,7 @@ NodeData nodeData;
 #pragma region Functions
 float getVcc()
 {
-  pinMode(Cfg::pinDivider, OUTPUT);
-  digitalWrite(Cfg::pinDivider, LOW);
-  delay(10);
-
-  float vcc = Vcc::getValue();
-  int value = analogRead(Cfg::pinVcc);
-  float vout = (value * vcc) / 1024.0;
-  float vin = vout / (Cfg::r2 / (Cfg::r1 + Cfg::r2));
-
-#ifdef NODE_DEBUG
-  if (vin < 1)
-    vin = 6.66;
-#endif
-
-  pinMode(Cfg::pinDivider, INPUT);
-
-  return vin;
+  return vcc.getValue();
 }
 
 uint16_t getSendInterval(float vcc)
@@ -188,6 +173,7 @@ void setup()
 
   pinMode(3, OUTPUT);
 #endif
+  vcc.loadCalibrationFromEEPROM(Cfg::addrVccCalibration);
 
   bool radioState = radio.initialize(RF69_868MHZ, RADIO_NODE_ID, RADIO_NETWORK_ID);
 #ifdef NODE_DEBUG
@@ -201,7 +187,6 @@ void setup()
 
   htu.begin();
 
-  //float vcc = Vcc::getValue();
   float vcc = getVcc();
   currentSendInterval = getSendInterval(vcc);
 }
