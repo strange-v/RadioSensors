@@ -9,11 +9,8 @@ namespace Cfg
     const float lowVoltageThreshold = 2.5;
 
     const uint8_t maxSleepTime = 8;
-    
-    const uint8_t pinVcc = 14;
-    const uint8_t pinDivider = 15;
-    const float r1 = 10000;
-    const float r2 = 10000;
 
     const int16_t addrVccCalibration = 0x3E8;
+
+    const uint8_t ncPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17};
 }

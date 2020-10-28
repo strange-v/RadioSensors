@@ -1,4 +1,6 @@
+#include <avr/sleep.h>
 #include <avr/wdt.h>
+#include <avr/power.h>
 #include <Arduino.h>
 #include <LowPower.h>
 #include <RFM69.h>
@@ -7,6 +9,13 @@
 #include <Cfg.h>
 #include <NodeState.h>
 #include <NodeData.h>
+
+#ifndef cbi
+#define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
+#endif
+#ifndef sbi
+#define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
+#endif
 
 RFM69 radio;
 HTU21D htu;
@@ -19,6 +28,30 @@ uint32_t time;
 NodeData nodeData;
 
 #pragma region Functions
+
+void disable()
+{
+  power_adc_disable();
+  power_spi_disable();
+  //power_timer0_disable();
+  power_timer1_disable();
+  power_timer2_disable();
+  power_twi_disable();
+  power_usart0_disable();
+}
+
+void enable()
+{
+  power_adc_enable();
+  power_spi_enable();
+  //power_timer0_enable();
+  power_timer1_enable();
+  power_timer2_enable();
+  power_twi_enable();
+  power_usart0_enable();
+}
+
+
 float getVcc()
 {
   return vcc.getValue();
@@ -33,9 +66,23 @@ uint16_t getSendInterval(float vcc)
 
 void doSleep(period_t period)
 {
-  wdt_disable();
+  //wdt_disable();
 #ifdef NODE_TRUE_SLEEP
-  LowPower.powerDown(period, ADC_OFF, BOD_OFF);
+  //LowPower.powerDown(period, ADC_OFF, BOD_OFF);
+  // clear various "reset" flags
+  MCUSR = 0;
+  // allow changes, disable reset
+  WDTCSR = bit(WDCE) | bit(WDE);
+  // set interrupt mode and an interval
+  WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0); // set WDIE, and 8 seconds delay
+  wdt_reset();                                // pat the dog
+
+  cbi(ADCSRA, ADEN); // switch Analog to Digitalconverter OFF
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_enable();
+  sleep_cpu();
+  sleep_disable();
+  sbi(ADCSRA, ADEN); // switch Analog to Digitalconverter ON
 #else
   switch (period)
   {
@@ -72,7 +119,7 @@ void doSleep(period_t period)
   }
 #endif
   time = millis();
-  wdt_enable(WDTO_4S);
+  //wdt_enable(WDTO_4S);
 }
 
 void nodeSleep(float vcc)
@@ -118,7 +165,6 @@ void transmitData(NodeData data)
 void handleSleepState()
 {
 #ifdef NODE_DEBUG
-  digitalWrite(3, sleepCounter % 2 ? HIGH : LOW);
   Serial.println(sleepCounter);
 #endif
 
@@ -137,7 +183,6 @@ void handleSleepState()
 
 void handleReadyState()
 {
-  //float vcc = Vcc::getValue();
   float vcc = getVcc();
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
@@ -162,16 +207,19 @@ void handleReadyState()
 }
 #pragma endregion
 
+ISR(WDT_vect)
+{
+  wdt_disable();
+}
+
 void setup()
 {
-  wdt_enable(WDTO_4S);
+  //wdt_enable(WDTO_4S);
 
 #ifdef NODE_DEBUG
   Serial.begin(9600);
   delay(1000);
   Serial.println(F("Starting..."));
-
-  pinMode(3, OUTPUT);
 #endif
   vcc.loadCalibrationFromEEPROM(Cfg::addrVccCalibration);
 
@@ -189,6 +237,15 @@ void setup()
 
   float vcc = getVcc();
   currentSendInterval = getSendInterval(vcc);
+
+  for (uint8_t i = 0; i < sizeof(Cfg::ncPins); i++)
+  {
+    pinMode(Cfg::ncPins[i], OUTPUT);
+    digitalWrite(Cfg::ncPins[i], LOW);
+  }
+
+  cbi(ADCSRA, ADEN);
+  disable();
 }
 
 void loop()
@@ -201,7 +258,11 @@ void loop()
     handleSleepState();
     break;
   case NodeState::Ready:
+    enable();
+    sbi(ADCSRA, ADEN);
     handleReadyState();
+    cbi(ADCSRA, ADEN);
+    disable();
     break;
   default:
     break;
