@@ -4,10 +4,10 @@
 
 struct NodeData
 {
-	float temperature;
-	float humidity;
-	float vcc;
-	uint8_t errors;
-	uint32_t uptime;
+  float temperature;
+  float humidity;
+  float vcc;
+  uint8_t errors;
+  uint32_t uptime;
 };
 #endif

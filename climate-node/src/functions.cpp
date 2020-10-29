@@ -3,8 +3,8 @@
 uint16_t getSendInterval(float vcc)
 {
   uint16_t interval = vcc > Cfg::lowVoltageThreshold
-    ? Cfg::sendIntervalHigh
-    : Cfg::sendIntervalLow;
+                          ? Cfg::sendIntervalHigh
+                          : Cfg::sendIntervalLow;
 
   return interval / Cfg::maxSleepTime;
 }
@@ -82,6 +82,8 @@ void handleSleepState()
 void handleReadyState()
 {
   float voltage = vcc.getValue();
+  turnAdcOff();
+
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
 

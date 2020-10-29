@@ -3,7 +3,7 @@
 
 enum class NodeState
 {
-    Ready,
-    Sleep
+  Ready,
+  Sleep
 };
 #endif

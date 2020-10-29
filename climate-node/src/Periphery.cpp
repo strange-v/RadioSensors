@@ -2,68 +2,70 @@
 
 void turnAdcOff()
 {
-    ADCSRA = 0;
+  ADCSRA = 0;
 }
 
 void turnAdcOn()
 {
-    ADCSRA = bit(ADEN);
+  ADCSRA = bit(ADEN);
 }
 
 void turnModulesOff()
 {
-    turnAdcOff();
+  turnAdcOff();
 
-    power_adc_disable();
-    power_spi_disable();
-    power_timer1_disable();
-    power_timer2_disable();
-    power_twi_disable();
+  power_adc_disable();
+  power_spi_disable();
+  power_timer0_disable();
+  power_timer1_disable();
+  power_timer2_disable();
+  power_twi_disable();
 #ifndef NODE_DEBUG
-    power_usart0_disable();
+  power_usart0_disable();
 #endif
 }
 
 void turnModulesOn()
 {
-    power_adc_enable();
-    power_spi_enable();
-    power_timer1_enable();
-    power_timer2_enable();
-    power_twi_enable();
+  power_adc_enable();
+  power_spi_enable();
+  power_timer0_enable();
+  power_timer1_enable();
+  power_timer2_enable();
+  power_twi_enable();
 #ifdef NODE_DEBUG
-    power_usart0_enable();
+  power_usart0_enable();
 #endif
 
-    turnAdcOn();
+  turnAdcOn();
 }
 
 void sleepMcu()
 {
-    // disable interrupts
-    cli();
-    // clear various "reset" flags
-    MCUSR = 0;
-    // allow changes, disable reset
-    WDTCSR = bit(WDCE) | bit(WDE);
-    // set interrupt mode and an interval
-    WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0); // set WDIE, and 8 seconds delay
-    wdt_reset();
-    // enable interrupts
-    sei();
+  // disable interrupts
+  cli();
+  // clear various "reset" flags
+  MCUSR = 0;
+  // allow changes, disable reset
+  WDTCSR = bit(WDCE) | bit(WDE);
+  // set interrupt mode and an interval
+  WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0); // set WDIE, and 8 seconds delay
+  wdt_reset();
+  // enable interrupts
+  sei();
 
-    turnAdcOff();
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-    sleep_enable();
-    sleep_cpu();
-    
-    sleep_disable();
-    turnAdcOn();
+  turnAdcOff();
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_enable();
+  sleep_cpu();
+
+  sleep_disable();
+  turnAdcOn();
 }
 
 void prepareUnusedPins(const uint8_t pins[], uint8_t count)
 {
-    for (uint8_t i = 0; i < count; i++)
+  for (uint8_t i = 0; i < count; i++)
   {
     pinMode(pins[i], OUTPUT);
     digitalWrite(pins[i], LOW);

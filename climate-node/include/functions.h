@@ -20,7 +20,6 @@ extern uint16_t currentSendInterval;
 extern uint32_t time;
 extern NodeData nodeData;
 
-
 uint16_t getSendInterval(float vcc);
 void doSleep();
 void nodeSleep(float vcc);
