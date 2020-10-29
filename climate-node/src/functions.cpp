@@ -86,6 +86,7 @@ void handleReadyState()
 
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
+  power_twi_disable();
 
   nodeData.temperature = temperature;
   nodeData.humidity = humidity;

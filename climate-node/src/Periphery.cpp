@@ -3,17 +3,18 @@
 void turnAdcOff()
 {
   ADCSRA = 0;
+  power_adc_disable();
 }
 
 void turnAdcOn()
 {
+  power_adc_enable();
   ADCSRA = bit(ADEN);
 }
 
 void turnModulesOff()
 {
-  turnAdcOff();
-
+  ADCSRA = 0;
   power_adc_disable();
   power_spi_disable();
   power_timer0_disable();
@@ -28,16 +29,18 @@ void turnModulesOff()
 void turnModulesOn()
 {
   power_adc_enable();
+  ADCSRA = bit(ADEN);
+
   power_spi_enable();
   power_timer0_enable();
-  power_timer1_enable();
-  power_timer2_enable();
+  //power_timer1_enable();
+  //power_timer2_enable();
   power_twi_enable();
 #ifdef NODE_DEBUG
   power_usart0_enable();
 #endif
 
-  turnAdcOn();
+  delayMicroseconds(500);
 }
 
 void sleepMcu()
@@ -60,7 +63,7 @@ void sleepMcu()
   sleep_cpu();
 
   sleep_disable();
-  turnAdcOn();
+  //turnAdcOn(); // Will be turned on later
 }
 
 void prepareUnusedPins(const uint8_t pins[], uint8_t count)
