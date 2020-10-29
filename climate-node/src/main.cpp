@@ -1,21 +1,11 @@
-#include <avr/sleep.h>
-#include <avr/wdt.h>
-#include <avr/power.h>
 #include <Arduino.h>
-#include <LowPower.h>
 #include <RFM69.h>
 #include <SparkFunHTU21D.h>
 #include <Vcc.h>
 #include <Cfg.h>
 #include <NodeState.h>
 #include <NodeData.h>
-
-#ifndef cbi
-#define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
-#endif
-#ifndef sbi
-#define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
-#endif
+#include <Periphery.h>
 
 RFM69 radio;
 HTU21D htu;
@@ -28,35 +18,6 @@ uint32_t time;
 NodeData nodeData;
 
 #pragma region Functions
-
-void disable()
-{
-  power_adc_disable();
-  power_spi_disable();
-  //power_timer0_disable();
-  power_timer1_disable();
-  power_timer2_disable();
-  power_twi_disable();
-  power_usart0_disable();
-}
-
-void enable()
-{
-  power_adc_enable();
-  power_spi_enable();
-  //power_timer0_enable();
-  power_timer1_enable();
-  power_timer2_enable();
-  power_twi_enable();
-  power_usart0_enable();
-}
-
-
-float getVcc()
-{
-  return vcc.getValue();
-}
-
 uint16_t getSendInterval(float vcc)
 {
   uint16_t interval = vcc > Cfg::lowVoltageThreshold ? Cfg::sendIntervalHigh : Cfg::sendIntervalLow;
@@ -64,25 +25,12 @@ uint16_t getSendInterval(float vcc)
   return interval / Cfg::maxSleepTime;
 }
 
-void doSleep(period_t period)
+void doSleep()
 {
   //wdt_disable();
 #ifdef NODE_TRUE_SLEEP
   //LowPower.powerDown(period, ADC_OFF, BOD_OFF);
-  // clear various "reset" flags
-  MCUSR = 0;
-  // allow changes, disable reset
-  WDTCSR = bit(WDCE) | bit(WDE);
-  // set interrupt mode and an interval
-  WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0); // set WDIE, and 8 seconds delay
-  wdt_reset();                                // pat the dog
-
-  cbi(ADCSRA, ADEN); // switch Analog to Digitalconverter OFF
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-  sleep_enable();
-  sleep_cpu();
-  sleep_disable();
-  sbi(ADCSRA, ADEN); // switch Analog to Digitalconverter ON
+  sleepMcu();
 #else
   switch (period)
   {
@@ -140,7 +88,7 @@ void nodeSleep(float vcc)
 #endif
   currentSendInterval = getSendInterval(vcc);
   nodeState = NodeState::Sleep;
-  doSleep(SLEEP_8S);
+  doSleep();
 }
 
 void transmitData(NodeData data)
@@ -177,19 +125,19 @@ void handleSleepState()
   {
     nodeData.uptime += Cfg::maxSleepTime;
     sleepCounter++;
-    doSleep(SLEEP_8S);
+    doSleep();
   }
 }
 
 void handleReadyState()
 {
-  float vcc = getVcc();
+  float voltage = vcc.getValue();
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
 
   nodeData.temperature = temperature;
   nodeData.humidity = humidity;
-  nodeData.vcc = vcc;
+  nodeData.vcc = voltage;
 
 #ifdef NODE_DEBUG
   Serial.print("T:");
@@ -203,7 +151,7 @@ void handleReadyState()
 #endif
   transmitData(nodeData);
 
-  nodeSleep(vcc);
+  nodeSleep(voltage);
 }
 #pragma endregion
 
@@ -235,17 +183,11 @@ void setup()
 
   htu.begin();
 
-  float vcc = getVcc();
-  currentSendInterval = getSendInterval(vcc);
+  float voltage = vcc.getValue();
+  currentSendInterval = getSendInterval(voltage);
 
-  for (uint8_t i = 0; i < sizeof(Cfg::ncPins); i++)
-  {
-    pinMode(Cfg::ncPins[i], OUTPUT);
-    digitalWrite(Cfg::ncPins[i], LOW);
-  }
-
-  cbi(ADCSRA, ADEN);
-  disable();
+  prepareUnusedPins(Cfg::ncPins, sizeof(Cfg::ncPins));
+  turnModulesOff();
 }
 
 void loop()
@@ -258,11 +200,9 @@ void loop()
     handleSleepState();
     break;
   case NodeState::Ready:
-    enable();
-    sbi(ADCSRA, ADEN);
+    turnModulesOn();
     handleReadyState();
-    cbi(ADCSRA, ADEN);
-    disable();
+    turnModulesOff();
     break;
   default:
     break;
