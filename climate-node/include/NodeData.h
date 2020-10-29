@@ -1,4 +1,5 @@
-#pragma once
+#ifndef NODE_DATA_h
+#define NODE_DATA_h
 #include <stdint.h>
 
 struct NodeData
@@ -9,3 +10,4 @@ struct NodeData
 	uint8_t errors;
 	uint32_t uptime;
 };
+#endif
