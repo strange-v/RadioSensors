@@ -1,4 +1,4 @@
-#include <Periphery.h>
+#include <periphery.h>
 
 void turnAdcOff()
 {
@@ -40,6 +40,8 @@ void turnModulesOn()
 
 void sleepMcu()
 {
+    // disable interrupts
+    cli();
     // clear various "reset" flags
     MCUSR = 0;
     // allow changes, disable reset
@@ -47,6 +49,8 @@ void sleepMcu()
     // set interrupt mode and an interval
     WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0); // set WDIE, and 8 seconds delay
     wdt_reset();
+    // enable interrupts
+    sei();
 
     turnAdcOff();
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
