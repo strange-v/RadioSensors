@@ -42,6 +42,7 @@ void setup()
     Serial.println(F("RF69: error during init"));
 #endif
   radio.encrypt(RADIO_ENCRYPTION_KEY);
+  radio.setPowerLevel(Cfg::radioPowerLevel);
   radio.sleep();
 
   htu.begin();
