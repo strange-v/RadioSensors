@@ -66,6 +66,9 @@ void handleSleepState()
   Serial.println(sleepCounter);
 #endif
 
+  nodeData.uptime += Cfg::maxSleepTime;
+  sleepCounter++;
+
   if (sleepCounter >= currentSendInterval)
   {
     sleepCounter = 0;
@@ -73,20 +76,30 @@ void handleSleepState()
   }
   else
   {
-    nodeData.uptime += Cfg::maxSleepTime;
-    sleepCounter++;
     doSleep();
   }
 }
 
 void handleReadyState()
 {
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(4, HIGH);
+#endif
   float voltage = vcc.getValue();
   turnAdcOff();
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(4, LOW);
+#endif
 
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(4, HIGH);
+#endif
   float temperature = htu.readTemperature();
   float humidity = htu.readHumidity();
   power_twi_disable();
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(4, LOW);
+#endif
 
   nodeData.temperature = temperature;
   nodeData.humidity = humidity;
@@ -102,7 +115,13 @@ void handleReadyState()
   Serial.print("U:");
   Serial.println(nodeData.uptime);
 #endif
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(4, HIGH);
+#endif
   transmitData(nodeData);
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(4, LOW);
+#endif
 
   nodeSleep(voltage);
 }

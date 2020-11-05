@@ -26,6 +26,7 @@ ISR(WDT_vect)
 void setup()
 {
   wdt_enable(WDTO_4S);
+  prepareUnusedPins(Cfg::ncPins, sizeof(Cfg::ncPins));
 
 #ifdef NODE_DEBUG
   Serial.begin(9600);
@@ -50,7 +51,6 @@ void setup()
   float voltage = vcc.getValue();
   currentSendInterval = getSendInterval(voltage);
 
-  prepareUnusedPins(Cfg::ncPins, sizeof(Cfg::ncPins));
   turnModulesOff();
 }
 
