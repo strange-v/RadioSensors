@@ -45,6 +45,9 @@ void turnModulesOn()
 
 void sleepMcu()
 {
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(3, LOW);
+#endif
   // disable interrupts
   cli();
   // clear various "reset" flags
@@ -64,6 +67,9 @@ void sleepMcu()
 
   sleep_disable();
   //turnAdcOn(); // Will be turned on later
+#ifdef NODE_PIN_DEBUG
+  digitalWrite(3, HIGH);
+#endif
 }
 
 void prepareUnusedPins(const uint8_t pins[], uint8_t count)
