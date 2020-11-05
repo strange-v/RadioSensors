@@ -109,7 +109,7 @@ void connectToWifi()
 {
   if (!WiFi.isConnected())
   {
-    Serial.println("Connecting to Wi-Fi...");
+    Serial.println(F("Connecting to Wi-Fi..."));
     WiFi.begin(Cfg::wifiSsid, Cfg::wifiPassword);
   }
 }
@@ -123,8 +123,8 @@ void WiFiEvent(WiFiEvent_t event)
   {
   case SYSTEM_EVENT_STA_GOT_IP:
 #ifdef GW_DEBUG
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
+    Serial.println(F("WiFi connected"));
+    Serial.println(F("IP address: "));
     Serial.println(WiFi.localIP());
 #endif
     xEventGroupClearBits(eg, EVENT_WIFI_CONNECT);
@@ -132,7 +132,7 @@ void WiFiEvent(WiFiEvent_t event)
     break;
   case SYSTEM_EVENT_STA_DISCONNECTED:
 #ifdef GW_DEBUG
-    Serial.println("WiFi lost connection");
+    Serial.println(F("WiFi lost connection"));
 #endif
     xEventGroupSetBits(eg, EVENT_WIFI_CONNECT);
     break;
@@ -167,8 +167,6 @@ void onMqttConnect(bool sessionPresent)
 #endif
 
   xEventGroupClearBits(eg, EVENT_MQTT_CONNECT);
-  //mqttClient.subscribe("/wc/light", 2);
-
   xEventGroupSetBits(eg, EVENT_SEND_RECONNECT_TELEMETRY);
 }
 
@@ -185,9 +183,6 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
 
 void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
 {
-  // if (strcmp(topic, mqttLightTopic) == 0)
-  // {
-  // }
 }
 
 void sendReconnectTelemetry()
