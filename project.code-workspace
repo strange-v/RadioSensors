@@ -1,8 +1,8 @@
 {
 	"folders": [
 		{
-			"name": "climate-node",
-			"path": "climate-node"
+			"name": "node",
+			"path": "node"
 		},
 		{
 			"name": "gateway",
