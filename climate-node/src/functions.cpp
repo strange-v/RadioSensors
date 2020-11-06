@@ -1,6 +1,6 @@
 #include <functions.h>
 
-uint16_t getSendInterval(float vcc)
+uint16_t getSendInterval(int16_t vcc)
 {
   uint16_t interval = vcc > Cfg::lowVoltageThreshold
                           ? Cfg::sendIntervalHigh
@@ -14,20 +14,21 @@ void doSleep()
 #ifdef NODE_TRUE_SLEEP
   sleepMcu();
 #else
+  wdt_disable();
   delay(8000);
 #endif
   wdt_enable(WDTO_4S);
   time = millis();
 }
 
-void nodeSleep(float vcc)
+void nodeSleep(int16_t vcc)
 {
   radio.sleep();
 
   uint32_t max = 4294967295;
   uint32_t t = millis();
 
-  nodeData.uptime += t > time
+  nodeUptime += t > time
                          ? (t - time) / 1000
                          : (max - time + t) / 1000;
 #ifdef NODE_DEBUG
@@ -45,14 +46,14 @@ void transmitData(NodeData data)
 {
   if (radio.sendWithRetry(RADIO_GATEWAY_ID, &data, sizeof(data)))
   {
-    nodeData.errors = 0;
+    nodeSendErrors = 0;
 #ifdef NODE_DEBUG
     Serial.println(F("Sent ok"));
 #endif
   }
   else
   {
-    nodeData.errors++;
+    nodeSendErrors++;
 #ifdef NODE_DEBUG
     Serial.println(F("Sent err"));
 #endif
@@ -62,12 +63,12 @@ void transmitData(NodeData data)
 
 void handleSleepState()
 {
-#ifdef NODE_DEBUG
-  Serial.println(sleepCounter);
-#endif
-
-  nodeData.uptime += Cfg::maxSleepTime;
+  nodeUptime += Cfg::maxSleepTime;
   sleepCounter++;
+
+#ifdef NODE_DEBUG
+  Serial.printf("%d of %d\n", sleepCounter, currentSendInterval);
+#endif
 
   if (sleepCounter >= currentSendInterval)
   {
@@ -85,7 +86,7 @@ void handleReadyState()
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, HIGH);
 #endif
-  float voltage = vcc.getValue();
+  int16_t voltage = vcc.getValue_mV();
   turnAdcOff();
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, LOW);
@@ -101,19 +102,19 @@ void handleReadyState()
   digitalWrite(4, LOW);
 #endif
 
-  nodeData.temperature = temperature;
-  nodeData.humidity = humidity;
+  nodeData.temperature = static_cast<int16_t>(temperature * 100);
+  nodeData.humidity = static_cast<int16_t>(humidity * 100);
   nodeData.vcc = voltage;
 
 #ifdef NODE_DEBUG
   Serial.print("T:");
-  Serial.println(nodeData.temperature, 2);
+  Serial.println(nodeData.temperature);
   Serial.print("H:");
-  Serial.println(nodeData.humidity, 2);
+  Serial.println(nodeData.humidity);
   Serial.print("V:");
-  Serial.println(nodeData.vcc, 2);
+  Serial.println(nodeData.vcc);
   Serial.print("U:");
-  Serial.println(nodeData.uptime);
+  Serial.println(nodeUptime);
 #endif
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, HIGH);

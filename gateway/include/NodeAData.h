@@ -4,10 +4,8 @@
 
 struct __attribute__((__packed__)) NodeAData
 {
-	float temperature;
-	float humidity;
-	float vcc;
-	uint8_t errors;
-	uint32_t uptime;
+	int16_t temperature;
+	int16_t humidity;
+	int16_t vcc;
 };
 #endif

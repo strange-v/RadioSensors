@@ -17,7 +17,9 @@ void turnModulesOff()
   ADCSRA = 0;
   power_adc_disable();
   power_spi_disable();
+#ifndef NODE_DEBUG
   power_timer0_disable();
+#endif
   power_timer1_disable();
   power_timer2_disable();
   power_twi_disable();

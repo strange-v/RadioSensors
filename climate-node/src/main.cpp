@@ -14,9 +14,11 @@ Vcc vcc;
 
 NodeState nodeState = NodeState::Ready;
 uint8_t sleepCounter = 0;
-uint16_t currentSendInterval;
-uint32_t time;
+uint16_t currentSendInterval = 0;
+uint32_t time = 0;
 NodeData nodeData;
+uint32_t nodeUptime = 0;
+uint8_t nodeSendErrors = 0;
 
 ISR(WDT_vect)
 {
