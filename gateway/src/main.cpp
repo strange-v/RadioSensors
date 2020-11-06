@@ -53,11 +53,9 @@ void proccessNodeA()
   StaticJsonDocument<256> doc;
   JsonObject object = doc.to<JsonObject>();
   object["id"] = radio.SENDERID;
-  object["t"] = round2(data.temperature);
-  object["h"] = round2(data.humidity);
-  object["v"] = round2(data.vcc);
-  object["e"] = data.errors;
-  object["u"] = data.uptime;
+  object["t"] = data.temperature / 100.0;
+  object["h"] = data.humidity / 100.0;
+  object["v"] = data.vcc / 1000.0;
   object["rssi"] = radio.RSSI;
 
   JsonData jsonData{radio.SENDERID};

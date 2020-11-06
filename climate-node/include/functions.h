@@ -19,10 +19,12 @@ extern uint8_t sleepCounter;
 extern uint16_t currentSendInterval;
 extern uint32_t time;
 extern NodeData nodeData;
+extern uint32_t nodeUptime;
+extern uint8_t nodeSendErrors;
 
-uint16_t getSendInterval(float vcc);
+uint16_t getSendInterval(int16_t vcc);
 void doSleep();
-void nodeSleep(float vcc);
+void nodeSleep(int16_t vcc);
 void transmitData(NodeData data);
 void handleSleepState();
 void handleReadyState();
