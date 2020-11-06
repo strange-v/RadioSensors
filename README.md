@@ -3,7 +3,7 @@ A solar-powered node that stores energy in a supercapacitor, wakes-up regularly,
 
 Please visit [hackaday.io](https://hackaday.io/project/175514-wireless-solar-powered-sensor-node) to find more information about the project.
 
-# climate-node
+# node
 This is a firmware for the node. It uses [MiniCore](https://github.com/MCUdude/MiniCore) to be able to run ATmega328P with non-default quartz (4MHz).
 
 In the platformio.ini you will find a few build flags:
