@@ -18,6 +18,7 @@ namespace Cfg
 
     const char radioEncriptionKey[] = "sampleEncryptKey";
 
-    const uint8_t idNodeA = 2;
+    const uint8_t idMaxGroupA = 10;
+    const uint8_t idMaxGroupB = 20;
 }
 #endif
