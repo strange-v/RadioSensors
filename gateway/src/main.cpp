@@ -45,7 +45,7 @@ double round2(double value)
 #pragma endregion
 
 #pragma region Radio
-void proccessNodeA()
+void proccessGroupA()
 {
   NodeAData data;
   memcpy(&data, &radio.DATA, radio.DATALEN);
@@ -82,13 +82,13 @@ void radioLoop()
     Serial.printf("Length: %d\n", radio.DATALEN);
     Serial.printf("RSSI: %d\n", radio.RSSI);
 #endif
-    switch (radio.SENDERID)
+    if (radio.SENDERID <= Cfg::idMaxGroupA)
     {
-    case Cfg::idNodeA:
-      proccessNodeA();
-      break;
-    default:
-      break;
+      proccessGroupA();
+    }
+    else if (radio.SENDERID <= Cfg::idMaxGroupB)
+    {
+      //proccessGroupB();
     }
 
     if (radio.ACKRequested())

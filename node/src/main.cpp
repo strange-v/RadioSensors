@@ -35,7 +35,9 @@ void setup()
   delay(1000);
   Serial.println(F("Starting..."));
 #endif
+#ifdef VCC_EEPROM
   vcc.loadCalibrationFromEEPROM(Cfg::addrVccCalibration);
+#endif
 
   bool radioState = radio.initialize(RF69_868MHZ, RADIO_NODE_ID, RADIO_NETWORK_ID);
 #ifdef NODE_DEBUG
