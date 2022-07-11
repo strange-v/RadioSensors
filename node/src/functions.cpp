@@ -58,7 +58,8 @@ void transmitData(NodeData data)
     Serial.println(F("Sent err"));
 #endif
   }
-  delay(1); //ToDo: Research why it is required VF
+  //TODO: Find out why it is required
+  delay(1);
 }
 
 void handleSleepState()
@@ -86,7 +87,7 @@ void handleReadyState()
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, HIGH);
 #endif
-  int16_t voltage = vcc.getValue_mV();
+  nodeData.vcc = vcc.getValue_mV();
   turnAdcOff();
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, LOW);
@@ -95,22 +96,19 @@ void handleReadyState()
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, HIGH);
 #endif
-  float temperature = htu.readTemperature();
-  float humidity = htu.readHumidity();
+  readSensorValues();
   power_twi_disable();
 #ifdef NODE_PIN_DEBUG
   digitalWrite(4, LOW);
 #endif
-
-  nodeData.temperature = static_cast<int16_t>(temperature * 100);
-  nodeData.humidity = static_cast<int16_t>(humidity * 100);
-  nodeData.vcc = voltage;
 
 #ifdef NODE_DEBUG
   Serial.print("T:");
   Serial.println(nodeData.temperature);
   Serial.print("H:");
   Serial.println(nodeData.humidity);
+  Serial.print("P:");
+  Serial.println(nodeData.pressure);
   Serial.print("V:");
   Serial.println(nodeData.vcc);
   Serial.print("U:");
@@ -124,5 +122,26 @@ void handleReadyState()
   digitalWrite(4, LOW);
 #endif
 
-  nodeSleep(voltage);
+  nodeSleep(nodeData.vcc);
+}
+
+void readSensorValues()
+{
+  float temperature = 0;
+  float humidity = 0;
+  float pressure = 0;
+
+#ifdef SENSOR_HTU21D
+  temperature = htu.readTemperature();
+  humidity = htu.readHumidity();
+#endif
+#ifdef SENSOR_BME280
+  temperature = bme.readTemperature();
+  humidity = bme.readHumidity();
+  pressure = bme.readPressure() * 0.0075;
+#endif
+
+  nodeData.temperature = static_cast<int16_t>(temperature * 100);
+  nodeData.humidity = static_cast<int16_t>(humidity * 100);
+  nodeData.pressure = static_cast<int16_t>(pressure);
 }

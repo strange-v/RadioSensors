@@ -12,8 +12,6 @@ namespace Cfg
 
   const int16_t addrVccCalibration = 0x3E8;
 
-  const uint8_t radioPowerLevel = 31;
-
   const uint8_t ncPins[] = {0, 1, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17};
 }
 #endif

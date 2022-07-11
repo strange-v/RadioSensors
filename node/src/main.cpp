@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <RFM69.h>
-#include <SparkFunHTU21D.h>
 #include <Vcc.h>
 #include <Cfg.h>
 #include <NodeState.h>
@@ -9,14 +8,22 @@
 #include <functions.h>
 
 RFM69 radio;
-HTU21D htu;
 Vcc vcc;
+#ifdef SENSOR_HTU21D
+#include <SparkFunHTU21D.h>
+HTU21D htu;
+#endif
+#ifdef SENSOR_BME280
+#include <Adafruit_BME280.h>
+Adafruit_BME280 bme;
+#endif
 
 NodeState nodeState = NodeState::Ready;
 uint8_t sleepCounter = 0;
 uint16_t currentSendInterval = 0;
 uint32_t time = 0;
-NodeData nodeData;
+//NOTE: Digit 4 represents a msessage type, check "Radio payload formats (RFM69)" for more details
+NodeData nodeData = {4};
 uint32_t nodeUptime = 0;
 uint8_t nodeSendErrors = 0;
 
@@ -47,10 +54,29 @@ void setup()
     Serial.println(F("RF69: error during init"));
 #endif
   radio.encrypt(RADIO_ENCRYPTION_KEY);
-  radio.setPowerLevel(Cfg::radioPowerLevel);
+  radio.setPowerLevel(RADIO_POWER_LEVEL);
   radio.sleep();
 
+#ifdef SENSOR_HTU21D
   htu.begin();
+#endif
+#ifdef SENSOR_BME280
+  bool bmeState = bme.begin(SENSOR_BME280);
+  if (bmeState)
+  {
+    bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::FILTER_OFF);
+  }
+#ifdef NODE_DEBUG
+  if (bmeState)
+    Serial.println(F("BME: init ok"));
+  else
+    Serial.println(F("BME: error during init"));
+#endif
+#endif
 
   float voltage = vcc.getValue();
   currentSendInterval = getSendInterval(voltage);
