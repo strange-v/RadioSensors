@@ -1,17 +1,16 @@
 #include <Radio.h>
 
-// void isrRadioMessage()
-// {
-//     Serial.println("isrRadioMessage");
-//     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-//     xEventGroupSetBitsFromISR(eg, EVENT_RADIO_MESSAGE, &xHigherPriorityTaskWoken);
-// }
+void isrRadioMessage()
+{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xEventGroupSetBitsFromISR(eg, EVENT_RADIO_MESSAGE, &xHigherPriorityTaskWoken);
+}
 
 void taskReadRadioMessage(void *pvParameters)
 {
     for (;;)
     {
-        // xEventGroupWaitBits(eg, EVENT_RADIO_MESSAGE, pdTRUE, pdTRUE, portMAX_DELAY);
+        xEventGroupWaitBits(eg, EVENT_RADIO_MESSAGE, pdTRUE, pdTRUE, portMAX_DELAY);
 
         if (xSemaphoreTake(semaRadio, portMAX_DELAY) == pdTRUE)
         {
@@ -33,7 +32,6 @@ void taskReadRadioMessage(void *pvParameters)
 
                 if (xQueueSendToBack(qData, &nodeData, QUEUE_RECEIVE_DELAY) != pdPASS)
                     debugPrint("Failed add to data queue");
-                vTaskDelay(10);
             }
             xSemaphoreGive(semaRadio);
         }

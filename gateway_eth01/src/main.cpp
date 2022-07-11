@@ -68,7 +68,9 @@ void setup()
   spi.begin(M_SCK, M_MISO, M_MOSI, RFM_CS);
   bool radioState = radio.initialize(RF69_868MHZ, RADIO_NODE_ID, RADIO_NETWORK_ID);
   debugPrint(radioState ? "RF69: init ok" : "RF69: error during init");
-  radio.encrypt(RADIO_ENCRIPTION_KEY);
+  radio.encrypt(RADIO_ENCRYPTION_KEY);
+  radio.setIsrCallback(isrRadioMessage);
+  radio.receiveDone();
 }
 
 void loop()
@@ -77,9 +79,4 @@ void loop()
 #ifdef TELNET_DEBUG
   telnet.loop();
 #endif
-
-  // if (radio.receiveDone())
-  // {
-  //   xEventGroupSetBits(eg, EVENT_RADIO_MESSAGE);
-  // }
 }

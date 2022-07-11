@@ -21,7 +21,7 @@ extern QueueHandle_t qData;
 extern QueueHandle_t qMqtt;
 extern SemaphoreHandle_t semaRadio;
 
-// void IRAM_ATTR isrRadioMessage();
+void IRAM_ATTR isrRadioMessage();
 void taskReadRadioMessage(void *pvParameters);
 void taskProcessRadioMessage(void *pvParameters);
 
