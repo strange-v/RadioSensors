@@ -6,11 +6,11 @@
 
 #define TaskStack10K 10000
 #define TaskStack15K 15000
-#define Priority1 1
-#define Priority2 2
+#define Priority1 5
+#define Priority2 4
 #define Priority3 3
-#define Priority4 4
-#define Priority5 5
+#define Priority4 2
+#define Priority5 1
 #define Core0 0
 #define Core1 1
 #define QUEUE_RECEIVE_DELAY 10

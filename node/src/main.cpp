@@ -40,7 +40,9 @@ void setup()
 #ifdef NODE_DEBUG
   Serial.begin(9600);
   delay(1000);
-  Serial.println(F("Starting..."));
+  Serial.print(F("Node "));
+  Serial.print(RADIO_NODE_ID);
+  Serial.println(F(" starting..."));
 #endif
 #ifdef VCC_EEPROM
   vcc.loadCalibrationFromEEPROM(Cfg::addrVccCalibration);

@@ -5,7 +5,11 @@ extern "C"
 }
 #include <Arduino.h>
 #include <ArduinoOTA.h>
+#ifdef ETH_PHY_TYPE
 #include <ETH.h>
+#else
+#include <WiFi.h>
+#endif
 #include <SPI.h>
 #include <RFM69.h>
 #include <AsyncMqttClient.h>
@@ -57,8 +61,8 @@ void setup()
   semaRadio = xSemaphoreCreateMutex();
 
   xTaskCreatePinnedToCore(taskReadRadioMessage, "rr", TaskStack10K, NULL, Priority1, NULL, Core1);
-  xTaskCreatePinnedToCore(taskProcessRadioMessage, "pr", TaskStack10K, NULL, Priority2, NULL, Core1);
-  xTaskCreatePinnedToCore(taskSendMqttMessages, "mqtt", TaskStack10K, NULL, Priority2, NULL, Core1);
+  xTaskCreatePinnedToCore(taskProcessRadioMessage, "pr", TaskStack10K, NULL, Priority4, NULL, Core1);
+  xTaskCreatePinnedToCore(taskSendMqttMessages, "mqtt", TaskStack10K, NULL, Priority5, NULL, Core1);
 
   tConectNetwork = xTimerCreate("cn", pdMS_TO_TICKS(20000), pdTRUE, (void *)0, reinterpret_cast<TimerCallbackFunction_t>(conectNetworkTimerHandler));
   tConectMqtt = xTimerCreate("cm", pdMS_TO_TICKS(10000), pdTRUE, (void *)0, reinterpret_cast<TimerCallbackFunction_t>(connectToMqttTimerHandler));

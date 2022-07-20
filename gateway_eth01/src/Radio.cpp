@@ -16,7 +16,7 @@ void taskReadRadioMessage(void *pvParameters)
         {
             if (radio.receiveDone())
             {
-                debugPrintf("Received from node %d\n", radio.SENDERID);
+                debugPrintf("### %lu Received from node %d ###\n", millis(), radio.SENDERID);
                 debugPrintf("Length: %d\n", radio.DATALEN);
                 debugPrintf("RSSI: %d\n", radio.RSSI);
 
@@ -27,8 +27,9 @@ void taskReadRadioMessage(void *pvParameters)
                 if (radio.ACKRequested())
                 {
                     radio.sendACK();
-                    debugPrintf("ACK sent to node %d\n", radio.SENDERID);
+                    debugPrintf("### ACK sent to node %d ###\n", radio.SENDERID);
                 }
+                debugPrint("");
 
                 if (xQueueSendToBack(qData, &nodeData, QUEUE_RECEIVE_DELAY) != pdPASS)
                     debugPrint("Failed add to data queue");
@@ -46,7 +47,6 @@ void taskProcessRadioMessage(void *pvParameters)
     {
         if (xQueueReceive(qData, &nodeData, QUEUE_RECEIVE_DELAY))
         {
-            debugPrint("taskProcessRadioMessage");
             msg.len = sizeof(nodeData.id) + sizeof(nodeData.RSSI) + nodeData.length;
             strlcpy(msg.topic, moduleSettings.hostname, sizeof(msg.topic));
             memcpy(msg.data, &nodeData, msg.len);
