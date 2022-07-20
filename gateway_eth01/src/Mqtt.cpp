@@ -34,7 +34,6 @@ void taskSendMqttMessages(void *pvParameters)
     {
         if (xQueueReceive(qMqtt, &msg, QUEUE_RECEIVE_DELAY))
         {
-            debugPrint("taskSendMqttMessages");
             _mqttPublish(msg.topic, msg.data, msg.len);
         }
     }

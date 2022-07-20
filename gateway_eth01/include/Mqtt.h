@@ -7,7 +7,6 @@ extern "C"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 }
-#include <WiFi.h>
 #include <AsyncMqttClient.h>
 #include <Module.h>
 #include <Settings.h>

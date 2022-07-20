@@ -6,7 +6,11 @@ extern "C"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 }
+#ifdef ETH_PHY_TYPE
 #include <ETH.h>
+#else
+#include <WiFi.h>
+#endif
 #include <ArduinoOTA.h>
 #include <Mqtt.h>
 #include <Module.h>
