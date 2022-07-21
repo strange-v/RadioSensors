@@ -14,16 +14,24 @@ Use it to print different debug information via UART0. Won't work properly when 
 #### NODE_TRUE_SLEEP
 Without this flag, the node emulates deep sleep using the delay function (useful for testing purposes).
 
-#### NODE_PIN_DEBUG
-When defined, the node outputs HIGH on pin 4 during reading sensors and transmitting data, and HIGH on pin 3 when active (not sleeping).
+#### NODE_PIN_DEBUG=N
+Used to debug different work stages of the node triggering pin N.
 
 #### VCC_EEPROM
 An optional flag for the Vcc library that measures supply voltage. Using it, calibration value can be loaded from the EEPROM.
 
+#### SENSOR_*
+Defines what sensor is used in the node. Supported options for now:
+- SENSOR_HTU21D
+- SENSOR_BME280=0x76
+Where 0x76 represents the I2C address.
+
 #### RADIO_*
-Options for RFM69 library. Node id, gateway id, network id, and an encryption key.
+Options for RFM69 library. Node id, gateway id, network id. The encryption key is loaded by a different mechanism but also can be added here.
 
 # gateway
-It is a gateway firmware, simple and not 100% reliable. I have a lot of plans how it could look in the future, but currently i use it as-is to test the node. Gateway is based on ESP32.
+Contains a gateway firmware. It supports a regular ESP32 and WT32-ETH01 module (with Ethernet). A few notes about it:
+- heavily uses FreeRTOS functionality
+- fully interrupt driven (requires the latest changes in the RFM69 library, see the [PR](https://github.com/LowPowerLab/RFM69/pull/181))
 
-To build this firmware _gateway/include/Cfg.example.h_ should be renamed to _Cfg.h_.
+`pre:../../env.py` is used to securely add sensitive information (WiFi SSID, different passwords, radio encryption key).
