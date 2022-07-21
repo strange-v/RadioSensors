@@ -85,21 +85,21 @@ void handleSleepState()
 void handleReadyState()
 {
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(4, HIGH);
+  digitalWrite(NODE_PIN_DEBUG, HIGH);
 #endif
   nodeData.vcc = vcc.getValue_mV();
   turnAdcOff();
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(4, LOW);
+  digitalWrite(NODE_PIN_DEBUG, LOW);
 #endif
 
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(4, HIGH);
+  digitalWrite(NODE_PIN_DEBUG, HIGH);
 #endif
   readSensorValues();
   power_twi_disable();
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(4, LOW);
+  digitalWrite(NODE_PIN_DEBUG, LOW);
 #endif
 
 #ifdef NODE_DEBUG
@@ -115,11 +115,11 @@ void handleReadyState()
   Serial.println(nodeUptime);
 #endif
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(4, HIGH);
+  digitalWrite(NODE_PIN_DEBUG, HIGH);
 #endif
   transmitData(nodeData);
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(4, LOW);
+  digitalWrite(NODE_PIN_DEBUG, LOW);
 #endif
 
   nodeSleep(nodeData.vcc);
