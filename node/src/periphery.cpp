@@ -35,8 +35,9 @@ void turnModulesOn()
 
   power_spi_enable();
   power_timer0_enable();
-  //power_timer1_enable();
-  //power_timer2_enable();
+  //NOTE: Timers 1 & 2 are not used
+  // power_timer1_enable();
+  // power_timer2_enable();
   power_twi_enable();
 #ifdef NODE_DEBUG
   power_usart0_enable();
@@ -48,18 +49,20 @@ void turnModulesOn()
 void sleepMcu()
 {
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(3, LOW);
+  digitalWrite(NODE_PIN_DEBUG, HIGH);
+  delayMicroseconds(100);
+  digitalWrite(NODE_PIN_DEBUG, LOW);
 #endif
-  // disable interrupts
+  //NOTE: Disable interrupts
   cli();
-  // clear various "reset" flags
+  //NOTE: Clear various "reset" flags
   MCUSR = 0;
-  // allow changes, disable reset
+  //NOTE: Allow changes, disable reset
   WDTCSR = bit(WDCE) | bit(WDE);
-  // set interrupt mode and an interval
+  //NOTE: Set interrupt mode and an interval
   WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0); // set WDIE, and 8 seconds delay
   wdt_reset();
-  // enable interrupts
+  //NOTE: Enable interrupts
   sei();
 
   turnAdcOff();
@@ -68,9 +71,12 @@ void sleepMcu()
   sleep_cpu();
 
   sleep_disable();
-  //turnAdcOn(); // Will be turned on later
+  //NOTE: No need to turn on ADC, as it'll be done later
+  // turnAdcOn();
 #ifdef NODE_PIN_DEBUG
-  digitalWrite(3, HIGH);
+  digitalWrite(NODE_PIN_DEBUG, HIGH);
+  delayMicroseconds(100);
+  digitalWrite(NODE_PIN_DEBUG, LOW);
 #endif
 }
 
