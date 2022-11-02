@@ -55,6 +55,9 @@ void setup()
   else
     Serial.println(F("RF69: error during init"));
 #endif
+#ifdef RADIO_HIGH_POWER
+  radio.setHighPower(true);
+#endif
   radio.encrypt(RADIO_ENCRYPTION_KEY);
   radio.setPowerLevel(RADIO_POWER_LEVEL);
   radio.sleep();

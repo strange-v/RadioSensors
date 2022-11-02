@@ -72,6 +72,9 @@ void setup()
   spi.begin(M_SCK, M_MISO, M_MOSI, RFM_CS);
   bool radioState = radio.initialize(RF69_868MHZ, RADIO_NODE_ID, RADIO_NETWORK_ID);
   debugPrint(radioState ? "RF69: init ok" : "RF69: error during init");
+#ifdef RADIO_HIGH_POWER
+  radio.setHighPower(true);
+#endif
   radio.encrypt(RADIO_ENCRYPTION_KEY);
   radio.setIsrCallback(isrRadioMessage);
   radio.receiveDone();
