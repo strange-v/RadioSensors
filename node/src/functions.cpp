@@ -44,7 +44,8 @@ void nodeSleep(int16_t vcc)
 
 void transmitData(NodeData data)
 {
-  if (radio.sendWithRetry(RADIO_GATEWAY_ID, &data, sizeof(data)))
+  uint8_t retries = nodeSendErrors > Cfg::maxRetryErrors ? 0 : 2;
+  if (radio.sendWithRetry(RADIO_GATEWAY_ID, &data, sizeof(data), retries))
   {
     nodeSendErrors = 0;
 #ifdef NODE_DEBUG
@@ -53,7 +54,8 @@ void transmitData(NodeData data)
   }
   else
   {
-    nodeSendErrors++;
+    if (nodeSendErrors < 255)
+      nodeSendErrors++;
 #ifdef NODE_DEBUG
     Serial.println(F("Sent err"));
 #endif

@@ -9,6 +9,7 @@ namespace Cfg
   const uint16_t lowVoltageThreshold = 2500;
 
   const uint8_t maxSleepTime = 9;
+  const uint8_t maxRetryErrors = 9;
 
   const int16_t addrVccCalibration = 0x3E8;
 
