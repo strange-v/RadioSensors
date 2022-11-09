@@ -138,6 +138,7 @@ void readSensorValues()
   humidity = htu.readHumidity();
 #endif
 #ifdef SENSOR_BME280
+  bme.takeForcedMeasurement();
   temperature = bme.readTemperature();
   humidity = bme.readHumidity();
   pressure = bme.readPressure() * 0.0075;
