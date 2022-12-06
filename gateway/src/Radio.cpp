@@ -47,8 +47,12 @@ void taskProcessRadioMessage(void *pvParameters)
     {
         if (xQueueReceive(qData, &nodeData, QUEUE_RECEIVE_DELAY))
         {
+            String id = ETH.macAddress();
+            id.replace(':', '_');
+
+            msg.retain = false;
             msg.len = sizeof(nodeData.id) + sizeof(nodeData.RSSI) + nodeData.length;
-            strlcpy(msg.topic, moduleSettings.hostname, sizeof(msg.topic));
+            sprintf(msg.topic, Cfg::nodeTopic, id.c_str(), nodeData.id);
             memcpy(msg.data, &nodeData, msg.len);
 
             if (xQueueSendToBack(qMqtt, &msg, QUEUE_RECEIVE_DELAY) != pdPASS)
