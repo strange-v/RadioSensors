@@ -37,6 +37,7 @@ QueueHandle_t qData;
 QueueHandle_t qMqtt;
 TimerHandle_t tConectNetwork;
 TimerHandle_t tConectMqtt;
+TimerHandle_t tHeartbeat;
 SemaphoreHandle_t semaRadio;
 
 void setup()
@@ -66,6 +67,7 @@ void setup()
 
   tConectNetwork = xTimerCreate("cn", pdMS_TO_TICKS(20000), pdTRUE, (void *)0, reinterpret_cast<TimerCallbackFunction_t>(conectNetworkTimerHandler));
   tConectMqtt = xTimerCreate("cm", pdMS_TO_TICKS(10000), pdTRUE, (void *)0, reinterpret_cast<TimerCallbackFunction_t>(connectToMqttTimerHandler));
+  tHeartbeat = xTimerCreate("hb", pdMS_TO_TICKS(60000), pdTRUE, (void *)0, reinterpret_cast<TimerCallbackFunction_t>(heartbeatTimerHandler));
   xTimerStart(tConectNetwork, 0);
   xTimerStart(tConectMqtt, 0);
 
