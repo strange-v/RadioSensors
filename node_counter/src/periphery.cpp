@@ -86,3 +86,31 @@ void clearInterrupt1Flag()
 {
   EIFR |= bit(INTF1);
 }
+
+int stablePinRead(int pin, int numOfReadings)
+{
+  int history[numOfReadings];
+  int8_t head = 0;
+  int i = 0;
+
+  while (i < numOfReadings || !allEqual(history, numOfReadings))
+  {
+    history[head] = digitalRead(pin);
+    // Serial.printf("%d - %d\n", i, history[head]);
+    head = (head + 1) % numOfReadings;
+    i++;
+    delay(Cfg::measurementDelayMs);
+  }
+  
+  return history[0];
+}
+
+bool allEqual(int arr[], int size) {
+  int first = arr[0];
+  for (int i = 1; i < size; i++) {
+    if (arr[i] != first) {
+      return false;
+    }
+  }
+  return true;
+}

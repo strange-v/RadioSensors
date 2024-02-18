@@ -4,7 +4,6 @@
 
 struct StoragePackage
 {
-  bool pulsePinState;
   int32_t pulseCounter;
 };
 #endif
