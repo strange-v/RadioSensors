@@ -6,8 +6,8 @@ namespace Cfg
 {
   const uint8_t pinPulse = 3;
   const uint16_t sendIntervalSec = 300;
-  const uint8_t sleepTimeSec = 9;
-  const uint8_t staleLimit = 10;
+  const uint8_t measurementDelayMs = 1;
+  const int8_t numOfReadings = 5;
   const uint8_t maxRetryErrors = 9;
 
   const int16_t addrVccCalibration = 0x3E8;
