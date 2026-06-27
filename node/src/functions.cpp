@@ -109,8 +109,6 @@ void handleReadyState()
   Serial.println(nodeData.temperature);
   Serial.print("H:");
   Serial.println(nodeData.humidity);
-  Serial.print("P:");
-  Serial.println(nodeData.pressure);
   Serial.print("V:");
   Serial.println(nodeData.vcc);
   Serial.print("U:");
@@ -127,24 +125,59 @@ void handleReadyState()
   nodeSleep(nodeData.vcc);
 }
 
-void readSensorValues()
+bool isTemperatureValid(float value)
 {
-  float temperature = 0;
-  float humidity = 0;
-  float pressure = 0;
+  return isfinite(value) && value >= -80.0 && value <= 125.0;
+}
+
+bool isHumidityValid(float value)
+{
+  return isfinite(value) && value >= 0.0 && value <= 100.0;
+}
+
+void readSensor(float &temperature, float &humidity)
+{
+  temperature = NAN;
+  humidity = NAN;
 
 #ifdef SENSOR_HTU21D
   temperature = htu.readTemperature();
   humidity = htu.readHumidity();
 #endif
 #ifdef SENSOR_BME280
-  bme.takeForcedMeasurement();
-  temperature = bme.readTemperature();
-  humidity = bme.readHumidity();
-  pressure = bme.readPressure() * 0.0075;
+  if (bme.takeForcedMeasurement())
+  {
+    temperature = bme.readTemperature();
+    humidity = bme.readHumidity();
+  }
 #endif
+#ifdef SENSOR_SHT31
+  sht31.readBoth(&temperature, &humidity);
+#endif
+}
 
-  nodeData.temperature = static_cast<int16_t>(temperature * 100);
-  nodeData.humidity = static_cast<int16_t>(humidity * 100);
-  nodeData.pressure = static_cast<int16_t>(pressure);
+void readSensorValues()
+{
+  float temperature;
+  float humidity;
+
+  readSensor(temperature, humidity);
+  if (!isTemperatureValid(temperature) || !isHumidityValid(humidity))
+  {
+    float retryTemperature;
+    float retryHumidity;
+    readSensor(retryTemperature, retryHumidity);
+
+    if (!isTemperatureValid(temperature) && isTemperatureValid(retryTemperature))
+      temperature = retryTemperature;
+    if (!isHumidityValid(humidity) && isHumidityValid(retryHumidity))
+      humidity = retryHumidity;
+  }
+
+  nodeData.temperature = isTemperatureValid(temperature)
+                             ? static_cast<int16_t>(temperature * 100)
+                             : SENSOR_VALUE_INVALID;
+  nodeData.humidity = isHumidityValid(humidity)
+                          ? static_cast<int16_t>(humidity * 100)
+                          : SENSOR_VALUE_INVALID;
 }
