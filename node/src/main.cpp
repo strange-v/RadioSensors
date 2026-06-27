@@ -17,13 +17,17 @@ HTU21D htu;
 #include <Adafruit_BME280.h>
 Adafruit_BME280 bme;
 #endif
+#ifdef SENSOR_SHT31
+#include <Adafruit_SHT31.h>
+Adafruit_SHT31 sht31 = Adafruit_SHT31();
+#endif
 
 NodeState nodeState = NodeState::Ready;
 uint8_t sleepCounter = 0;
 uint16_t currentSendInterval = 0;
 uint32_t time = 0;
-//NOTE: Digit 4 represents a msessage type, check "Radio payload formats (RFM69)" for more details
-NodeData nodeData = {4};
+//NOTE: Digit 3 represents a message type, check "Radio payload formats (RFM69)" for more details
+NodeData nodeData = {3};
 uint32_t nodeUptime = 0;
 uint8_t nodeSendErrors = 0;
 
@@ -80,6 +84,15 @@ void setup()
     Serial.println(F("BME: init ok"));
   else
     Serial.println(F("BME: error during init"));
+#endif
+#endif
+#ifdef SENSOR_SHT31
+  bool sht31State = sht31.begin();
+#ifdef NODE_DEBUG
+  if (sht31State)
+    Serial.println(F("SHT31: init ok"));
+  else
+    Serial.println(F("SHT31: error during init"));
 #endif
 #endif
 

@@ -17,6 +17,10 @@ extern HTU21D htu;
 #include <Adafruit_BME280.h>
 extern Adafruit_BME280 bme;
 #endif
+#ifdef SENSOR_SHT31
+#include <Adafruit_SHT31.h>
+extern Adafruit_SHT31 sht31;
+#endif
 
 extern RFM69 radio;
 extern Vcc vcc;

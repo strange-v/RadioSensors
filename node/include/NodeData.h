@@ -7,7 +7,8 @@ struct NodeData
   uint8_t type;
   int16_t temperature;
   int16_t humidity;
-  int16_t pressure;
   int16_t vcc;
 };
+
+constexpr int16_t SENSOR_VALUE_INVALID = INT16_MIN;
 #endif
