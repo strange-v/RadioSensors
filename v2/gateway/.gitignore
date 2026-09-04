@@ -1,4 +1,5 @@
 .pio/
 .vscode/
 *.code-workspace
+include/LocalSecrets.h
 
