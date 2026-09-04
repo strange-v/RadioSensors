@@ -1,6 +1,11 @@
 #include <Arduino.h>
 
 #include "BoardProfile.h"
+#include "Diagnostics.h"
+#include "DeviceIdentity.h"
+#include "EthernetService.h"
+#include "HealthServer.h"
+#include "OtaService.h"
 
 namespace {
 
@@ -24,6 +29,7 @@ void setup() {
     delay(kSerialStartupDelayMs);
 
     Serial.println();
+    gateway::identity::begin();
     Serial.println("RadioSensors gateway");
     Serial.printf("Firmware: %s\n", GATEWAY_FIRMWARE_VERSION);
     Serial.printf("Board: %s\n", gateway::board::current.name);
@@ -31,9 +37,19 @@ void setup() {
         "Ethernet: %s\n",
         ethernetControllerName(gateway::board::current.ethernetController));
     Serial.printf("PoE profile: %s\n", gateway::board::current.hasPoe ? "yes" : "no");
+    Serial.printf("Reset reason: %s\n", gateway::diagnostics::resetReason());
+    Serial.printf("Hostname: %s\n", gateway::identity::hostname());
+
+    const bool watchdogStarted = gateway::diagnostics::beginWatchdog();
+    Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
+
+    gateway::ethernet::begin();
+    gateway::health::begin();
+    gateway::ota::begin();
 }
 
 void loop() {
-    delay(1000);
+    gateway::ota::loop();
+    gateway::diagnostics::feedWatchdog();
+    delay(100);
 }
-

@@ -15,6 +15,23 @@ struct Profile {
     bool hasPoe;
 };
 
+struct Lan8720Pins {
+    int phyAddress;
+    int power;
+    int mdc;
+    int mdio;
+};
+
+struct W5500Pins {
+    int phyAddress;
+    int sck;
+    int miso;
+    int mosi;
+    int chipSelect;
+    int interrupt;
+    int reset;
+};
+
 #if defined(GATEWAY_BOARD_WT32_ETH01)
 
 #if !defined(CONFIG_IDF_TARGET_ESP32)
@@ -27,6 +44,14 @@ constexpr Profile current{
     false,
 };
 
+// Preserved from the working v1 WT32-ETH01 environment and its board variant.
+constexpr Lan8720Pins ethernetPins{
+    1,
+    16,
+    23,
+    18,
+};
+
 #elif defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
 
 #if !defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -37,6 +62,17 @@ constexpr Profile current{
     "Waveshare ESP32-S3-ETH + PoE",
     EthernetController::W5500,
     true,
+};
+
+// Waveshare ESP32-S3-ETH schematic and official ETH example pinout.
+constexpr W5500Pins ethernetPins{
+    1,
+    13,
+    12,
+    11,
+    14,
+    10,
+    9,
 };
 
 #else

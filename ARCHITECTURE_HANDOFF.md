@@ -1,5 +1,8 @@
 # RadioSensors Architecture Handoff
 
+Gateway firmware implementation progress is tracked separately in
+[`v2/gateway/HANDOFF.md`](v2/gateway/HANDOFF.md).
+
 ## Project context
 
 - Existing nodes use ATmega328P; all new node designs will use ATtiny1614.
@@ -75,7 +78,8 @@
 - Create one central WebSocket client in the integration runtime and dispatch received frames to sensor platforms. Do not open separate connections in `sensor.py` and `binary_sensor.py`.
 - Move module-level entity stores into per-config-entry runtime data and implement proper unload/connection cleanup.
 - Remove the HA manifest dependency on MQTT; keep the integration classification as `local_push`.
-- Current integration location: `D:\ProjectsPersonal\ha_rfm_gateway\custom_components\rfm_gateway`.
+- The Home Assistant integration lives in the separate `ha_rfm_gateway`
+  repository under `custom_components/rfm_gateway`.
 
 ## Remaining design decisions
 
