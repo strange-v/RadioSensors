@@ -1,11 +1,15 @@
 #include <Arduino.h>
 
 #include "BoardProfile.h"
+#include "CommissioningService.h"
 #include "Diagnostics.h"
 #include "DeviceIdentity.h"
 #include "EthernetService.h"
 #include "HealthServer.h"
+#include "GatewayStatus.h"
+#include "NodeRegistryStore.h"
 #include "OtaService.h"
+#include "RadioService.h"
 
 namespace {
 
@@ -43,12 +47,17 @@ void setup() {
     const bool watchdogStarted = gateway::diagnostics::beginWatchdog();
     Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 
+    gateway::registry_store::begin();
+    gateway::status::begin();
     gateway::ethernet::begin();
+    gateway::radio::begin();
+    gateway::commissioning::begin();
     gateway::health::begin();
     gateway::ota::begin();
 }
 
 void loop() {
+    gateway::status::loop();
     gateway::ota::loop();
     gateway::diagnostics::feedWatchdog();
     delay(100);
