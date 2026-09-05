@@ -1,0 +1,8 @@
+{
+  "name": "RadioProtocol",
+  "version": "0.1.0",
+  "description": "Portable RadioSensors v2 application-frame codec",
+  "build": {
+    "includeDir": "include"
+  }
+}
