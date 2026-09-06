@@ -1,6 +1,7 @@
 #include "OtaService.h"
 
 #include <ArduinoOTA.h>
+#include <Update.h>
 
 #include <atomic>
 
@@ -8,6 +9,7 @@
 #include "Diagnostics.h"
 #include "EthernetService.h"
 #include "OtaConfig.h"
+#include "WebUiService.h"
 
 namespace gateway::ota {
 namespace {
@@ -17,12 +19,16 @@ std::atomic<State> currentState{
     config::enabled ? State::WaitingForNetwork : State::Disabled};
 std::atomic<uint8_t> currentProgress{0};
 bool started = false;
+bool filesystemUpdate = false;
 
 void configureCallbacks() {
     ArduinoOTA.onStart([]() {
+        filesystemUpdate = ArduinoOTA.getCommand() == U_SPIFFS;
+        if (filesystemUpdate) web_ui::prepareForFilesystemUpdate();
         currentProgress.store(0);
         currentState.store(State::Updating);
-        Serial.println("OTA update started");
+        Serial.printf("OTA %s update started\n",
+                      filesystemUpdate ? "filesystem" : "firmware");
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -44,6 +50,10 @@ void configureCallbacks() {
     ArduinoOTA.onError([](ota_error_t error) {
         currentState.store(State::Failed);
         Serial.printf("OTA error: %u\n", static_cast<unsigned>(error));
+        if (filesystemUpdate) {
+            web_ui::recoverAfterFailedFilesystemUpdate();
+            filesystemUpdate = false;
+        }
     });
 }
 
@@ -112,4 +122,3 @@ uint8_t progressPercent() {
 }
 
 }  // namespace gateway::ota
-

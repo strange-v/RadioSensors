@@ -6,6 +6,13 @@ Base path: `/api/v1`. JSON responses use `Content-Type: application/json`. Unles
 
 The initial setup endpoints are unauthenticated but require a time-bounded physical window opened with the gateway button. Management endpoints require an authenticated browser session and admin role where stated. Home Assistant uses a bearer API token with explicit read-only scopes.
 
+Browser login creates an in-memory session and sets an HttpOnly,
+`SameSite=Strict` cookie named `rs_session`. Sessions expire after 12 hours of
+inactivity and do not survive reboot. State-changing session requests must also
+send the `csrf_token` returned by the session API in `X-CSRF-Token`. Login is
+intended only for the trusted local network and does not implement request-rate
+limiting.
+
 Common bearer header:
 
 ```http
@@ -25,17 +32,18 @@ Common error body:
 | GET | `/health` | none | implemented |
 | GET | `/api/v1/setup` | none | implemented |
 | POST | `/api/v1/setup` | physical setup window | implemented |
-| GET | `/api/v1/info` | none | planned |
-| GET | `/api/v1/nodes` | session or `registry:read` | planned |
-| GET, PUT | `/api/v1/settings` | session; admin for PUT | planned |
+| GET | `/api/v1/info` | none | implemented |
+| POST, GET, DELETE | `/api/v1/session` | credentials/session | implemented |
+| GET | `/api/v1/nodes` | session or bearer `registry:read` | implemented |
+| GET, PUT | `/api/v1/settings` | session; admin for PUT | implemented |
 | GET, POST, PUT, DELETE | `/api/v1/users` | admin | planned |
-| GET, POST, DELETE | `/api/v1/tokens` | admin | planned |
-| POST | `/api/v1/pairing/open` | admin | planned |
-| POST | `/api/v1/pairing/close` | admin | planned |
+| GET, POST, DELETE | `/api/v1/tokens` | admin | implemented |
+| POST | `/api/v1/pairing/open` | admin | implemented |
+| POST | `/api/v1/pairing/close` | admin | implemented |
 | POST | `/api/v1/commands` | admin | planned |
 | GET | `/api/v1/export` | admin | planned |
 | POST | `/api/v1/restore` | admin plus destructive confirmation | planned |
-| GET | `/ws` | session or bearer token | provisional implementation |
+| GET | `/ws` | session or bearer `telemetry:read` | provisional implementation |
 
 ## Initial setup
 
@@ -67,21 +75,88 @@ Allowed exactly while `setup_required` and `physical_window_active` are both tru
 | `display_name` | no | 0..48 valid UTF-8 bytes without control characters |
 | `operational_network_id` | no | 1..255 and different from the commissioning network |
 
-Success: `201 {"status":"configured"}`. Errors: `400 invalid_request`, `403 physical_setup_required`, `409 setup_busy`, `409 setup_already_complete`, `422 invalid_setup_values`, `422 invalid_operational_network_id`, or `500` for hashing/storage failure.
+Success creates the first browser session and returns the same body and cookie
+as login, with status `201`. Errors: `400 invalid_request`, `403
+physical_setup_required`, `409 setup_busy`, `409 setup_already_complete`, `422
+invalid_setup_values`, `422 invalid_operational_network_id`, or `500` for
+hashing/storage failure.
 
 Secrets and settings commit before authentication. The first enabled admin record is the final commit that changes the gateway to configured.
 
-## Discovery and identity
+## Browser session
 
-Planned `GET /api/v1/info` is unauthenticated and returns API/stream versions, stable gateway ID, per-boot ID, hostname, board, firmware, registry generation, current UTC state, and capabilities. It never returns radio keys, factory UIDs, credentials, or tokens. mDNS advertises `_radiosensors._tcp`, REST major version, stable gateway ID, board, and firmware.
+### `POST /api/v1/session`
+
+```json
+{"username":"admin","password":"strong-password"}
+```
+
+On success it returns:
+
+```json
+{"user":{"id":1,"username":"admin","role":"admin"},"csrf_token":"32 lowercase hex characters"}
+```
+
+The response also sets the 64-hex-character opaque session cookie. Invalid
+credentials return `401 invalid_credentials`; concurrent password verification
+returns `409 login_busy`. Error responses do not reveal whether a username
+exists.
+
+### `GET /api/v1/session`
+
+Returns the current user and CSRF token using the same response shape. Missing,
+expired, or invalid cookies return `401 authentication_required`.
+
+### `DELETE /api/v1/session`
+
+Requires the session cookie and matching `X-CSRF-Token`, removes the RAM session,
+expires the cookie, and returns `204`.
+
+## Discovery, identity, and compatibility
+
+`GET /api/v1/info` is unauthenticated. Its initial implementation returns the firmware version, gateway client-contract version, Web UI state and version, board, and hostname:
+
+```json
+{"firmware_version":"0.8.0","api_version":1,"ui":{"state":"ready","version":"0.1.0","required_api_version":1},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"rf-gateway-a085e3e6cc20"}
+```
+
+Web UI and Home Assistant integration releases have their own SemVer versions because they are installed independently. Both declare the integer `api_version` they support. This contract number changes only for an incompatible external REST or WebSocket change; it is separate from the radio protocol version. The gateway serves the LittleFS UI only when its required API version exactly matches.
+
+Future additions include stream versions, stable gateway ID, per-boot ID, registry generation, current UTC state, and capabilities. The endpoint never returns radio keys, factory UIDs, credentials, or tokens. Planned mDNS advertising includes `_radiosensors._tcp`, API version, stable gateway ID, board, and firmware.
 
 ## Nodes
 
-Planned `GET /api/v1/nodes` returns `registry_generation` and all relevant records, including nodes without telemetry since boot. Each node contains node ID, profile ID, firmware, registry state, optional user name, last-seen UTC, RSSI, telemetry presence, and later read-only command status. Factory UID is excluded from Home Assistant responses.
+`GET /api/v1/nodes` returns `registry_generation` and all relevant records,
+including nodes without telemetry since boot. Each node contains node ID,
+profile ID, firmware, registry state and telemetry presence. When telemetry is
+available it also includes last-seen UTC and RSSI. User-assigned names and
+read-only command status will be added with their owning stores. Factory UID is
+never returned.
 
 ## Settings
 
 Settings contain display name, mDNS enabled state, NTP enabled state, up to three NTP hosts, pairing-window seconds, and initial-setup-window seconds. NTP changes restart SNTP without reboot. Operational network ID is editable during initial setup but locked after an active node exists; later changes require a staged migration.
+
+`PUT /api/v1/settings` replaces the complete settings value and requires CSRF.
+The response is the applied value with its durable generation. mDNS and NTP
+services observe that generation and reapply changes without reboot; pairing
+and physical initial-setup windows read their configured durations when opened.
+
+## Pairing
+
+`POST /api/v1/pairing/open` accepts manually entered per-device credentials:
+
+```json
+{"device_uid":"102132435465768798A9","factory_key":"00112233445566778899AABBCCDDEEFF"}
+```
+
+The UID is exactly 10 bytes and the factory key exactly 16 bytes, both encoded
+as hexadecimal. The gateway switches the radio to commissioning network `0`,
+keeps the key only in RAM, and accepts a `JOIN_REQUEST` only for the supplied
+UID. The key is wiped when pairing succeeds, is closed, or expires. It is never
+written to settings, secrets, registry, diagnostics, or logs. `POST
+/api/v1/pairing/close` ends the window early. Both endpoints require an admin
+session and CSRF and return the current pairing state and remaining seconds.
 
 ## Users and tokens
 
@@ -89,9 +164,26 @@ At most four local users are stored. Roles are `admin` and `viewer`; mutations c
 
 At most eight long-lived API tokens are stored. A new token contains 32 random bytes, is returned once as unpadded base64url, and is stored only as SHA-256. Initial scopes are `gateway:read`, `registry:read`, and `telemetry:read`. Runtime `last_used_at` is not persisted.
 
+`GET /api/v1/tokens` lists token metadata but never returns token hashes or the
+original token. `POST /api/v1/tokens` requires CSRF and accepts a name plus a
+non-empty array containing only the three scopes above:
+
+```json
+{"name":"Home Assistant","scopes":["gateway:read","registry:read","telemetry:read"]}
+```
+
+The `201` response contains the generated `token` exactly once. `DELETE
+/api/v1/tokens` requires CSRF and a JSON body such as `{"id":1}`; it returns
+`204`. Token mutations are serialized and return `409 mutation_busy` when
+another management write is in progress.
+
 ## WebSocket bootstrap
 
 Home Assistant reads `/api/v1/info`, authenticates, reads `/api/v1/nodes`, then connects to `/ws` and waits for a complete snapshot. It refetches nodes when the stream registry generation differs or a `REGISTRY_CHANGED` event arrives. Binary frames are specified in [WEBSOCKET.md](WEBSOCKET.md).
+
+The WebSocket handshake accepts either the browser session cookie or a bearer
+token carrying `telemetry:read`; otherwise it returns HTTP `401` before the
+protocol upgrade.
 
 ## Security and backup
 

@@ -185,20 +185,19 @@ flash encryption, physical flash access can recover keys and authentication
 material. Enabling flash encryption and secure boot, or accepting this physical
 attack, remains a production threat-model decision.
 
-Firmware 0.8.0 imports radio keys from ignored `LocalSecrets.h` only when the
-secrets namespace contains no slot blobs. The bootstrap adds a hardware-random
-device secret, writes and verifies the new snapshot, and runtime radio and
-commissioning code then read the durable store. Existing but invalid slot data
-is reported as corruption and is never treated as an empty store or
-automatically overwritten.
+An empty secrets namespace is initialized only with a hardware-random device
+secret. Initial setup generates and durably stores the operational network ID
+and installation key; radio keys are never imported from build-time headers.
+Existing but invalid slot data is reported as corruption and is never treated
+as an empty store or automatically overwritten.
 
-The schema-1 commissioning-key field represents the current development/shared
-or explicitly configured fallback profile. The production model gives every
-node a unique factory commissioning key encoded with its UID in a QR code. That
-per-device key is held only in RAM for one pairing transaction and is not added
-to this snapshot or the registry. Commissioning network ID remains zero. After
-durable `JOIN_COMPLETE`, the gateway wipes the temporary key; reprovisioning
-requires scanning the QR again.
+The schema-1 commissioning-key field is reserved and remains absent in the
+production flow. Every node has a unique factory commissioning key supplied
+with its UID. The user currently enters both values manually; future QR
+scanning may populate the same request. The key is held only in RAM for one
+pairing transaction and is never added to this snapshot or the registry.
+Commissioning network ID is zero. After durable `JOIN_COMPLETE`, explicit
+close, or timeout, the gateway wipes the temporary key.
 
 ## Node registry snapshot
 

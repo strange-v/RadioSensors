@@ -24,6 +24,7 @@ bool setupActive();
 uint32_t setupRemainingSeconds();
 void closeSetup();
 bool closePairing();
+bool openPairing();
 void indicate(Indication indication, uint32_t durationMs = 0);
 const char* indicationName();
 

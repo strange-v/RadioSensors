@@ -52,6 +52,6 @@ A zero timestamp means the packet arrived before the gateway had synchronized;
 the consumer should then use its own receipt time. Gateway uptime is diagnostic
 only and is not part of the telemetry stream.
 
-The current endpoint is unauthenticated. The production endpoint requires a
-read-only bearer token during the WebSocket handshake and must reject clients
-without the `telemetry:read` scope.
+The handshake requires either an authenticated browser session cookie or an
+API bearer token with the `telemetry:read` scope. Unauthorized clients receive
+HTTP `401` before the protocol upgrade.

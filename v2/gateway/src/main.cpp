@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "BoardProfile.h"
+#include "AuthenticationService.h"
 #include "CommissioningService.h"
 #include "ConfigurationStore.h"
 #include "Diagnostics.h"
@@ -8,12 +9,14 @@
 #include "EthernetService.h"
 #include "FirmwareVersion.h"
 #include "HealthServer.h"
+#include "MdnsService.h"
 #include "GatewayStatus.h"
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
 #include "RadioService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
+#include "WebUiService.h"
 
 namespace {
 
@@ -52,11 +55,14 @@ void setup() {
     Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 
     gateway::configuration_store::begin();
+    gateway::authentication::begin();
     gateway::registry_store::begin();
     gateway::telemetry_store::begin();
     gateway::status::begin();
     gateway::ethernet::begin();
     gateway::time_service::begin();
+    gateway::mdns_service::begin();
+    gateway::web_ui::begin();
     const bool radioReady = gateway::radio::begin();
     if (radioReady) {
         gateway::commissioning::begin();
@@ -69,6 +75,7 @@ void setup() {
 
 void loop() {
     gateway::time_service::loop();
+    gateway::mdns_service::loop();
     gateway::radio::ReceivedFrame telemetry{};
     for (uint8_t drained = 0;
          drained < 16 && gateway::radio::receiveTelemetry(telemetry);
@@ -93,6 +100,7 @@ void loop() {
     }
     gateway::status::loop();
     gateway::health::loop();
+    gateway::authentication::loop();
     gateway::ota::loop();
     gateway::diagnostics::feedWatchdog();
     delay(100);

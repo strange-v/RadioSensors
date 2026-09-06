@@ -2,4 +2,4 @@
 .vscode/
 *.code-workspace
 include/LocalSecrets.h
-
+ui/node_modules/

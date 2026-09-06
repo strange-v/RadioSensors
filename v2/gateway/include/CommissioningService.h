@@ -16,6 +16,8 @@ struct Snapshot {
 };
 
 bool begin();
+bool open(const uint8_t deviceUid[10], const uint8_t factoryKey[16]);
+bool close();
 Snapshot snapshot();
 
 }  // namespace gateway::commissioning

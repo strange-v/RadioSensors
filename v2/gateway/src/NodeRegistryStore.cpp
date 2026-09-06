@@ -4,6 +4,7 @@
 #include <RegistryPersistence.h>
 
 #include <atomic>
+#include <string.h>
 
 namespace gateway::registry_store {
 namespace {
@@ -137,6 +138,22 @@ bool activeProfileId(const uint8_t nodeId, uint16_t& profileId) {
     if (found) profileId = record->profileId;
     xSemaphoreGive(mutex);
     return found;
+}
+
+bool snapshot(Snapshot& value) {
+    if (!initialized || mutex == nullptr ||
+        xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+    value.generation = store.generation();
+    value.count = nodes.size();
+    if (value.count != 0) {
+        memcpy(
+            value.records, nodes.records(),
+            value.count * sizeof(value.records[0]));
+    }
+    xSemaphoreGive(mutex);
+    return true;
 }
 
 RegistryCommitStatus reserveAndSave(

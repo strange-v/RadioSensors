@@ -181,9 +181,10 @@ is sent only after the pending registry reservation is durable.
 The exact application frame length is 34 bytes. Frequency, bitrate, and default
 node transmit power are profile/firmware constants and are not repeated here.
 The installation key is protected on air only by the commissioning radio
-profile. RFM69 AES encryption is not an authenticated key-exchange protocol;
-the shared factory-key approach is the explicitly accepted minimum and may be
-replaced by per-device secret provisioning later.
+profile. Each node has a unique factory key supplied together with its UID; the
+gateway loads it into the radio only for that UID's pairing transaction and
+wipes it afterwards. RFM69 AES encryption is not an authenticated key-exchange
+protocol, which is an explicitly accepted limitation of this design.
 
 ## Join confirm
 
