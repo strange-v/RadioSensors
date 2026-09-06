@@ -4,6 +4,7 @@
 #include <JoinRequest.h>
 
 #include "GatewayStatus.h"
+#include "ConfigurationStore.h"
 #include "NodeRegistryStore.h"
 #include "RadioConfig.h"
 #include "RadioService.h"
@@ -79,6 +80,13 @@ void handleJoinRequest(const radio::ReceivedFrame& frame) {
         return;
     }
 
+    const radiosensors::gateway_storage::InstallationSecrets secrets =
+        configuration_store::secrets();
+    if (!secrets.installationKeyPresent) {
+        increment(&Snapshot::rejectedFrames);
+        status::indicate(status::Indication::Error, 3000);
+        return;
+    }
     radiosensors::protocol::JoinAccept accept{};
     for (size_t i = 0; i < radiosensors::protocol::kDeviceUidSize; ++i) {
         accept.deviceUid[i] = request.deviceUid[i];
@@ -86,10 +94,10 @@ void handleJoinRequest(const radio::ReceivedFrame& frame) {
     accept.requestNonce = request.requestNonce;
     accept.assignedNodeId = reserveResult.nodeId;
     accept.gatewayNodeId = static_cast<uint8_t>(radio::config::nodeId);
-    accept.networkId = radio::config::networkId;
+    accept.networkId = secrets.operationalNetworkId;
     for (size_t i = 0; i < radiosensors::protocol::kInstallationKeySize; ++i) {
         accept.installationKey[i] =
-            static_cast<uint8_t>(radio::config::encryptionKey[i]);
+            secrets.installationKey[i];
     }
 
     uint8_t encoded[radiosensors::protocol::kJoinAcceptSize];

@@ -6,6 +6,7 @@ namespace gateway::time_service {
 
 enum class State : uint8_t {
     WaitingForNetwork,
+    Disabled,
     Synchronizing,
     Synchronized,
 };

@@ -1,0 +1,236 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+namespace radiosensors::gateway_storage {
+
+constexpr uint16_t kStorageVersion = 1;
+constexpr size_t kSnapshotHeaderSize = 12;
+constexpr size_t kSnapshotCrcSize = 4;
+
+constexpr size_t kDisplayNameSize = 48;
+constexpr size_t kNtpServerCount = 3;
+constexpr size_t kNtpServerSize = 63;
+constexpr size_t kSettingsSnapshotSize = 264;
+
+constexpr size_t kMaximumUsers = 4;
+constexpr size_t kMaximumTokens = 8;
+constexpr size_t kUsernameSize = 32;
+constexpr size_t kCredentialNameSize = 32;
+constexpr size_t kPasswordSaltSize = 16;
+constexpr size_t kPasswordHashSize = 32;
+constexpr size_t kTokenHashSize = 32;
+constexpr size_t kStoredUserSize = 92;
+constexpr size_t kStoredTokenSize = 80;
+constexpr size_t kAuthSnapshotSize = 1036;
+
+constexpr size_t kRadioKeySize = 16;
+constexpr size_t kDeviceSecretSize = 32;
+constexpr size_t kSecretsSnapshotSize = 84;
+
+constexpr uint32_t kMinimumPbkdf2Iterations = 10000;
+constexpr uint32_t kMaximumPbkdf2Iterations = 2000000;
+
+enum class UserRole : uint8_t { Admin = 1, Viewer = 2 };
+enum class PasswordHashAlgorithm : uint8_t { Pbkdf2HmacSha256 = 1 };
+
+enum TokenScope : uint16_t {
+    GatewayRead = 1U << 0,
+    RegistryRead = 1U << 1,
+    TelemetryRead = 1U << 2,
+};
+
+struct GatewaySettings {
+    bool mdnsEnabled;
+    bool ntpEnabled;
+    uint16_t pairingWindowSeconds;
+    uint16_t setupWindowSeconds;
+    uint8_t displayNameLength;
+    char displayName[kDisplayNameSize];
+    uint8_t ntpServerCount;
+    uint8_t ntpServerLengths[kNtpServerCount];
+    char ntpServers[kNtpServerCount][kNtpServerSize];
+};
+
+struct UserRecord {
+    uint32_t id;
+    uint8_t usernameLength;
+    char username[kUsernameSize];
+    UserRole role;
+    bool enabled;
+    PasswordHashAlgorithm hashAlgorithm;
+    uint32_t pbkdf2Iterations;
+    uint8_t salt[kPasswordSaltSize];
+    uint8_t passwordHash[kPasswordHashSize];
+};
+
+struct ApiTokenRecord {
+    uint32_t id;
+    uint8_t nameLength;
+    char name[kCredentialNameSize];
+    bool enabled;
+    uint16_t scopes;
+    uint64_t createdAtUnixMs;
+    uint8_t tokenHash[kTokenHashSize];
+};
+
+struct AuthenticationData {
+    uint8_t userCount;
+    uint8_t tokenCount;
+    uint32_t nextUserId;
+    uint32_t nextTokenId;
+    UserRecord users[kMaximumUsers];
+    ApiTokenRecord tokens[kMaximumTokens];
+};
+
+struct InstallationSecrets {
+    bool installationKeyPresent;
+    bool commissioningKeyPresent;
+    bool deviceSecretPresent;
+    uint8_t operationalNetworkId;
+    uint8_t commissioningNetworkId;
+    uint8_t installationKey[kRadioKeySize];
+    uint8_t commissioningKey[kRadioKeySize];
+    uint8_t deviceSecret[kDeviceSecretSize];
+};
+
+enum class CodecStatus : uint8_t {
+    Ok,
+    OutputTooSmall,
+    InvalidSize,
+    InvalidMagic,
+    UnsupportedVersion,
+    CrcMismatch,
+    InvalidReservedData,
+    InvalidFlags,
+    InvalidString,
+    InvalidValue,
+    InvalidCount,
+    DuplicateValue,
+    MissingAdmin,
+};
+
+GatewaySettings defaultSettings();
+AuthenticationData defaultAuthentication();
+InstallationSecrets defaultSecrets();
+bool settingsEqual(const GatewaySettings& left, const GatewaySettings& right);
+bool authenticationEqual(const AuthenticationData& left, const AuthenticationData& right);
+bool secretsEqual(const InstallationSecrets& left, const InstallationSecrets& right);
+
+CodecStatus encodeSettings(
+    const GatewaySettings& value, uint32_t generation,
+    uint8_t* output, size_t capacity);
+CodecStatus decodeSettings(
+    const uint8_t* data, size_t size,
+    GatewaySettings& value, uint32_t& generation);
+CodecStatus encodeAuthentication(
+    const AuthenticationData& value, uint32_t generation,
+    uint8_t* output, size_t capacity);
+CodecStatus decodeAuthentication(
+    const uint8_t* data, size_t size,
+    AuthenticationData& value, uint32_t& generation);
+CodecStatus encodeSecrets(
+    const InstallationSecrets& value, uint32_t generation,
+    uint8_t* output, size_t capacity);
+CodecStatus decodeSecrets(
+    const uint8_t* data, size_t size,
+    InstallationSecrets& value, uint32_t& generation);
+
+class SlotStorage {
+public:
+    virtual ~SlotStorage() {}
+    virtual bool exists(uint8_t slot) = 0;
+    virtual bool read(uint8_t slot, uint8_t* output, size_t capacity, size_t& size) = 0;
+    virtual bool write(uint8_t slot, const uint8_t* data, size_t size) = 0;
+};
+
+enum class LoadStatus : uint8_t { Loaded, Empty, Corrupt };
+
+template<
+    typename Model,
+    size_t SnapshotSize,
+    CodecStatus (*Encode)(const Model&, uint32_t, uint8_t*, size_t),
+    CodecStatus (*Decode)(const uint8_t*, size_t, Model&, uint32_t&),
+    bool (*Equal)(const Model&, const Model&),
+    Model (*DefaultValue)()>
+class DualSlotStore {
+public:
+    explicit DualSlotStore(SlotStorage& storage)
+        : storage_(storage), current_{}, generation_(0), activeSlot_(-1), loaded_(false) {}
+
+    LoadStatus load(Model& value) {
+        uint8_t buffer[SnapshotSize]{};
+        uint32_t newestGeneration = 0;
+        int8_t newestSlot = -1;
+        Model newest{};
+        bool anySlotExists = false;
+        for (uint8_t slot = 0; slot < 2; ++slot) {
+            anySlotExists = anySlotExists || storage_.exists(slot);
+            size_t size = 0;
+            if (!storage_.read(slot, buffer, sizeof(buffer), size)) continue;
+            Model candidate{};
+            uint32_t candidateGeneration = 0;
+            if (Decode(buffer, size, candidate, candidateGeneration) != CodecStatus::Ok) continue;
+            if (newestSlot < 0 ||
+                static_cast<int32_t>(candidateGeneration - newestGeneration) > 0) {
+                newest = candidate;
+                newestGeneration = candidateGeneration;
+                newestSlot = static_cast<int8_t>(slot);
+            }
+        }
+        if (newestSlot < 0) {
+            current_ = DefaultValue();
+            value = current_;
+            generation_ = 0;
+            activeSlot_ = -1;
+            loaded_ = false;
+            return anySlotExists ? LoadStatus::Corrupt : LoadStatus::Empty;
+        }
+        current_ = newest;
+        value = newest;
+        generation_ = newestGeneration;
+        activeSlot_ = newestSlot;
+        loaded_ = true;
+        return LoadStatus::Loaded;
+    }
+
+    bool save(const Model& value) {
+        if (loaded_ && Equal(current_, value)) return true;
+        uint8_t buffer[SnapshotSize]{};
+        const uint32_t nextGeneration = generation_ + 1U;
+        if (Encode(value, nextGeneration, buffer, sizeof(buffer)) != CodecStatus::Ok) return false;
+        const uint8_t targetSlot = activeSlot_ == 0 ? 1 : 0;
+        if (!storage_.write(targetSlot, buffer, sizeof(buffer))) return false;
+        size_t verifySize = 0;
+        Model verified{};
+        uint32_t verifiedGeneration = 0;
+        if (!storage_.read(targetSlot, buffer, sizeof(buffer), verifySize) ||
+            Decode(buffer, verifySize, verified, verifiedGeneration) != CodecStatus::Ok ||
+            verifiedGeneration != nextGeneration || !Equal(verified, value)) return false;
+        current_ = value;
+        generation_ = nextGeneration;
+        activeSlot_ = static_cast<int8_t>(targetSlot);
+        loaded_ = true;
+        return true;
+    }
+
+    uint32_t generation() const { return generation_; }
+
+private:
+    SlotStorage& storage_;
+    Model current_;
+    uint32_t generation_;
+    int8_t activeSlot_;
+    bool loaded_;
+};
+
+using SettingsStore = DualSlotStore<GatewaySettings, kSettingsSnapshotSize,
+    encodeSettings, decodeSettings, settingsEqual, defaultSettings>;
+using AuthenticationStore = DualSlotStore<AuthenticationData, kAuthSnapshotSize,
+    encodeAuthentication, decodeAuthentication, authenticationEqual, defaultAuthentication>;
+using SecretsStore = DualSlotStore<InstallationSecrets, kSecretsSnapshotSize,
+    encodeSecrets, decodeSecrets, secretsEqual, defaultSecrets>;
+
+}  // namespace radiosensors::gateway_storage

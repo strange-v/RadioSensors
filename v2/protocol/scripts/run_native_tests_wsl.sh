@@ -15,6 +15,7 @@ common_sources=(
     ../shared/RadioProtocol/src/CommissioningFrames.cpp
     ../shared/RadioProtocol/src/NodeRegistry.cpp
     ../shared/RadioProtocol/src/RegistryPersistence.cpp
+    ../shared/RadioProtocol/src/GatewayStorage.cpp
     "${unity_dir}/unity.c"
 )
 common_flags=(
@@ -34,3 +35,4 @@ run_suite() {
 run_suite test_radio_protocol
 run_suite test_node_registry
 run_suite test_commissioning_frames
+run_suite test_gateway_storage

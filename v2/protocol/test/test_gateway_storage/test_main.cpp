@@ -1,0 +1,237 @@
+#include <GatewayStorage.h>
+#include <RadioProtocol.h>
+#include <unity.h>
+
+#include <string.h>
+
+using namespace radiosensors::gateway_storage;
+
+namespace {
+
+class MemorySlots final : public SlotStorage {
+public:
+    bool exists(uint8_t slot) override { return slot < 2 && present_[slot]; }
+
+    bool read(uint8_t slot, uint8_t* output, size_t capacity, size_t& size) override {
+        size = 0;
+        if (slot >= 2 || !present_[slot] || sizes_[slot] > capacity || failReads_) return false;
+        memcpy(output, data_[slot], sizes_[slot]);
+        size = sizes_[slot];
+        return true;
+    }
+
+    bool write(uint8_t slot, const uint8_t* data, size_t size) override {
+        ++writeCount_;
+        if (slot >= 2 || data == nullptr || size > kAuthSnapshotSize || failWrites_) return false;
+        memcpy(data_[slot], data, size);
+        sizes_[slot] = size;
+        present_[slot] = true;
+        if (corruptAfterWrite_) data_[slot][12] ^= 0x80;
+        return true;
+    }
+
+    void corrupt(uint8_t slot, size_t offset) { data_[slot][offset] ^= 0x80; }
+    void failWrites(bool value) { failWrites_ = value; }
+    void corruptAfterWrite(bool value) { corruptAfterWrite_ = value; }
+    uint32_t writeCount() const { return writeCount_; }
+
+private:
+    uint8_t data_[2][kAuthSnapshotSize]{};
+    size_t sizes_[2]{};
+    bool present_[2]{};
+    bool failReads_ = false;
+    bool failWrites_ = false;
+    bool corruptAfterWrite_ = false;
+    uint32_t writeCount_ = 0;
+};
+
+GatewaySettings namedSettings(const char* name) {
+    GatewaySettings value = defaultSettings();
+    value.displayNameLength = static_cast<uint8_t>(strlen(name));
+    memcpy(value.displayName, name, value.displayNameLength);
+    return value;
+}
+
+AuthenticationData populatedAuthentication() {
+    AuthenticationData value = defaultAuthentication();
+    value.userCount = 1;
+    value.nextUserId = 2;
+    UserRecord& user = value.users[0];
+    user.id = 1;
+    memcpy(user.username, "admin", 5);
+    user.usernameLength = 5;
+    user.role = UserRole::Admin;
+    user.enabled = true;
+    user.hashAlgorithm = PasswordHashAlgorithm::Pbkdf2HmacSha256;
+    user.pbkdf2Iterations = 100000;
+    for (size_t index = 0; index < kPasswordSaltSize; ++index) user.salt[index] = index + 1;
+    for (size_t index = 0; index < kPasswordHashSize; ++index) user.passwordHash[index] = index + 2;
+
+    value.tokenCount = 1;
+    value.nextTokenId = 2;
+    ApiTokenRecord& token = value.tokens[0];
+    token.id = 1;
+    memcpy(token.name, "home-assistant", 14);
+    token.nameLength = 14;
+    token.enabled = true;
+    token.scopes = GatewayRead | RegistryRead | TelemetryRead;
+    token.createdAtUnixMs = 0x0102030405060708ULL;
+    for (size_t index = 0; index < kTokenHashSize; ++index) token.tokenHash[index] = index + 3;
+    return value;
+}
+
+InstallationSecrets populatedSecrets() {
+    InstallationSecrets value{};
+    value.installationKeyPresent = true;
+    value.commissioningKeyPresent = true;
+    value.deviceSecretPresent = true;
+    value.operationalNetworkId = 128;
+    value.commissioningNetworkId = 0;
+    for (size_t index = 0; index < kRadioKeySize; ++index) {
+        value.installationKey[index] = index;
+        value.commissioningKey[index] = index + 16;
+    }
+    for (size_t index = 0; index < kDeviceSecretSize; ++index) value.deviceSecret[index] = index + 32;
+    return value;
+}
+
+}  // namespace
+
+void setUp() {}
+void tearDown() {}
+
+void test_empty_stores_return_documented_defaults() {
+    MemorySlots slots;
+    SettingsStore settingsStore(slots);
+    GatewaySettings settings{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(LoadStatus::Empty), static_cast<int>(settingsStore.load(settings)));
+    TEST_ASSERT_TRUE(settingsEqual(defaultSettings(), settings));
+
+    AuthenticationStore authStore(slots);
+    AuthenticationData auth{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(LoadStatus::Empty), static_cast<int>(authStore.load(auth)));
+    TEST_ASSERT_TRUE(authenticationEqual(defaultAuthentication(), auth));
+    TEST_ASSERT_EQUAL_UINT32(1, auth.nextUserId);
+    TEST_ASSERT_EQUAL_UINT32(1, auth.nextTokenId);
+}
+
+void test_settings_known_layout_and_round_trip() {
+    const GatewaySettings source = namedSettings("main-gateway");
+    uint8_t bytes[kSettingsSnapshotSize]{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(encodeSettings(source, 0x12345678, bytes, sizeof(bytes))));
+    TEST_ASSERT_EQUAL_MEMORY("RSGC", bytes, 4);
+    TEST_ASSERT_EQUAL_HEX8(0x78, bytes[6]);
+    TEST_ASSERT_EQUAL_HEX8(0x56, bytes[7]);
+    TEST_ASSERT_EQUAL_UINT8(3, bytes[12]);
+    TEST_ASSERT_EQUAL_UINT8(12, bytes[13]);
+    TEST_ASSERT_EQUAL_MEMORY("main-gateway", bytes + 20, 12);
+    TEST_ASSERT_EQUAL_UINT8(12, bytes[68]);
+    TEST_ASSERT_EQUAL_MEMORY("pool.ntp.org", bytes + 69, 12);
+
+    GatewaySettings decoded{};
+    uint32_t generation = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(decodeSettings(bytes, sizeof(bytes), decoded, generation)));
+    TEST_ASSERT_EQUAL_HEX32(0x12345678, generation);
+    TEST_ASSERT_TRUE(settingsEqual(source, decoded));
+}
+
+void test_authentication_and_secrets_round_trip() {
+    const AuthenticationData auth = populatedAuthentication();
+    uint8_t authBytes[kAuthSnapshotSize]{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(encodeAuthentication(auth, 7, authBytes, sizeof(authBytes))));
+    TEST_ASSERT_EQUAL_MEMORY("RSAU", authBytes, 4);
+    TEST_ASSERT_EQUAL_MEMORY("admin", authBytes + 29, 5);
+    TEST_ASSERT_EQUAL_HEX8(0x08, authBytes[392 + 40]);
+    TEST_ASSERT_EQUAL_HEX8(0x01, authBytes[392 + 47]);
+    AuthenticationData decodedAuth{};
+    uint32_t generation = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(decodeAuthentication(authBytes, sizeof(authBytes), decodedAuth, generation)));
+    TEST_ASSERT_TRUE(authenticationEqual(auth, decodedAuth));
+
+    const InstallationSecrets secrets = populatedSecrets();
+    uint8_t secretBytes[kSecretsSnapshotSize]{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(encodeSecrets(secrets, 8, secretBytes, sizeof(secretBytes))));
+    TEST_ASSERT_EQUAL_MEMORY("RSGS", secretBytes, 4);
+    InstallationSecrets decodedSecrets{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(decodeSecrets(secretBytes, sizeof(secretBytes), decodedSecrets, generation)));
+    TEST_ASSERT_TRUE(secretsEqual(secrets, decodedSecrets));
+}
+
+void test_validation_rejects_invalid_relationships() {
+    uint8_t buffer[kAuthSnapshotSize]{};
+    AuthenticationData auth = populatedAuthentication();
+    auth.users[0].role = UserRole::Viewer;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::MissingAdmin), static_cast<int>(encodeAuthentication(auth, 1, buffer, sizeof(buffer))));
+    auth = populatedAuthentication();
+    auth.nextUserId = 1;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::InvalidValue), static_cast<int>(encodeAuthentication(auth, 1, buffer, sizeof(buffer))));
+
+    InstallationSecrets secrets = populatedSecrets();
+    secrets.commissioningNetworkId = secrets.operationalNetworkId;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::InvalidValue), static_cast<int>(encodeSecrets(secrets, 1, buffer, sizeof(buffer))));
+}
+
+void test_crc_corruption_is_rejected() {
+    const GatewaySettings source = defaultSettings();
+    uint8_t bytes[kSettingsSnapshotSize]{};
+    encodeSettings(source, 1, bytes, sizeof(bytes));
+    bytes[20] ^= 1;
+    GatewaySettings decoded{};
+    uint32_t generation = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::CrcMismatch), static_cast<int>(decodeSettings(bytes, sizeof(bytes), decoded, generation)));
+}
+
+void test_store_distinguishes_empty_from_existing_corrupt_slots() {
+    MemorySlots slots;
+    SettingsStore writer(slots);
+    TEST_ASSERT_TRUE(writer.save(defaultSettings()));
+    slots.corrupt(0, 20);
+
+    SettingsStore reader(slots);
+    GatewaySettings value{};
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(LoadStatus::Corrupt),
+        static_cast<int>(reader.load(value)));
+    TEST_ASSERT_TRUE(settingsEqual(defaultSettings(), value));
+    TEST_ASSERT_EQUAL_UINT32(0, reader.generation());
+}
+
+void test_dual_slot_falls_back_and_identical_save_is_noop() {
+    MemorySlots slots;
+    SettingsStore writer(slots);
+    GatewaySettings first = namedSettings("first");
+    GatewaySettings second = namedSettings("second");
+    TEST_ASSERT_TRUE(writer.save(first));
+    TEST_ASSERT_TRUE(writer.save(first));
+    TEST_ASSERT_EQUAL_UINT32(1, slots.writeCount());
+    TEST_ASSERT_TRUE(writer.save(second));
+    slots.corrupt(1, 20);
+
+    SettingsStore reader(slots);
+    GatewaySettings recovered{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(LoadStatus::Loaded), static_cast<int>(reader.load(recovered)));
+    TEST_ASSERT_EQUAL_UINT32(1, reader.generation());
+    TEST_ASSERT_TRUE(settingsEqual(first, recovered));
+}
+
+void test_failed_or_unverifiable_write_does_not_publish_generation() {
+    MemorySlots slots;
+    SettingsStore store(slots);
+    TEST_ASSERT_TRUE(store.save(defaultSettings()));
+    slots.corruptAfterWrite(true);
+    TEST_ASSERT_FALSE(store.save(namedSettings("changed")));
+    TEST_ASSERT_EQUAL_UINT32(1, store.generation());
+}
+
+int main(int, char**) {
+    UNITY_BEGIN();
+    RUN_TEST(test_empty_stores_return_documented_defaults);
+    RUN_TEST(test_settings_known_layout_and_round_trip);
+    RUN_TEST(test_authentication_and_secrets_round_trip);
+    RUN_TEST(test_validation_rejects_invalid_relationships);
+    RUN_TEST(test_crc_corruption_is_rejected);
+    RUN_TEST(test_store_distinguishes_empty_from_existing_corrupt_slots);
+    RUN_TEST(test_dual_slot_falls_back_and_identical_save_is_noop);
+    RUN_TEST(test_failed_or_unverifiable_write_does_not_publish_generation);
+    return UNITY_END();
+}

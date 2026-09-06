@@ -8,6 +8,7 @@
 
 #include "RadioConfig.h"
 #include "NodeRegistryStore.h"
+#include "ConfigurationStore.h"
 
 namespace gateway::radio {
 namespace {
@@ -34,7 +35,13 @@ RFM69 rfm69(
 
 std::atomic<State> currentState{State::Stopped};
 std::atomic<Profile> currentProfile{Profile::Operational};
-std::atomic<uint8_t> currentNetworkId{config::networkId};
+std::atomic<uint8_t> currentNetworkId{0};
+uint8_t operationalNetworkId = 0;
+uint8_t commissioningNetworkId = 0;
+char operationalKey[radiosensors::gateway_storage::kRadioKeySize + 1]{};
+char commissioningKey[radiosensors::gateway_storage::kRadioKeySize + 1]{};
+bool operationalEnabled = false;
+bool commissioningEnabled = false;
 TaskHandle_t radioTaskHandle = nullptr;
 QueueHandle_t interruptQueue = nullptr;
 QueueHandle_t receivedFrameQueue = nullptr;
@@ -210,17 +217,17 @@ void drainReceivedFrame() {
 void processCommand(const RadioCommand& command) {
     if (command.kind == CommandKind::SetProfile) {
         if (command.profile == Profile::Commissioning) {
-            if (config::commissioningEnabled) {
-                rfm69.setNetwork(config::commissioningNetworkId);
-                rfm69.encrypt(config::commissioningKey);
+            if (commissioningEnabled) {
+                rfm69.setNetwork(commissioningNetworkId);
+                rfm69.encrypt(commissioningKey);
                 currentProfile.store(Profile::Commissioning);
-                currentNetworkId.store(config::commissioningNetworkId);
+                currentNetworkId.store(commissioningNetworkId);
             }
         } else {
-            rfm69.setNetwork(config::networkId);
-            rfm69.encrypt(config::encryptionKey);
+            rfm69.setNetwork(operationalNetworkId);
+            rfm69.encrypt(operationalKey);
             currentProfile.store(Profile::Operational);
-            currentNetworkId.store(config::networkId);
+            currentNetworkId.store(operationalNetworkId);
         }
     } else {
         rfm69.send(
@@ -229,16 +236,16 @@ void processCommand(const RadioCommand& command) {
             command.size,
             command.requestAck);
         if (command.switchAfterSend) {
-            if (command.profile == Profile::Commissioning && config::commissioningEnabled) {
-                rfm69.setNetwork(config::commissioningNetworkId);
-                rfm69.encrypt(config::commissioningKey);
+            if (command.profile == Profile::Commissioning && commissioningEnabled) {
+                rfm69.setNetwork(commissioningNetworkId);
+                rfm69.encrypt(commissioningKey);
                 currentProfile.store(Profile::Commissioning);
-                currentNetworkId.store(config::commissioningNetworkId);
+                currentNetworkId.store(commissioningNetworkId);
             } else if (command.profile == Profile::Operational) {
-                rfm69.setNetwork(config::networkId);
-                rfm69.encrypt(config::encryptionKey);
+                rfm69.setNetwork(operationalNetworkId);
+                rfm69.encrypt(operationalKey);
                 currentProfile.store(Profile::Operational);
-                currentNetworkId.store(config::networkId);
+                currentNetworkId.store(operationalNetworkId);
             }
         }
     }
@@ -319,6 +326,17 @@ void radioTask(void*) {
 
 bool begin() {
     currentState.store(State::Starting);
+    const radiosensors::gateway_storage::InstallationSecrets secrets =
+        configuration_store::secrets();
+    operationalEnabled = secrets.installationKeyPresent;
+    commissioningEnabled = secrets.commissioningKeyPresent;
+    operationalNetworkId = secrets.operationalNetworkId;
+    commissioningNetworkId = secrets.commissioningNetworkId;
+    memcpy(operationalKey, secrets.installationKey,
+           radiosensors::gateway_storage::kRadioKeySize);
+    memcpy(commissioningKey, secrets.commissioningKey,
+           radiosensors::gateway_storage::kRadioKeySize);
+    currentNetworkId.store(operationalNetworkId);
     pinMode(config::interrupt, INPUT);
 
     bool initialized = false;
@@ -332,7 +350,7 @@ bool begin() {
             Serial.printf("RFM69 SPI initialization attempt %u failed\n", attempt);
         } else if (rfm69.initialize(
                        config::frequencyBand, config::nodeId,
-                       config::networkId)) {
+                       operationalNetworkId)) {
             initialized = true;
             break;
         } else {
@@ -362,14 +380,14 @@ bool begin() {
     configuredFrequencyHz = rfm69.getFrequency();
     configuredBitRate = rfm69.getBitRate();
 
-    if (!config::encryptionEnabled) {
+    if (!operationalEnabled) {
         currentState.store(State::EncryptionKeyMissing);
         rfm69.sleep();
         Serial.println(
             "RFM69 encryption key is missing; radio reception is disabled");
         return false;
     }
-    rfm69.encrypt(config::encryptionKey);
+    rfm69.encrypt(operationalKey);
 
     interruptQueue = xQueueCreate(1, sizeof(uint8_t));
     receivedFrameQueue = xQueueCreate(kRxQueueDepth, sizeof(ReceivedFrame));
@@ -443,7 +461,7 @@ bool receiveTelemetry(ReceivedFrame& frame, const TickType_t waitTicks) {
 
 bool requestProfile(const Profile profile) {
     if (commandQueue == nullptr ||
-        (profile == Profile::Commissioning && !config::commissioningEnabled)) {
+        (profile == Profile::Commissioning && !commissioningEnabled)) {
         return false;
     }
     RadioCommand command{};
@@ -480,7 +498,7 @@ bool sendThenSwitchProfile(
     const size_t size,
     const Profile profile) {
     if (commandQueue == nullptr || data == nullptr || size > kMaxPayloadSize ||
-        (profile == Profile::Commissioning && !config::commissioningEnabled)) {
+        (profile == Profile::Commissioning && !commissioningEnabled)) {
         return false;
     }
     RadioCommand command{};
@@ -562,7 +580,7 @@ Snapshot snapshot() {
         configuredFrequencyHz,
         configuredBitRate,
         config::txPowerDbm,
-        config::encryptionEnabled,
+        operationalEnabled,
         0,
     };
 
