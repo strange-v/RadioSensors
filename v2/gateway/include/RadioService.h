@@ -68,6 +68,7 @@ bool begin();
 bool receive(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool receiveTelemetry(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool requestProfile(Profile profile);
+bool beginCommissioning(const uint8_t key[16]);
 bool send(uint16_t targetId, const uint8_t* data, size_t size, bool requestAck = false);
 bool sendThenSwitchProfile(
     uint16_t targetId,

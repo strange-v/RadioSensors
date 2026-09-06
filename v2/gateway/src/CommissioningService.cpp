@@ -22,6 +22,31 @@ Snapshot counters{};
 portMUX_TYPE countersMux = portMUX_INITIALIZER_UNLOCKED;
 bool awaitingConfirm = false;
 uint32_t confirmDeadline = 0;
+uint8_t expectedDeviceUid[radiosensors::protocol::kDeviceUidSize]{};
+bool expectedDeviceUidPresent = false;
+portMUX_TYPE transactionMux = portMUX_INITIALIZER_UNLOCKED;
+
+bool matchesExpectedDevice(const uint8_t* deviceUid) {
+    portENTER_CRITICAL(&transactionMux);
+    const bool matches = expectedDeviceUidPresent &&
+        memcmp(expectedDeviceUid, deviceUid, sizeof(expectedDeviceUid)) == 0;
+    portEXIT_CRITICAL(&transactionMux);
+    return matches;
+}
+
+void setExpectedDevice(const uint8_t* deviceUid) {
+    portENTER_CRITICAL(&transactionMux);
+    memcpy(expectedDeviceUid, deviceUid, sizeof(expectedDeviceUid));
+    expectedDeviceUidPresent = true;
+    portEXIT_CRITICAL(&transactionMux);
+}
+
+void clearExpectedDevice() {
+    portENTER_CRITICAL(&transactionMux);
+    memset(expectedDeviceUid, 0, sizeof(expectedDeviceUid));
+    expectedDeviceUidPresent = false;
+    portEXIT_CRITICAL(&transactionMux);
+}
 
 void increment(uint32_t Snapshot::*field) {
     portENTER_CRITICAL(&countersMux);
@@ -55,6 +80,10 @@ void handleJoinRequest(const radio::ReceivedFrame& frame) {
         radiosensors::protocol::JoinRequestStatus::Ok) {
         increment(&Snapshot::rejectedFrames);
         status::indicate(status::Indication::Error, 3000);
+        return;
+    }
+    if (!matchesExpectedDevice(request.deviceUid)) {
+        increment(&Snapshot::rejectedFrames);
         return;
     }
 
@@ -166,6 +195,7 @@ void handleJoinConfirm(const radio::ReceivedFrame& frame) {
     confirmDeadline = 0;
     if (newlyConfirmed) {
         if (status::closePairing()) {
+            clearExpectedDevice();
             status::indicate(status::Indication::PairingSucceeded, 1000);
         } else {
             increment(&Snapshot::rejectedFrames);
@@ -207,6 +237,29 @@ bool begin() {
     }
     Serial.println("Commissioning service ready");
     return true;
+}
+
+bool open(
+    const uint8_t deviceUid[radiosensors::protocol::kDeviceUidSize],
+    const uint8_t factoryKey[radiosensors::gateway_storage::kRadioKeySize]) {
+    if (deviceUid == nullptr || factoryKey == nullptr) return false;
+    setExpectedDevice(deviceUid);
+    if (!radio::beginCommissioning(factoryKey)) {
+        clearExpectedDevice();
+        return false;
+    }
+    if (!status::openPairing()) {
+        radio::requestProfile(radio::Profile::Operational);
+        clearExpectedDevice();
+        return false;
+    }
+    return true;
+}
+
+bool close() {
+    const bool result = status::closePairing();
+    clearExpectedDevice();
+    return result;
 }
 
 Snapshot snapshot() {

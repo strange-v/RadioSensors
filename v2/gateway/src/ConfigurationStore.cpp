@@ -4,7 +4,6 @@
 #include <esp_random.h>
 
 #include "NodeRegistryStore.h"
-#include "RadioConfig.h"
 
 namespace gateway::configuration_store {
 namespace {
@@ -70,16 +69,6 @@ bool bootstrapSecrets() {
     currentSecrets.deviceSecretPresent = true;
     esp_fill_random(currentSecrets.deviceSecret, kDeviceSecretSize);
 
-    if (radio::config::encryptionEnabled) {
-        currentSecrets.installationKeyPresent = true;
-        currentSecrets.operationalNetworkId = radio::config::networkId;
-        memcpy(currentSecrets.installationKey, radio::config::encryptionKey, kRadioKeySize);
-    }
-    if (radio::config::commissioningEnabled) {
-        currentSecrets.commissioningKeyPresent = true;
-        currentSecrets.commissioningNetworkId = radio::config::commissioningNetworkId;
-        memcpy(currentSecrets.commissioningKey, radio::config::commissioningKey, kRadioKeySize);
-    }
     return secretStore.save(currentSecrets);
 }
 

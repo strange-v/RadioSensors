@@ -11,12 +11,19 @@ enum class RegistryCommitStatus {
 
 namespace gateway::registry_store {
 
+struct Snapshot {
+    uint32_t generation;
+    size_t count;
+    radiosensors::registry::NodeRecord records[radiosensors::registry::kMaxNodes];
+};
+
 bool begin();
 uint32_t generation();
 size_t recordCount();
 bool isActiveNode(uint8_t nodeId);
 bool hasActiveNodes();
 bool activeProfileId(uint8_t nodeId, uint16_t& profileId);
+bool snapshot(Snapshot& value);
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
     radiosensors::registry::ReserveResult& result);

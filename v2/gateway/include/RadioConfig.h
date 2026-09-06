@@ -4,20 +4,6 @@
 #include <RFM69.h>
 #include <SPI.h>
 
-#if __has_include("LocalSecrets.h")
-#include "LocalSecrets.h"
-#endif
-
-#ifndef GATEWAY_RFM69_ENCRYPTION_KEY
-#define GATEWAY_RFM69_ENCRYPTION_KEY ""
-#endif
-#ifndef GATEWAY_RFM69_COMMISSIONING_KEY
-#define GATEWAY_RFM69_COMMISSIONING_KEY ""
-#endif
-#ifndef GATEWAY_RFM69_COMMISSIONING_NETWORK_ID
-#define GATEWAY_RFM69_COMMISSIONING_NETWORK_ID 0
-#endif
-
 #if !defined(GATEWAY_RFM69_SPI_HOST)
 #error "Define GATEWAY_RFM69_SPI_HOST in the PlatformIO environment build_flags."
 #endif
@@ -42,9 +28,6 @@
 #if !defined(GATEWAY_RFM69_NODE_ID)
 #error "Define GATEWAY_RFM69_NODE_ID in build_flags."
 #endif
-#if !defined(GATEWAY_RFM69_NETWORK_ID)
-#error "Define GATEWAY_RFM69_NETWORK_ID in build_flags."
-#endif
 #if !defined(GATEWAY_RFM69_HIGH_POWER)
 #error "Define GATEWAY_RFM69_HIGH_POWER as 0 or 1 in build_flags."
 #endif
@@ -54,18 +37,8 @@
 
 static_assert(GATEWAY_RFM69_NODE_ID >= 1 && GATEWAY_RFM69_NODE_ID <= 1023,
               "RFM69 node ID must be in the range 1..1023.");
-static_assert(GATEWAY_RFM69_NETWORK_ID >= 0 && GATEWAY_RFM69_NETWORK_ID <= 255,
-              "RFM69 network ID must be in the range 0..255.");
 static_assert(GATEWAY_RFM69_HIGH_POWER == 0 || GATEWAY_RFM69_HIGH_POWER == 1,
               "GATEWAY_RFM69_HIGH_POWER must be 0 or 1.");
-static_assert(
-    sizeof(GATEWAY_RFM69_ENCRYPTION_KEY) == 1 ||
-        sizeof(GATEWAY_RFM69_ENCRYPTION_KEY) == 17,
-    "GATEWAY_RFM69_ENCRYPTION_KEY must be empty or exactly 16 bytes.");
-static_assert(
-    sizeof(GATEWAY_RFM69_COMMISSIONING_KEY) == 1 ||
-        sizeof(GATEWAY_RFM69_COMMISSIONING_KEY) == 17,
-    "GATEWAY_RFM69_COMMISSIONING_KEY must be empty or exactly 16 bytes.");
 static_assert(
     GATEWAY_RFM69_SCK != GATEWAY_RFM69_MISO &&
         GATEWAY_RFM69_SCK != GATEWAY_RFM69_MOSI &&
@@ -121,13 +94,7 @@ constexpr int chipSelect = GATEWAY_RFM69_CS;
 constexpr int interrupt = GATEWAY_RFM69_IRQ;
 constexpr uint8_t frequencyBand = GATEWAY_RFM69_FREQUENCY;
 constexpr uint16_t nodeId = GATEWAY_RFM69_NODE_ID;
-constexpr uint8_t networkId = GATEWAY_RFM69_NETWORK_ID;
 constexpr bool highPower = GATEWAY_RFM69_HIGH_POWER != 0;
 constexpr int8_t txPowerDbm = GATEWAY_RFM69_TX_POWER_DBM;
-constexpr char encryptionKey[] = GATEWAY_RFM69_ENCRYPTION_KEY;
-constexpr bool encryptionEnabled = sizeof(encryptionKey) == 17;
-constexpr char commissioningKey[] = GATEWAY_RFM69_COMMISSIONING_KEY;
-constexpr bool commissioningEnabled = sizeof(commissioningKey) == 17;
-constexpr uint8_t commissioningNetworkId = GATEWAY_RFM69_COMMISSIONING_NETWORK_ID;
 
 }  // namespace gateway::radio::config

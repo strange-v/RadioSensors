@@ -8,7 +8,6 @@
 namespace gateway::status {
 namespace {
 
-constexpr uint32_t kPairingWindowMs = 120000;
 constexpr uint32_t kDebounceMs = 50;
 constexpr uint8_t kBrightness = 20;
 
@@ -51,15 +50,7 @@ void togglePairing(const uint32_t now) {
         current.store(Indication::Operational);
         Serial.println("Pairing window closed by BOOT button");
     } else {
-        if (!radio::requestProfile(radio::Profile::Commissioning)) {
-            current.store(Indication::Error);
-            indicationEndsAt.store(now + 3000);
-            Serial.println("Pairing unavailable: commissioning radio profile is not configured");
-            return;
-        }
-        pairingEndsAt.store(now + kPairingWindowMs);
-        current.store(Indication::Pairing);
-        Serial.println("Pairing window opened by BOOT button for 120 seconds");
+        Serial.println("Pairing requires QR credentials from the management UI");
     }
     indicationEndsAt.store(0);
 }
@@ -215,6 +206,17 @@ bool closePairing() {
         Serial.println("Pairing completion failed: radio profile did not switch");
         return false;
     }
+}
+
+bool openPairing() {
+    const auto settings = configuration_store::settings();
+    pairingEndsAt.store(
+        millis() + static_cast<uint32_t>(settings.pairingWindowSeconds) * 1000U);
+    current.store(Indication::Pairing);
+    indicationEndsAt.store(0);
+    Serial.printf("Pairing window opened for %u seconds\n",
+                  settings.pairingWindowSeconds);
+    return true;
 }
 
 void indicate(const Indication indication, const uint32_t durationMs) {
