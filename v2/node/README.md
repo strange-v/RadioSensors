@@ -20,9 +20,24 @@ transmission, and RTC power-down scheduling. The remaining declared profiles
 will be enabled as their event runtime is connected; the default build contains
 only the completed climate environment.
 
-`climate_tmp112` currently uses a provisional 15-minute compile-time reporting
-interval. It is intentionally independent from the one-hour rolling keep-alive
-and one-minute counter aggregation policy for plain event nodes.
+`climate_tmp112` is the solar/supercapacitor build. It reports every 60 seconds
+above 2500 mV and every 300 seconds at or below 2500 mV. Battery-powered climate
+builds use one interval selected in their PlatformIO build environment; this is
+not persisted or remotely configurable.
+
+`climate_tmp112_debug` enables 9600-baud UART logging on PB2. It keeps the RTC
+timebase active but never calls `sleep_cpu()`; idle iterations use a short
+delay. This environment is for functional bring-up and commissioning
+diagnostics, not sleep-current measurement.
+
+Production and debug environments use the same serial UPDI upload settings as
+`v2/node_test`: `serialupdi` on COM6 at 115200 baud. Upload a selected image
+with `platformio run -e <environment> -t upload`.
+
+PA6 is configured as an interrupt-driven active-low provisioning button. On an
+unconfigured node, a debounced press wakes the MCU and requests commissioning
+immediately instead of waiting for the periodic retry. Configured-node command
+sessions and long-press factory reset remain future work.
 
 Profile IDs describe only the byte-level telemetry and command contract. Gas,
 water, door, and window presentation belongs to installation configuration and

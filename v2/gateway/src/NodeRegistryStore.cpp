@@ -3,6 +3,8 @@
 #include <Preferences.h>
 #include <RegistryPersistence.h>
 
+#include <atomic>
+
 namespace gateway::registry_store {
 namespace {
 
@@ -54,6 +56,21 @@ radiosensors::registry::NodeRegistry nodes;
 radiosensors::registry::DualSlotRegistryStore store(storage);
 bool initialized = false;
 SemaphoreHandle_t mutex = nullptr;
+std::atomic<uint32_t> activeNodeIds[4]{};
+
+void publishActiveNodes() {
+    uint32_t words[4]{};
+    for (size_t index = 0; index < nodes.size(); ++index) {
+        const radiosensors::registry::NodeRecord& record = nodes.records()[index];
+        if (record.state == radiosensors::registry::NodeState::Active &&
+            record.nodeId <= radiosensors::registry::kLastNodeId) {
+            words[record.nodeId / 32U] |= 1UL << (record.nodeId % 32U);
+        }
+    }
+    for (size_t index = 0; index < 4; ++index) {
+        activeNodeIds[index].store(words[index], std::memory_order_release);
+    }
+}
 
 }  // namespace
 
@@ -69,6 +86,7 @@ bool begin() {
     }
 
     const radiosensors::registry::LoadStatus status = store.load(nodes);
+    publishActiveNodes();
     initialized = true;
     Serial.printf(
         "Node registry ready: records=%u generation=%lu source=%s\n",
@@ -92,6 +110,16 @@ size_t recordCount() {
     return value;
 }
 
+bool isActiveNode(const uint8_t nodeId) {
+    if (nodeId < radiosensors::registry::kFirstNodeId ||
+        nodeId > radiosensors::registry::kLastNodeId) {
+        return false;
+    }
+    const uint32_t word = activeNodeIds[nodeId / 32U].load(
+        std::memory_order_acquire);
+    return (word & (1UL << (nodeId % 32U))) != 0;
+}
+
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
     radiosensors::registry::ReserveResult& result) {
@@ -111,6 +139,7 @@ RegistryCommitStatus reserveAndSave(
         return RegistryCommitStatus::StorageError;
     }
     nodes = candidate;
+    publishActiveNodes();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }
@@ -133,6 +162,7 @@ RegistryCommitStatus confirmAndSave(
         return RegistryCommitStatus::StorageError;
     }
     nodes = candidate;
+    publishActiveNodes();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }

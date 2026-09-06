@@ -81,6 +81,9 @@ required for the initial design.
 The normally-open provisioning button on PA6 uses asynchronous wake with its
 pull-up enabled. It only draws pull-up current while physically pressed, which
 is acceptable for the short press and deliberate 10-second reset gesture.
+For an unconfigured node, a debounced press immediately triggers a join attempt
+and bypasses the periodic join-retry deadline. Configured-node command sessions
+and long-press handling are not connected yet.
 
 ## Reporting intervals
 
@@ -100,8 +103,13 @@ profiles still send their current state/count and supply voltage after one
 hour. A small randomized jitter may be added when arming a future deadline,
 without changing these nominal intervals.
 
-Profiles that include TMP112 or SHT40 use the climate reporting policy instead;
-their reporting interval remains a separate compile-time decision.
+Profiles that include TMP112 or SHT40 use the climate reporting policy instead.
+Solar/supercapacitor builds use the V1 threshold semantics: after a successful
+report, the next report is scheduled in 60 seconds when VCC is above 2500 mV,
+or in 300 seconds when VCC is at or below 2500 mV. Battery-powered builds use
+one compile-time interval selected by their build environment. It is deliberately
+not a runtime/EEPROM setting until field use demonstrates a need to reconfigure
+sealed nodes without reflashing them.
 
 ## Command sessions
 
@@ -118,9 +126,12 @@ command. One command is delivered per button session. A press held for at least
 
 ## Hardware decisions still required
 
-- minimum LOW and HIGH pulse widths produced by the target meters;
-- final climate reporting interval (currently a provisional 15 minutes);
 - measured current comparison of the selected PA5 sleep configuration;
+
+The accepted meter input contract is a minimum LOW width of one second and a
+minimum HIGH width of one second. The 250 ms polling period provides four
+sampling opportunities per minimum-width phase before the bounded debounce
+sample.
 
 ## Implementation status
 

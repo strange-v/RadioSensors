@@ -5,6 +5,7 @@
 #include "Diagnostics.h"
 #include "DeviceIdentity.h"
 #include "EthernetService.h"
+#include "FirmwareVersion.h"
 #include "HealthServer.h"
 #include "GatewayStatus.h"
 #include "NodeRegistryStore.h"
@@ -35,7 +36,7 @@ void setup() {
     Serial.println();
     gateway::identity::begin();
     Serial.println("RadioSensors gateway");
-    Serial.printf("Firmware: %s\n", GATEWAY_FIRMWARE_VERSION);
+    Serial.printf("Firmware: %s\n", gateway::firmware::version);
     Serial.printf("Board: %s\n", gateway::board::current.name);
     Serial.printf(
         "Ethernet: %s\n",
@@ -50,13 +51,27 @@ void setup() {
     gateway::registry_store::begin();
     gateway::status::begin();
     gateway::ethernet::begin();
-    gateway::radio::begin();
-    gateway::commissioning::begin();
+    const bool radioReady = gateway::radio::begin();
+    if (radioReady) {
+        gateway::commissioning::begin();
+    } else {
+        Serial.println("Commissioning disabled because RFM69 is unavailable");
+    }
     gateway::health::begin();
     gateway::ota::begin();
 }
 
 void loop() {
+    gateway::radio::ReceivedFrame telemetry{};
+    for (uint8_t drained = 0;
+         drained < 16 && gateway::radio::receiveTelemetry(telemetry);
+         ++drained) {
+        Serial.printf(
+            "Telemetry accepted: sender=%u bytes=%u rssi=%d\n",
+            telemetry.senderId,
+            telemetry.size,
+            telemetry.rssi);
+    }
     gateway::status::loop();
     gateway::ota::loop();
     gateway::diagnostics::feedWatchdog();

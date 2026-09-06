@@ -86,6 +86,17 @@ or automation.
   exact command pending; the next session retries it and the node's durable
   command ID prevents reapplication.
 
+Planned refinement: use the payload capability of the RFM69 transport ACK to
+advertise that the gateway has a durable pending command. An empty ACK means no
+hint; a one-byte, versioned `COMMAND_PENDING` frame-kind hint causes the node to
+immediately start the existing `COMMAND_READY` pull session with a fresh nonce.
+The command itself is not carried in the ACK. The physical button remains a
+manual way to open the same session without waiting for telemetry. Gateway
+radio code must read the pending state from a lock-free snapshot published only
+after durable command storage, never by taking the registry/command mutex in the
+ACK timing path. A stale positive hint safely ends in `NO_COMMAND`; a lost hint
+is retried with later acknowledged telemetry.
+
 - Gateway UI will support an absolute `SET_COUNT` command so a counter node can be initialized from the real meter value.
 - Gateway UI will also support changing a node's `POWER_LEVEL`; the node persists the new value and confirms the applied setting.
 - Include a monotonically increasing command sequence/ID. The gateway persists the pending command and retries the exact same command ID and payload when its response is lost.

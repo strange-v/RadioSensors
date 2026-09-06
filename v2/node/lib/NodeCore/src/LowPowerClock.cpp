@@ -18,7 +18,9 @@ namespace node {
 
 void LowPowerClock::begin() {
     ADC0.CTRLA &= ~ADC_ENABLE_bm;
+#if !defined(NODE_DEBUG)
     TCA0.SPLIT.CTRLA &= ~TCA_SPLIT_ENABLE_bm;
+#endif
     while (RTC.STATUS != 0) {}
     RTC.CLKSEL = RTC_CLKSEL_INT1K_gc;
     RTC.PITINTCTRL = RTC_PI_bm;
@@ -37,7 +39,11 @@ uint32_t LowPowerClock::nowMs() const {
 }
 
 void LowPowerClock::sleepUntilInterrupt() const {
+#if defined(NODE_DEBUG)
+    delay(NODE_DEBUG_IDLE_DELAY_MS);
+#else
     sleep_cpu();
+#endif
 }
 
 }  // namespace node

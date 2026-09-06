@@ -108,11 +108,11 @@ RFM69 CS/NSS to 3.3 V so the module stays deselected during reset and UART0
 recovery on GPIO43/44.
 
 The firmware validates the register interface and `RegVersion == 0x24`, then
-starts a receive-only smoke test. The library ISR wakes a dedicated FreeRTOS
+starts the receive service. The library ISR wakes a dedicated FreeRTOS
 task pinned to core 1 at priority 11, above AsyncTCP priority 10. All SPI/FIFO
 work remains outside the ISR and uses the library's bounded 66-byte static
-buffer. Payloads are discarded after statistics are recorded; ACK transmission
-is intentionally deferred. AES reception is enabled only when
+buffer. Active-node telemetry is acknowledged and passed through a bounded
+opaque queue. AES reception is enabled only when
 `GATEWAY_RFM69_ENCRYPTION_KEY` in the Git-ignored `LocalSecrets.h` contains
 exactly 16 bytes. With a missing key the radio hardware is still probed, but RX
 remains disabled with state `encryption_key_missing`.
@@ -141,11 +141,12 @@ CRC-protected versioned snapshots alternate between two NVS slots so an
 interrupted write leaves the previous generation recoverable. Persistent
 records contain UID, assigned node ID, profile ID, firmware version, lifecycle
 state, and the pending request nonce; high-churn telemetry diagnostics remain
-RAM-only. `/health` reports the record count and storage generation.
+RAM-only. `/health` reports the record count and storage generation. A lock-free
+active-node bitmap lets the radio task validate telemetry in time for the
+RFM69 ACK window without taking the registry mutex or touching NVS.
 
 The commissioning task uses mutex-protected transactional reserve/confirm APIs;
-NVS is never accessed by the radio-owner task. Synchronized active-node lookup
-for telemetry remains the next registry integration step. See
+NVS is never accessed by the radio-owner task. See
 `../protocol/REGISTRY.md` for the canonical layout and allocation rules.
 
 ## Iteration 5: local pairing control and status LED
@@ -190,3 +191,12 @@ confirm resends Join complete without another NVS write.
 
 One BOOT pairing window provisions one node. Successful activation closes the
 window and leaves the radio operational; press BOOT again to add another node.
+
+## Iteration 7: active-node telemetry acknowledgement
+
+The radio task validates telemetry sender IDs against a lock-free snapshot of
+active registry entries. It sends an RFM69 ACK only after valid telemetry has
+entered the bounded telemetry queue; unknown, pending, disabled, or queue-full
+traffic is not acknowledged. The main loop currently drains this queue and logs
+only sender ID, payload size, and RSSI while keeping the payload opaque. The
+future WebSocket service will replace this diagnostic consumer.
