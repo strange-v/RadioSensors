@@ -197,6 +197,12 @@ window and leaves the radio operational; press BOOT again to add another node.
 The radio task validates telemetry sender IDs against a lock-free snapshot of
 active registry entries. It sends an RFM69 ACK only after valid telemetry has
 entered the bounded telemetry queue; unknown, pending, disabled, or queue-full
-traffic is not acknowledged. The main loop currently drains this queue and logs
-only sender ID, payload size, and RSSI while keeping the payload opaque. The
-future WebSocket service will replace this diagnostic consumer.
+traffic is not acknowledged. The main loop caches the latest opaque frame from
+each node and publishes a versioned binary snapshot/live stream at
+`ws://<gateway>/ws`. The latest record is also available as JSON from
+`GET /telemetry/last`. See `WEBSOCKET.md` for the wire layout and reconnect
+rules.
+
+After Ethernet obtains an address, the gateway synchronizes UTC using SNTP.
+Telemetry carries Unix milliseconds; timestamp `0` means time was not yet
+synchronized and the consumer should use its own receipt time.

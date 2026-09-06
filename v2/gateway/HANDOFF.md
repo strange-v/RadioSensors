@@ -25,7 +25,7 @@ application data in it.
 - pioarduino 55.03.311 (immutable release URL).
 - Arduino-ESP32 3.3.11 on ESP-IDF 5.5.5.
 - ESP32Async/AsyncTCP 3.5.0 and ESPAsyncWebServer 3.12.0.
-- Current firmware version: 0.6.0.
+- Current firmware version: 0.7.0.
 - The version lives in `include/FirmwareVersion.h`, not global PlatformIO build
   flags, so changing it invalidates only translation units that include it.
 - Shared native tests do not require Windows `gcc/g++` in `PATH`. From the
@@ -196,6 +196,26 @@ pending, disabled, and queue-full frames are not acknowledged. The main loop
 currently drains the queue and logs sender ID, size, and RSSI without decoding
 the opaque payload. `/health` exposes ACK, rejection, queue, and drop counters.
 
+The telemetry pipeline and initial WebSocket slice are hardware-validated on
+Waveshare with the climate node. A fixed cache retains the latest complete v2
+frame, profile ID, RSSI, receive time, and sequence for every node that has
+reported since boot.
+`GET /telemetry/last` exposes the latest record for diagnostics, and `/health`
+reports cache plus WebSocket counters. `ws://<gateway>/ws` sends a versioned
+binary snapshot on connect and then live telemetry. Slow clients are
+disconnected on bounded-queue overflow and must reconnect for resynchronization.
+The exact envelope is documented in `WEBSOCKET.md` and covered by a portable
+known-vector test. OTA validation of firmware 0.7.0 confirmed a three-message
+snapshot followed by a live telemetry push; `/health` reported three accepted
+telemetry updates, three radio ACKs, two client connections, and zero WebSocket
+drops.
+
+Firmware 0.7.0 uses SNTP after Ethernet obtains an address. Cached telemetry and
+the WebSocket envelope carry a single 64-bit UTC Unix-millisecond timestamp;
+zero means the packet arrived before time synchronization. Gateway uptime is
+not part of the stream. `/health` reports the time state, current Unix time, and
+last successful synchronization time.
+
 If RFM69 initialization fails, the commissioning task is not started. Queue
 receive APIs also honor a nonzero wait even before queue creation, preventing a
 failed-radio path from turning the priority-6 commissioning task into a tight
@@ -218,8 +238,8 @@ Next milestones, to refine against `ARCHITECTURE_HANDOFF.md`:
 
 1. Complete ATtiny1614 commissioning and telemetry hardware validation.
 2. Idempotent queued commands and acknowledgements.
-3. Gateway WebSocket API, bounded queues, reconnect/resync, and Home Assistant
-   mDNS discovery.
+3. Add Home Assistant mDNS discovery and the HA WebSocket client, including
+   reconnect/resync behavior.
 4. Embedded management UI plus configuration export/restore.
 5. Security, recovery, and long-duration reliability testing.
 

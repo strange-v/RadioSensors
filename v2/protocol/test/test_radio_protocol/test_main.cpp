@@ -3,6 +3,7 @@
 #include <ProfileIds.h>
 #include <RadioProtocol.h>
 #include <TelemetryFrames.h>
+#include <GatewayStream.h>
 #include <unity.h>
 
 using namespace radiosensors::protocol;
@@ -134,6 +135,40 @@ void test_binary_telemetry_rejects_invalid_state() {
         static_cast<int>(encodeBinaryTelemetry(2, 3300, frame, sizeof(frame))));
 }
 
+void test_gateway_stream_known_vectors() {
+    uint8_t control[radiosensors::stream::kControlFrameSize]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        sizeof(control),
+        radiosensors::stream::encodeControl(
+            radiosensors::stream::MessageKind::SnapshotBegin,
+            0x78563412,
+            control,
+            sizeof(control)));
+    const uint8_t expectedControl[] = {1, 1, 0x12, 0x34, 0x56, 0x78};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedControl, control, sizeof(control));
+
+    const uint8_t payload[] = {0x40, 0xE7, 0x0C};
+    uint8_t telemetry[radiosensors::stream::kTelemetryEnvelopeSize + sizeof(payload)]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        sizeof(telemetry),
+        radiosensors::stream::encodeTelemetry(
+            0x01020304,
+            7,
+            0x1234,
+            0x0102030411223344ULL,
+            -63,
+            payload,
+            sizeof(payload),
+            telemetry,
+            sizeof(telemetry)));
+    const uint8_t expectedTelemetry[] = {
+        1, 2, 4, 3, 2, 1, 7, 0x34, 0x12,
+        0x44, 0x33, 0x22, 0x11, 0x04, 0x03, 0x02, 0x01,
+        0xC1, 0xFF, 3, 0x40, 0xE7, 0x0C};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(
+        expectedTelemetry, telemetry, sizeof(telemetry));
+}
+
 void test_allows_empty_payload_for_kind_specific_validation() {
     const uint8_t bytes[] = {0x43};
     FrameView frame{};
@@ -239,6 +274,7 @@ int main(int, char**) {
     RUN_TEST(test_profile_2_known_vector);
     RUN_TEST(test_initial_telemetry_encoders);
     RUN_TEST(test_binary_telemetry_rejects_invalid_state);
+    RUN_TEST(test_gateway_stream_known_vectors);
     RUN_TEST(test_allows_empty_payload_for_kind_specific_validation);
     RUN_TEST(test_rejects_empty_frame);
     RUN_TEST(test_rejects_other_protocol_major);
