@@ -11,6 +11,8 @@
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
 #include "RadioService.h"
+#include "TelemetryStore.h"
+#include "TimeService.h"
 
 namespace {
 
@@ -49,8 +51,10 @@ void setup() {
     Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 
     gateway::registry_store::begin();
+    gateway::telemetry_store::begin();
     gateway::status::begin();
     gateway::ethernet::begin();
+    gateway::time_service::begin();
     const bool radioReady = gateway::radio::begin();
     if (radioReady) {
         gateway::commissioning::begin();
@@ -62,17 +66,31 @@ void setup() {
 }
 
 void loop() {
+    gateway::time_service::loop();
     gateway::radio::ReceivedFrame telemetry{};
     for (uint8_t drained = 0;
          drained < 16 && gateway::radio::receiveTelemetry(telemetry);
          ++drained) {
-        Serial.printf(
-            "Telemetry accepted: sender=%u bytes=%u rssi=%d\n",
-            telemetry.senderId,
-            telemetry.size,
-            telemetry.rssi);
+        if (gateway::telemetry_store::accept(telemetry)) {
+            gateway::telemetry_store::Record record{};
+            if (gateway::telemetry_store::find(
+                    static_cast<uint8_t>(telemetry.senderId), record)) {
+                gateway::health::publishTelemetry(record);
+            }
+            Serial.printf(
+                "Telemetry stored: sender=%u bytes=%u rssi=%d\n",
+                telemetry.senderId,
+                telemetry.size,
+                telemetry.rssi);
+        } else {
+            Serial.printf(
+                "Telemetry store rejected frame: sender=%u bytes=%u\n",
+                telemetry.senderId,
+                telemetry.size);
+        }
     }
     gateway::status::loop();
+    gateway::health::loop();
     gateway::ota::loop();
     gateway::diagnostics::feedWatchdog();
     delay(100);

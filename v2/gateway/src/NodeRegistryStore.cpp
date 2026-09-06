@@ -120,6 +120,18 @@ bool isActiveNode(const uint8_t nodeId) {
     return (word & (1UL << (nodeId % 32U))) != 0;
 }
 
+bool activeProfileId(const uint8_t nodeId, uint16_t& profileId) {
+    if (!initialized || mutex == nullptr) return false;
+    if (xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return false;
+    const radiosensors::registry::NodeRecord* const record =
+        nodes.findByNodeId(nodeId);
+    const bool found = record != nullptr &&
+        record->state == radiosensors::registry::NodeState::Active;
+    if (found) profileId = record->profileId;
+    xSemaphoreGive(mutex);
+    return found;
+}
+
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
     radiosensors::registry::ReserveResult& result) {
