@@ -1,12 +1,50 @@
 #include "DeviceIdentity.h"
 
 #include <Arduino.h>
+#include <esp_random.h>
 #include <esp_mac.h>
+#include <mbedtls/sha256.h>
+
+#include "ConfigurationStore.h"
 
 namespace gateway::identity {
 namespace {
 
 char gatewayHostname[32] = "rf-gateway-uninitialized";
+char stableGatewayId[kIdentityCharacters + 1]{};
+char currentBootId[kIdentityCharacters + 1]{};
+
+void encodeHex(const uint8_t* bytes, const size_t size, char* output) {
+    static constexpr char digits[] = "0123456789abcdef";
+    for (size_t index = 0; index < size; ++index) {
+        output[index * 2] = digits[bytes[index] >> 4];
+        output[index * 2 + 1] = digits[bytes[index] & 0x0F];
+    }
+    output[size * 2] = '\0';
+}
+
+void createGatewayId(const uint8_t mac[6]) {
+    static constexpr char domain[] = "radiosensors-gateway-id-v1";
+    constexpr size_t domainSize = sizeof(domain) - 1;
+    uint8_t material[domainSize +
+        radiosensors::gateway_storage::kDeviceSecretSize]{};
+    memcpy(material, domain, domainSize);
+    size_t materialSize = domainSize;
+    const auto secrets = configuration_store::secrets();
+    if (configuration_store::ready() && secrets.deviceSecretPresent) {
+        memcpy(material + materialSize, secrets.deviceSecret,
+               radiosensors::gateway_storage::kDeviceSecretSize);
+        materialSize += radiosensors::gateway_storage::kDeviceSecretSize;
+    } else {
+        memcpy(material + materialSize, mac, 6);
+        materialSize += 6;
+    }
+    uint8_t digest[32]{};
+    mbedtls_sha256(material, materialSize, digest, 0);
+    encodeHex(digest, kIdentityCharacters / 2, stableGatewayId);
+    memset(material, 0, sizeof(material));
+    memset(digest, 0, sizeof(digest));
+}
 
 }  // namespace
 
@@ -14,23 +52,27 @@ void begin() {
     uint8_t mac[6]{};
     if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
         snprintf(gatewayHostname, sizeof(gatewayHostname), "rf-gateway-unknown");
-        return;
+        memset(mac, 0, sizeof(mac));
+    } else {
+        snprintf(
+            gatewayHostname,
+            sizeof(gatewayHostname),
+            "rf-gateway-%02x%02x%02x%02x%02x%02x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
-
-    snprintf(
-        gatewayHostname,
-        sizeof(gatewayHostname),
-        "rf-gateway-%02x%02x%02x%02x%02x%02x",
-        mac[0],
-        mac[1],
-        mac[2],
-        mac[3],
-        mac[4],
-        mac[5]);
+    createGatewayId(mac);
+    uint8_t bootBytes[kIdentityCharacters / 2]{};
+    esp_fill_random(bootBytes, sizeof(bootBytes));
+    encodeHex(bootBytes, sizeof(bootBytes), currentBootId);
+    memset(bootBytes, 0, sizeof(bootBytes));
 }
 
 const char* hostname() {
     return gatewayHostname;
 }
+
+const char* gatewayId() { return stableGatewayId; }
+
+const char* bootId() { return currentBootId; }
 
 }  // namespace gateway::identity

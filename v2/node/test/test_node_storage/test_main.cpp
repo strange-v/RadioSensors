@@ -43,6 +43,13 @@ NetworkConfig makeConfig(const uint8_t nodeId = 7) {
     return value;
 }
 
+FactoryCredentials makeFactoryCredentials() {
+    FactoryCredentials value{};
+    for (uint8_t index = 0; index < sizeof(value.key); ++index)
+        value.key[index] = static_cast<uint8_t>(0x10 + index);
+    return value;
+}
+
 }  // namespace
 
 void setUp() {}
@@ -56,6 +63,48 @@ void test_layout_fills_eeprom_without_overlap() {
     TEST_ASSERT_EQUAL_UINT32(
         kEepromSize,
         kCounterRingStart + kCounterRecordSize * kCounterRecordCount);
+}
+
+void test_factory_credentials_round_trip_and_validation() {
+    FactoryCredentials source{};
+    for (uint8_t index = 0; index < sizeof(source.key); ++index)
+        source.key[index] = static_cast<uint8_t>(index + 1);
+    uint8_t bytes[kFactoryCredentialSize];
+    TEST_ASSERT_TRUE(encodeFactoryCredentials(source, bytes, sizeof(bytes)));
+    const uint8_t expected[kFactoryCredentialSize] = {
+        0x52, 0x53, 0x46, 0x43, 0x01, 0x01, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+        0xAE, 0xDC, 0x51, 0x23, 0x00, 0x00, 0x00, 0x00,
+    };
+    TEST_ASSERT_EQUAL_MEMORY(expected, bytes, sizeof(expected));
+    FactoryCredentials restored{};
+    TEST_ASSERT_TRUE(decodeFactoryCredentials(bytes, sizeof(bytes), restored));
+    TEST_ASSERT_EQUAL_MEMORY(source.key, restored.key, sizeof(source.key));
+
+    bytes[12] ^= 0x01;
+    TEST_ASSERT_FALSE(decodeFactoryCredentials(bytes, sizeof(bytes), restored));
+    memset(bytes, 0xFF, sizeof(bytes));
+    TEST_ASSERT_FALSE(decodeFactoryCredentials(bytes, sizeof(bytes), restored));
+}
+
+void test_factory_credential_store_reads_user_row_independently() {
+    FakeStorage userRow;
+    const FactoryCredentials source = makeFactoryCredentials();
+    uint8_t bytes[kFactoryCredentialSize];
+    TEST_ASSERT_TRUE(encodeFactoryCredentials(source, bytes, sizeof(bytes)));
+    memcpy(userRow.bytes, bytes, sizeof(bytes));
+    FactoryCredentialStore<FakeStorage> store(userRow);
+    FactoryCredentials restored{};
+    TEST_ASSERT_TRUE(store.load(restored));
+    TEST_ASSERT_EQUAL_MEMORY(source.key, restored.key, sizeof(source.key));
+
+    FakeStorage eeprom;
+    NetworkConfigStore<FakeStorage> network(eeprom);
+    NetworkConfig config = makeConfig();
+    TEST_ASSERT_TRUE(network.save(config));
+    network.factoryReset();
+    TEST_ASSERT_TRUE(store.load(restored));
 }
 
 void test_network_config_round_trip_and_newest_slot() {
@@ -279,6 +328,8 @@ void test_adaptive_climate_policy_uses_v1_threshold_semantics() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_layout_fills_eeprom_without_overlap);
+    RUN_TEST(test_factory_credentials_round_trip_and_validation);
+    RUN_TEST(test_factory_credential_store_reads_user_row_independently);
     RUN_TEST(test_network_config_round_trip_and_newest_slot);
     RUN_TEST(test_network_config_falls_back_from_corrupt_new_slot);
     RUN_TEST(test_network_config_generation_wrap_selects_latest);

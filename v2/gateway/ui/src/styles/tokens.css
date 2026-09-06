@@ -1,0 +1,131 @@
+/* Design tokens. Dark is the default theme (the gateway UI is dark-first);
+   light is an override. Every scale below is deliberately short — pick the
+   nearest step instead of inventing a new value in a component rule. */
+
+:root {
+  /* Type. System stack only: a Cyrillic web font would cost ~50 KB gzip,
+     roughly two thirds of the whole LittleFS image. Every family listed is
+     sans-serif, so the fallback chain can never land on a serif face. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+
+  --text-micro: 11px;   /* uppercase eyebrows only */
+  --text-xs: 12px;      /* captions, helper text */
+  --text-sm: 13px;      /* dense labels, chips */
+  --text-md: 14px;      /* body, values, buttons */
+  --text-lg: 16px;      /* panel titles */
+  --text-xl: 20px;      /* section titles */
+  --text-2xl: 25px;     /* page titles */
+  --text-metric: 26px;  /* summary numbers */
+
+  /* Spacing. 4px grid. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* Small radii keep the console look; anything rounder reads as consumer app. */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px #0000004d;
+  --shadow-lg: 0 24px 60px #00000073;
+  --transition: 120ms ease;
+
+  /* Dark palette (default). */
+  --bg: #141a24;
+  --bg-shell: #0f141c;
+  --surface: #1a2130;
+  --surface-soft: #212a3a;
+  --surface-hover: #26303f;
+  --line: #29323f;
+  --line-strong: #3a4553;
+  --ink: #e5eaf1;
+  --ink-soft: #b3c0d0;
+  --muted: #7d8b9e;
+  --primary: #4c9fe0;
+  --primary-hover: #6fb4e9;
+  --primary-soft: #1b3a55;
+  --primary-strong: #2b7fd1;
+  --primary-strong-hover: #3a8fe0;
+  --focus-ring: #4c9fe066;
+  --success: #4caf72;
+  --success-soft: #17301f;
+  --warning: #e0a33e;
+  --warning-soft: #322610;
+  --danger: #e5636b;
+  --danger-soft: #331a1d;
+
+  color-scheme: dark;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-sans);
+}
+
+/* Light palette. Applied when the browser asks for it, or when a future
+   theme switch stamps data-theme on <html>. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f6f9;
+    --bg-shell: #fff;
+    --surface: #fff;
+    --surface-soft: #f5f7fa;
+    --surface-hover: #eef2f7;
+    --line: #e0e5ec;
+    --line-strong: #c9d2dc;
+    --ink: #16202c;
+    --ink-soft: #46566a;
+    --muted: #6b7a8d;
+    --primary: #1a72c0;
+    --primary-hover: #145d9e;
+    --primary-soft: #e8f2fb;
+    --primary-strong: #1a72c0;
+    --primary-strong-hover: #145d9e;
+    --focus-ring: #1a72c040;
+    --success: #1f7a45;
+    --success-soft: #eaf7ef;
+    --warning: #8a5600;
+    --warning-soft: #fff3d9;
+    --danger: #b93636;
+    --danger-soft: #fdeded;
+    --shadow-sm: 0 1px 2px #16202c14;
+    --shadow-lg: 0 24px 60px #16202c26;
+
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f6f9;
+  --bg-shell: #fff;
+  --surface: #fff;
+  --surface-soft: #f5f7fa;
+  --surface-hover: #eef2f7;
+  --line: #e0e5ec;
+  --line-strong: #c9d2dc;
+  --ink: #16202c;
+  --ink-soft: #46566a;
+  --muted: #6b7a8d;
+  --primary: #1a72c0;
+  --primary-hover: #145d9e;
+  --primary-soft: #e8f2fb;
+  --primary-strong: #1a72c0;
+  --primary-strong-hover: #145d9e;
+  --focus-ring: #1a72c040;
+  --success: #1f7a45;
+  --success-soft: #eaf7ef;
+  --warning: #8a5600;
+  --warning-soft: #fff3d9;
+  --danger: #b93636;
+  --danger-soft: #fdeded;
+  --shadow-sm: 0 1px 2px #16202c14;
+  --shadow-lg: 0 24px 60px #16202c26;
+
+  color-scheme: light;
+}

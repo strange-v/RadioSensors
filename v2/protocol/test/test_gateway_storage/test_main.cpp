@@ -1,10 +1,12 @@
 #include <GatewayStorage.h>
 #include <RadioProtocol.h>
+#include <UserManagement.h>
 #include <unity.h>
 
 #include <string.h>
 
 using namespace radiosensors::gateway_storage;
+namespace user_management = radiosensors::user_management;
 
 namespace {
 
@@ -92,6 +94,17 @@ InstallationSecrets populatedSecrets() {
         value.commissioningKey[index] = index + 16;
     }
     for (size_t index = 0; index < kDeviceSecretSize; ++index) value.deviceSecret[index] = index + 32;
+    return value;
+}
+
+user_management::PasswordCredential credential(uint8_t seed) {
+    user_management::PasswordCredential value{};
+    value.algorithm = PasswordHashAlgorithm::Pbkdf2HmacSha256;
+    value.iterations = 100000;
+    for (size_t index = 0; index < sizeof(value.salt); ++index)
+        value.salt[index] = seed + index;
+    for (size_t index = 0; index < sizeof(value.hash); ++index)
+        value.hash[index] = seed + index + 1;
     return value;
 }
 
@@ -223,6 +236,85 @@ void test_failed_or_unverifiable_write_does_not_publish_generation() {
     TEST_ASSERT_EQUAL_UINT32(1, store.generation());
 }
 
+void test_user_management_create_and_validation() {
+    AuthenticationData data = populatedAuthentication();
+    const auto password = credential(10);
+    uint32_t id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::create(
+            data, "sensor.viewer", 13, UserRole::Viewer, true, password, id)));
+    TEST_ASSERT_EQUAL_UINT32(2, id);
+    TEST_ASSERT_EQUAL_UINT8(2, data.userCount);
+    TEST_ASSERT_EQUAL_MEMORY("sensor.viewer", data.users[1].username, 13);
+    TEST_ASSERT_EQUAL_MEMORY(password.hash, data.users[1].passwordHash,
+                             sizeof(password.hash));
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::InvalidValue),
+        static_cast<int>(user_management::create(
+            data, "Uppercase", 9, UserRole::Viewer, true, password, id)));
+}
+
+void test_user_management_rejects_duplicate_and_capacity() {
+    AuthenticationData data = populatedAuthentication();
+    const auto password = credential(20);
+    uint32_t id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::UsernameExists),
+        static_cast<int>(user_management::create(
+            data, "admin", 5, UserRole::Viewer, true, password, id)));
+    TEST_ASSERT_EQUAL_UINT8(1, data.userCount);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::create(data, "one", 3, UserRole::Viewer, true, password, id)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::create(data, "two", 3, UserRole::Viewer, true, password, id)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::create(data, "three", 5, UserRole::Viewer, true, password, id)));
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::CapacityReached),
+        static_cast<int>(user_management::create(
+            data, "four", 4, UserRole::Viewer, true, password, id)));
+}
+
+void test_user_management_protects_last_admin() {
+    AuthenticationData data = populatedAuthentication();
+    const AuthenticationData original = data;
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::LastAdminRequired),
+        static_cast<int>(user_management::update(
+            data, 1, "admin", 5, UserRole::Viewer, true)));
+    TEST_ASSERT_TRUE(authenticationEqual(original, data));
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::LastAdminRequired),
+        static_cast<int>(user_management::update(
+            data, 1, "admin", 5, UserRole::Admin, false)));
+    TEST_ASSERT_TRUE(authenticationEqual(original, data));
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(user_management::Status::LastAdminRequired),
+        static_cast<int>(user_management::remove(data, 1)));
+    TEST_ASSERT_TRUE(authenticationEqual(original, data));
+}
+
+void test_user_management_updates_password_and_removes_user() {
+    AuthenticationData data = populatedAuthentication();
+    const auto firstPassword = credential(30);
+    uint32_t id = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::create(
+            data, "viewer", 6, UserRole::Viewer, true, firstPassword, id)));
+    const auto replacement = credential(60);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::update(
+            data, id, "renamed", 7, UserRole::Viewer, false, &replacement)));
+    TEST_ASSERT_EQUAL_MEMORY(replacement.hash, data.users[1].passwordHash,
+                             sizeof(replacement.hash));
+    TEST_ASSERT_FALSE(data.users[1].enabled);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(user_management::Status::Ok),
+        static_cast<int>(user_management::remove(data, id)));
+    TEST_ASSERT_EQUAL_UINT8(1, data.userCount);
+    TEST_ASSERT_EQUAL_UINT32(0, data.users[1].id);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_empty_stores_return_documented_defaults);
@@ -233,5 +325,9 @@ int main(int, char**) {
     RUN_TEST(test_store_distinguishes_empty_from_existing_corrupt_slots);
     RUN_TEST(test_dual_slot_falls_back_and_identical_save_is_noop);
     RUN_TEST(test_failed_or_unverifiable_write_does_not_publish_generation);
+    RUN_TEST(test_user_management_create_and_validation);
+    RUN_TEST(test_user_management_rejects_duplicate_and_capacity);
+    RUN_TEST(test_user_management_protects_last_admin);
+    RUN_TEST(test_user_management_updates_password_and_removes_user);
     return UNITY_END();
 }

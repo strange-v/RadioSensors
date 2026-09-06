@@ -6,7 +6,9 @@
 #include <RFM69.h>
 #include <Wire.h>
 #include <limits.h>
+#include <NodeStorage.h>
 #include <string.h>
+#include <UserRowStorage.h>
 
 namespace
 {
@@ -33,12 +35,6 @@ constexpr uint8_t kStateActive = 2;
 constexpr uint8_t kConfigSize = 38;
 constexpr uint8_t kConfigSlotCount = 2;
 
-#ifndef RADIO_COMMISSIONING_KEY
-#error "RADIO_COMMISSIONING_KEY must be an exactly 16-byte string."
-#endif
-static_assert(sizeof(RADIO_COMMISSIONING_KEY) == 17,
-              "RADIO_COMMISSIONING_KEY must be exactly 16 bytes.");
-
 struct StoredConfig
 {
   uint32_t generation;
@@ -54,6 +50,11 @@ struct StoredConfig
 RFM69 radio(kRadioChipSelect, kRadioInterrupt, true);
 uint8_t deviceUid[kDeviceUidSize];
 StoredConfig config{};
+radiosensors::node::storage::UserRowStorage userRow;
+radiosensors::node::storage::FactoryCredentialStore<
+    radiosensors::node::storage::UserRowStorage> factoryStore(userRow);
+radiosensors::node::storage::FactoryCredentials factoryCredentials{};
+bool factoryCredentialsReady = false;
 uint8_t currentSlot = 0;
 uint32_t lastSendTime = 0;
 bool firstMeasurement = true;
@@ -176,9 +177,13 @@ void applyEncryptionKey(const uint8_t *key)
 
 void useCommissioningProfile()
 {
+  char key[kInstallationKeySize + 1];
+  memcpy(key, factoryCredentials.key, kInstallationKeySize);
+  key[kInstallationKeySize] = '\0';
   radio.setAddress(kCommissioningNodeId);
   radio.setNetwork(kCommissioningNetworkId);
-  radio.encrypt(RADIO_COMMISSIONING_KEY);
+  radio.encrypt(key);
+  memset(key, 0, sizeof(key));
   radio.setPowerLevel(RADIO_POWER_LEVEL);
 }
 
@@ -243,6 +248,7 @@ bool awaitJoinComplete()
 
 bool commission()
 {
+  if (!factoryCredentialsReady) return false;
   useCommissioningProfile();
   JoinRequest request{};
   memcpy(request.deviceUid, deviceUid, kDeviceUidSize);
@@ -357,6 +363,9 @@ void setup()
   delay(50);
   Serial.println(F("RadioSensors v2 TMP112 node"));
   readChipUid();
+  factoryCredentialsReady = factoryStore.load(factoryCredentials);
+  if (!factoryCredentialsReady)
+    Serial.println(F("Factory credentials missing or corrupt"));
   Wire.begin();
   const bool provisioned = loadConfig();
   const uint8_t initialNodeId = provisioned ? config.nodeId : kCommissioningNodeId;
@@ -364,7 +373,7 @@ void setup()
   const bool initialized = radio.initialize(RF69_868MHZ, initialNodeId, initialNetworkId);
   radio.setHighPower(true);
   if (provisioned) useOperationalProfile();
-  else useCommissioningProfile();
+  else if (factoryCredentialsReady) useCommissioningProfile();
   radio.sleep();
   Serial.println(initialized ? F("RFM69 initialized") : F("RFM69 init error"));
   if (provisioned && config.state == kStateProvisional)

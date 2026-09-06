@@ -1,15 +1,25 @@
+import { ref } from 'vue'
 import type { ApiTokenList, CreatedApiToken, GatewayInfo, GatewaySettings, Health, NodeRegistry, PairingStatus, Session, SetupRequest, SetupStatus, TokenScope } from './types'
 
 export class ApiError extends Error { constructor(public status: number, public code: string) { super(code) } }
+
+// Whether the gateway is answering at all. Every request updates it, so the
+// shell can report a dropped connection without polling for it: an HTTP error
+// still means the gateway replied, only a transport failure means it did not.
+export const gatewayReachable = ref(true)
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController()
   const timeout = globalThis.setTimeout(() => controller.abort(), 8000)
   try {
     const response = await fetch(path, { ...init, credentials: 'same-origin', signal: controller.signal, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(csrfToken && init?.method && !['GET', 'HEAD'].includes(init.method) ? { 'X-CSRF-Token': csrfToken } : {}), ...init?.headers } })
+    gatewayReachable.value = true
     const body = await response.json().catch(() => ({})) as { error?: string }
     if (!response.ok) throw new ApiError(response.status, body.error ?? 'generic')
     return body as T
+  } catch (error) {
+    if (!(error instanceof ApiError)) gatewayReachable.value = false
+    throw error
   } finally { globalThis.clearTimeout(timeout) }
 }
 

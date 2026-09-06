@@ -305,6 +305,17 @@ bool logout(const char* sessionToken) {
     return false;
 }
 
+void invalidateUserSessions(const uint32_t userId) {
+    if (userId == 0 || mutex == nullptr ||
+        xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return;
+    for (Session& session : sessions) {
+        if (session.active && session.userId == userId) {
+            memset(&session, 0, sizeof(session));
+        }
+    }
+    xSemaphoreGive(mutex);
+}
+
 bool createApiToken(
     char output[kApiTokenCharacters + 1],
     uint8_t hash[radiosensors::gateway_storage::kTokenHashSize]) {

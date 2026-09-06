@@ -36,7 +36,7 @@ Common error body:
 | POST, GET, DELETE | `/api/v1/session` | credentials/session | implemented |
 | GET | `/api/v1/nodes` | session or bearer `registry:read` | implemented |
 | GET, PUT | `/api/v1/settings` | session; admin for PUT | implemented |
-| GET, POST, PUT, DELETE | `/api/v1/users` | admin | planned |
+| GET, POST, PUT, DELETE | `/api/v1/users` | admin | implemented |
 | GET, POST, DELETE | `/api/v1/tokens` | admin | implemented |
 | POST | `/api/v1/pairing/open` | admin | implemented |
 | POST | `/api/v1/pairing/close` | admin | implemented |
@@ -114,15 +114,28 @@ expires the cookie, and returns `204`.
 
 ## Discovery, identity, and compatibility
 
-`GET /api/v1/info` is unauthenticated. Its initial implementation returns the firmware version, gateway client-contract version, Web UI state and version, board, and hostname:
+`GET /api/v1/info` is unauthenticated. It returns the stable installation
+identity, current boot identity, firmware and client-contract versions,
+configured display name, Web UI state and version, board, and hostname:
 
 ```json
-{"firmware_version":"0.8.0","api_version":1,"ui":{"state":"ready","version":"0.1.0","required_api_version":1},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"rf-gateway-a085e3e6cc20"}
+{"firmware_version":"0.8.0","api_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","display_name":"Main gateway","ui":{"state":"ready","version":"0.1.0","required_api_version":1},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"rf-gateway-a085e3e6cc20"}
 ```
 
-Web UI and Home Assistant integration releases have their own SemVer versions because they are installed independently. Both declare the integer `api_version` they support. This contract number changes only for an incompatible external REST or WebSocket change; it is separate from the radio protocol version. The gateway serves the LittleFS UI only when its required API version exactly matches.
+`gateway_id` is 128 bits encoded as 32 lowercase hexadecimal characters. It is
+derived from the persistent installation device secret with domain-separated
+SHA-256, remains stable across ordinary firmware updates and reboots, and
+changes after the installation secrets are erased or replaced. `boot_id` has
+the same encoding but is generated randomly on every boot. Consumers use a
+changed `boot_id` to detect lost in-memory state and resynchronize.
 
-Future additions include stream versions, stable gateway ID, per-boot ID, registry generation, current UTC state, and capabilities. The endpoint never returns radio keys, factory UIDs, credentials, or tokens. Planned mDNS advertising includes `_radiosensors._tcp`, API version, stable gateway ID, board, and firmware.
+`display_name` is the current value of the settings field of the same name and may be empty. Web UI and Home Assistant integration releases have their own SemVer versions because they are installed independently. Both declare the integer `api_version` they support. This contract number changes only for an incompatible external REST or WebSocket change; it is separate from the radio protocol version. The gateway serves the LittleFS UI only when its required API version exactly matches.
+
+Future additions include stream versions, registry generation, current UTC state,
+and capabilities. The endpoint never returns radio keys, factory UIDs,
+credentials, or tokens. `_radiosensors._tcp` mDNS discovery advertises port 80
+and TXT keys `api` (legacy alias), `api_version`, `gateway_id`, `boot_id`,
+`firmware`, `board`, and `hostname`.
 
 ## Nodes
 
@@ -161,6 +174,26 @@ session and CSRF and return the current pairing state and remaining seconds.
 ## Users and tokens
 
 At most four local users are stored. Roles are `admin` and `viewer`; mutations cannot remove, disable, or demote the last enabled admin.
+
+`GET /api/v1/users` lists users without password material:
+
+```json
+{"users":[{"id":1,"username":"admin","role":"admin","enabled":true}]}
+```
+
+`POST /api/v1/users` requires CSRF and accepts `username`, `password`, `role`,
+and an optional `enabled` flag (default `true`). It returns the new user with
+status `201`. `PUT /api/v1/users` replaces `username`, `role`, and `enabled` for
+the supplied `id`; an optional `password` replaces the password. A successful
+update revokes every session belonging to that user. `DELETE /api/v1/users`
+requires CSRF and a JSON body such as `{"id":2}`, revokes that user's sessions,
+and returns `204`.
+
+Usernames use 1..32 lowercase ASCII letters, digits, `.`, `_`, or `-`.
+Passwords use 8..128 UTF-8 bytes. User mutations may return `404
+user_not_found`, `409 mutation_busy`, `409 username_already_exists`, `409
+user_capacity_reached`, `409 last_admin_required`, `422 invalid_user_values`,
+or `500` for hashing/storage failure.
 
 At most eight long-lived API tokens are stored. A new token contains 32 random bytes, is returned once as unpadded base64url, and is stored only as SHA-256. Initial scopes are `gateway:read`, `registry:read`, and `telemetry:read`. Runtime `last_used_at` is not persisted.
 

@@ -2,24 +2,23 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRouter } from 'vue-router'
-import { api } from './api/client'
-import LanguageSwitcher from './components/LanguageSwitcher.vue'
+import { api, gatewayReachable } from './api/client'
+import Icon from './components/Icon.vue'
+import LanguageSelect from './components/LanguageSelect.vue'
+import ThemeToggle from './components/ThemeToggle.vue'
 
 const route = useRoute()
 const router = useRouter()
 const uiVersion = __UI_VERSION__
-const hostname = ref('RadioSensors')
-const reachable = ref(false)
+const hostname = ref('')
 const showChrome = computed(() => route.meta.chrome !== false)
 
 async function loadIdentity() {
   if (!showChrome.value) return
   try {
-    const info = await api.info()
-    hostname.value = info.hostname
-    reachable.value = true
+    hostname.value = (await api.info()).hostname
   } catch {
-    reachable.value = false
+    // The banner already reports an unreachable gateway; keep the last name.
   }
 }
 
@@ -35,28 +34,24 @@ watch(showChrome, loadIdentity)
 <template>
   <div v-if="showChrome" class="app-layout">
     <aside class="sidebar">
-      <RouterLink class="brand" to="/status" aria-label="RadioSensors gateway">
+      <RouterLink class="brand" to="/status" aria-label="RFM Gateway">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="brand-copy"><strong>RadioSensors</strong><small>{{ hostname }}</small></span>
+        <strong class="brand-name">RFM Gateway</strong>
       </RouterLink>
 
       <nav class="primary-nav" :aria-label="$t('nav.main')">
-        <RouterLink to="/status"><span class="nav-icon" aria-hidden="true">⌂</span><span>{{ $t('nav.overview') }}</span></RouterLink>
-        <RouterLink to="/nodes"><span class="nav-icon" aria-hidden="true">◉</span><span>{{ $t('nav.nodes') }}</span></RouterLink>
-        <RouterLink to="/settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>{{ $t('nav.settings') }}</span></RouterLink>
+        <RouterLink to="/status"><span class="nav-icon" aria-hidden="true"><Icon name="view-dashboard" /></span><span>{{ $t('nav.overview') }}</span></RouterLink>
+        <RouterLink to="/nodes"><span class="nav-icon" aria-hidden="true"><Icon name="access-point" /></span><span>{{ $t('nav.nodes') }}</span></RouterLink>
+        <RouterLink to="/settings"><span class="nav-icon" aria-hidden="true"><Icon name="cog" /></span><span>{{ $t('nav.settings') }}</span></RouterLink>
       </nav>
-
-      <div class="sidebar-status">
-        <strong><span class="status-dot" :class="{ offline: !reachable }"></span>{{ reachable ? $t('shell.reachable') : $t('shell.unreachable') }}</strong>
-        <small>{{ hostname }}</small>
-      </div>
     </aside>
 
     <div class="workspace">
       <header class="topbar">
         <span class="gateway-address">{{ hostname }}</span>
-        <div class="topbar-actions"><LanguageSwitcher /><button class="user-avatar" type="button" :aria-label="$t('shell.signOut')" :title="$t('shell.signOut')" @click="signOut">A</button></div>
+        <div class="topbar-actions"><ThemeToggle /><button class="icon-button outlined" type="button" :aria-label="$t('shell.signOut')" :title="$t('shell.signOut')" @click="signOut"><Icon name="logout" /></button></div>
       </header>
+      <div v-if="!gatewayReachable" class="offline-banner" role="status"><Icon name="alert" /><span>{{ $t('shell.offline') }}</span></div>
       <main><RouterView /></main>
       <footer>{{ $t('common.uiVersion', { version: uiVersion }) }}</footer>
     </div>
@@ -64,12 +59,13 @@ watch(showChrome, loadIdentity)
 
   <div v-else class="standalone-layout">
     <header class="standalone-header">
-      <RouterLink class="brand" to="/" aria-label="RadioSensors gateway">
+      <RouterLink class="brand" to="/" aria-label="RFM Gateway">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="brand-copy"><strong>RadioSensors</strong><small>{{ $t('common.gateway') }}</small></span>
+        <strong class="brand-name">RFM Gateway</strong>
       </RouterLink>
-      <LanguageSwitcher />
+      <LanguageSelect compact />
     </header>
+    <div v-if="!gatewayReachable" class="offline-banner" role="status"><Icon name="alert" /><span>{{ $t('shell.offline') }}</span></div>
     <main><RouterView /></main>
     <footer>{{ $t('common.uiVersion', { version: uiVersion }) }}</footer>
   </div>

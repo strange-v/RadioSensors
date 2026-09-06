@@ -1,0 +1,68 @@
+/* Element-level defaults: reset, typography scale, form controls, focus.
+   Nothing here is tied to a particular screen. */
+
+* { box-sizing: border-box; }
+html { min-width: 320px; background: var(--bg); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; color: var(--ink); font-weight: 600; line-height: 1.25; }
+h1 { font-size: var(--text-2xl); letter-spacing: -.02em; }
+h2 { font-size: var(--text-lg); }
+h3 { font-size: var(--text-md); }
+p { margin: 0; }
+small { font-size: var(--text-xs); }
+a { color: var(--primary); }
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+
+/* One focus treatment for everything focusable. */
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+input, textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  outline: none;
+  color: var(--ink);
+  background: var(--bg);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+textarea { min-height: 80px; padding-top: var(--space-2); resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+input[type="checkbox"] { width: 16px; min-height: 16px; accent-color: var(--primary); }
+
+/* The native dropdown arrow is kept: color-scheme already makes the browser
+   draw it and the popup in the active theme, at no bundle cost. */
+.select {
+  width: 100%;
+  min-height: 38px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  background: var(--bg);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.select:hover { border-color: var(--primary); }
+.select.compact { width: auto; min-height: 32px; padding: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+
+details summary { cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

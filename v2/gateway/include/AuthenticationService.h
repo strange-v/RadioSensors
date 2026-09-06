@@ -40,6 +40,7 @@ bool authorize(
     const char* sessionToken, const char* csrfToken, bool requireCsrf,
     Principal& principal);
 bool logout(const char* sessionToken);
+void invalidateUserSessions(uint32_t userId);
 bool createApiToken(
     char output[kApiTokenCharacters + 1],
     uint8_t hash[radiosensors::gateway_storage::kTokenHashSize]);
