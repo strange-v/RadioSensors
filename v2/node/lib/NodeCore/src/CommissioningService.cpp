@@ -25,6 +25,10 @@ CommissioningService::CommissioningService(
 bool CommissioningService::begin() {
     readDeviceUid();
     const bool hasConfig = store_.load(config_);
+#if defined(NODE_DEBUG)
+    Serial.print(F("commissioning: EEPROM "));
+    Serial.println(hasConfig ? F("configuration found") : F("unconfigured"));
+#endif
     const uint8_t nodeId = hasConfig ? config_.nodeId : 0;
     const uint8_t networkId = hasConfig ? config_.networkId : 0;
     if (!radio_.begin(nodeId, networkId)) return false;
@@ -71,6 +75,9 @@ bool CommissioningService::advance() {
 }
 
 bool CommissioningService::requestJoin() {
+#if defined(NODE_DEBUG)
+    Serial.println(F("commissioning: sending JOIN_REQUEST"));
+#endif
     radio_.useCommissioningProfile(commissioningKey_);
     protocol::JoinRequest request{};
     memcpy(request.deviceUid, deviceUid_, sizeof(deviceUid_));
@@ -90,6 +97,9 @@ bool CommissioningService::requestJoin() {
     if (!radio_.receive(
             kAcceptWindowMs, NODE_GATEWAY_ID, acceptBytes,
             sizeof(acceptBytes))) {
+#if defined(NODE_DEBUG)
+        Serial.println(F("commissioning: JOIN_ACCEPT timeout"));
+#endif
         radio_.sleep();
         return false;
     }
@@ -100,6 +110,9 @@ bool CommissioningService::requestJoin() {
         memcmp(accept.deviceUid, deviceUid_, sizeof(deviceUid_)) != 0 ||
         accept.requestNonce != request.requestNonce ||
         accept.gatewayNodeId != NODE_GATEWAY_ID) {
+#if defined(NODE_DEBUG)
+        Serial.println(F("commissioning: invalid JOIN_ACCEPT"));
+#endif
         radio_.sleep();
         return false;
     }
@@ -115,9 +128,16 @@ bool CommissioningService::requestJoin() {
     config_.requestNonce = accept.requestNonce;
     config_.lastPowerCommandId = 0;
     if (!store_.save(config_)) {
+#if defined(NODE_DEBUG)
+        Serial.println(F("commissioning: provisional EEPROM save failed"));
+#endif
         radio_.sleep();
         return false;
     }
+#if defined(NODE_DEBUG)
+    Serial.print(F("commissioning: JOIN_ACCEPT node="));
+    Serial.println(config_.nodeId);
+#endif
     radio_.useOperationalProfile(config_);
     return confirmJoin();
 }
@@ -136,6 +156,10 @@ bool CommissioningService::confirmJoin() {
     }
 
     for (uint8_t attempt = 0; attempt < kConfirmAttempts; ++attempt) {
+#if defined(NODE_DEBUG)
+        Serial.print(F("commissioning: sending JOIN_CONFIRM attempt "));
+        Serial.println(attempt + 1U);
+#endif
         radio_.send(config_.gatewayId, confirmBytes, sizeof(confirmBytes));
         uint8_t completeBytes[protocol::kJoinCompleteSize];
         if (!radio_.receive(
@@ -151,10 +175,18 @@ bool CommissioningService::confirmJoin() {
             complete.requestNonce == config_.requestNonce) {
             config_.state = storage::ProvisioningState::Active;
             const bool saved = store_.save(config_);
+#if defined(NODE_DEBUG)
+            Serial.println(saved
+                ? F("commissioning: active")
+                : F("commissioning: active EEPROM save failed"));
+#endif
             radio_.sleep();
             return saved;
         }
     }
+#if defined(NODE_DEBUG)
+    Serial.println(F("commissioning: JOIN_COMPLETE timeout"));
+#endif
     radio_.sleep();
     return false;
 }

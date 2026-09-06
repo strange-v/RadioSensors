@@ -43,6 +43,10 @@ struct Snapshot {
     uint32_t bytes;
     uint32_t emptyWakeups;
     uint32_t ackRequestsIgnored;
+    uint32_t telemetryAcksSent;
+    uint32_t telemetryRejectedInactive;
+    uint32_t telemetryFramesQueued;
+    uint32_t telemetryFramesDropped;
     uint32_t v2Frames;
     uint32_t v2TelemetryFrames;
     uint32_t emptyApplicationFrames;
@@ -62,6 +66,7 @@ struct Snapshot {
 
 bool begin();
 bool receive(ReceivedFrame& frame, TickType_t waitTicks = 0);
+bool receiveTelemetry(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool requestProfile(Profile profile);
 bool send(uint16_t targetId, const uint8_t* data, size_t size, bool requestAck = false);
 bool sendThenSwitchProfile(

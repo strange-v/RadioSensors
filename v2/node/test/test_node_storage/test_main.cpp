@@ -8,6 +8,7 @@
 
 using namespace radiosensors::node::storage;
 using radiosensors::node::CounterReportSchedule;
+using radiosensors::node::ClimateReportPolicy;
 using radiosensors::node::DoorReportSchedule;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
@@ -261,6 +262,20 @@ void test_radio_retry_uses_bounded_exponential_backoff() {
     TEST_ASSERT_TRUE(retry.allowed(8460001));
 }
 
+void test_fixed_climate_policy_ignores_supply_voltage() {
+    const ClimateReportPolicy policy = ClimateReportPolicy::fixed(900000UL);
+    TEST_ASSERT_EQUAL_UINT32(900000UL, policy.intervalForMillivolts(1800));
+    TEST_ASSERT_EQUAL_UINT32(900000UL, policy.intervalForMillivolts(3300));
+}
+
+void test_adaptive_climate_policy_uses_v1_threshold_semantics() {
+    const ClimateReportPolicy policy = ClimateReportPolicy::adaptive(
+        60000UL, 300000UL, 2500);
+    TEST_ASSERT_EQUAL_UINT32(300000UL, policy.intervalForMillivolts(2499));
+    TEST_ASSERT_EQUAL_UINT32(300000UL, policy.intervalForMillivolts(2500));
+    TEST_ASSERT_EQUAL_UINT32(60000UL, policy.intervalForMillivolts(2501));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_layout_fills_eeprom_without_overlap);
@@ -277,5 +292,7 @@ int main(int, char**) {
     RUN_TEST(test_counter_coalesces_pulses_for_one_minute);
     RUN_TEST(test_keep_alive_handles_clock_wrap);
     RUN_TEST(test_radio_retry_uses_bounded_exponential_backoff);
+    RUN_TEST(test_fixed_climate_policy_ignores_supply_voltage);
+    RUN_TEST(test_adaptive_climate_policy_uses_v1_threshold_semantics);
     return UNITY_END();
 }

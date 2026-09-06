@@ -25,7 +25,9 @@ application data in it.
 - pioarduino 55.03.311 (immutable release URL).
 - Arduino-ESP32 3.3.11 on ESP-IDF 5.5.5.
 - ESP32Async/AsyncTCP 3.5.0 and ESPAsyncWebServer 3.12.0.
-- Current firmware version: 0.5.0.
+- Current firmware version: 0.6.0.
+- The version lives in `include/FirmwareVersion.h`, not global PlatformIO build
+  flags, so changing it invalidates only translation units that include it.
 - Shared native tests do not require Windows `gcc/g++` in `PATH`. From the
   repository root run `wsl bash v2/protocol/scripts/run_native_tests_wsl.sh`;
   see `../../ARCHITECTURE_HANDOFF.md` for dependency/bootstrap details.
@@ -125,7 +127,7 @@ address. DHCP leases are not part of the permanent configuration.
   in `encryption_key_missing` with RX disabled. The key is never logged or
   exposed through `/health`.
 - The receive-only smoke path uses the library's static 66-byte buffer, records
-  bounded diagnostics, discards payloads, and intentionally sends no ACKs.
+  bounded diagnostics, and feeds the v2 receive paths.
 - `/health` includes radio state/profile/pins, counters, and last-packet data.
 - Both firmware environments compile.
 - Waveshare radio bring-up is hardware-validated: version `0x24`, encrypted v1
@@ -186,6 +188,26 @@ task. A successful activation closes the pairing window, so one BOOT press adds
 one node. Duplicate matching Join confirm frames receive another Join complete
 without rewriting NVS.
 
+Active-registry-validated telemetry reception is implemented in firmware
+0.6.0. The registry publishes a lock-free active-node bitmap after loading or a
+successful durable commit. The priority-11 radio task ACKs telemetry only when
+the sender is active and the frame entered the bounded telemetry queue. Unknown,
+pending, disabled, and queue-full frames are not acknowledged. The main loop
+currently drains the queue and logs sender ID, size, and RSSI without decoding
+the opaque payload. `/health` exposes ACK, rejection, queue, and drop counters.
+
+If RFM69 initialization fails, the commissioning task is not started. Queue
+receive APIs also honor a nonzero wait even before queue creation, preventing a
+failed-radio path from turning the priority-6 commissioning task into a tight
+loop that starves `loopTask` and triggers the task watchdog.
+
+RFM69 startup now makes three register-probe attempts, returning CS high and
+restarting the dedicated SPI host between attempts. Pairing profile changes and
+the post-`JOIN_ACCEPT` switch are synchronously confirmed by the radio-owner
+task; UI/pairing state is not reported as successfully changed after a mere
+queue insertion. Manual close, expiry, confirm timeout, and successful pairing
+surface a radio-switch failure instead of silently diverging from radio state.
+
 Remaining Waveshare reliability checks:
 
 - Exercise sustained receive traffic and confirm no FIFO loss or watchdog reset.
@@ -194,13 +216,20 @@ Remaining Waveshare reliability checks:
 
 Next milestones, to refine against `ARCHITECTURE_HANDOFF.md`:
 
-1. ATtiny1614 commissioning implementation and end-to-end hardware validation.
-2. First telemetry profile and active-registry-validated opaque receive path.
-3. Idempotent queued commands and acknowledgements.
-4. Gateway WebSocket API, bounded queues, reconnect/resync, and Home Assistant
+1. Complete ATtiny1614 commissioning and telemetry hardware validation.
+2. Idempotent queued commands and acknowledgements.
+3. Gateway WebSocket API, bounded queues, reconnect/resync, and Home Assistant
    mDNS discovery.
-5. Embedded management UI plus configuration export/restore.
-6. Security, recovery, and long-duration reliability testing.
+4. Embedded management UI plus configuration export/restore.
+5. Security, recovery, and long-duration reliability testing.
+
+For milestone 2, publish a lock-free per-node pending-command bitmap only after
+the command is durably stored. When acknowledging accepted telemetry, use an
+empty ACK if no command is pending or a one-byte versioned `COMMAND_PENDING`
+frame-kind payload when one is pending. The node then initiates the existing
+`COMMAND_READY` pull exchange; the full command is deliberately not embedded in
+the ACK. Clear the pending bit only after the matching durable command result is
+processed.
 
 ## Constraints to preserve
 

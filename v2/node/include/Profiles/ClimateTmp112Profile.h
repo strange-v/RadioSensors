@@ -20,17 +20,20 @@ public:
     size_t encodeTelemetry(uint8_t* output, const size_t capacity) {
         int16_t temperature = protocol::kInvalidTemperature;
         temperature_.readTemperature(temperature);
-        const uint16_t voltage = battery_.readMillivolts();
+        supplyMillivolts_ = battery_.readMillivolts();
         return protocol::encodeTemperatureTelemetry(
-                   temperature, voltage, output, capacity) ==
+                   temperature, supplyMillivolts_, output, capacity) ==
                 protocol::TelemetryCodecStatus::Ok
             ? protocol::kTemperatureTelemetrySize
             : 0;
     }
 
+    uint16_t supplyMillivolts() const { return supplyMillivolts_; }
+
 private:
     Tmp112Sensor temperature_;
     BatteryMonitor battery_;
+    uint16_t supplyMillivolts_ = 0;
 };
 
 }  // namespace node

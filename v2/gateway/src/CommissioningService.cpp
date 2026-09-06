@@ -32,8 +32,12 @@ void returnToPairingIfOpen() {
     awaitingConfirm = false;
     confirmDeadline = 0;
     if (status::pairingActive()) {
-        radio::requestProfile(radio::Profile::Commissioning);
-        status::indicate(status::Indication::Pairing);
+        if (radio::requestProfile(radio::Profile::Commissioning)) {
+            status::indicate(status::Indication::Pairing);
+        } else {
+            status::indicate(status::Indication::Error, 3000);
+            Serial.println("Pairing recovery failed: radio profile did not switch");
+        }
     }
 }
 
@@ -153,8 +157,11 @@ void handleJoinConfirm(const radio::ReceivedFrame& frame) {
     awaitingConfirm = false;
     confirmDeadline = 0;
     if (newlyConfirmed) {
-        status::closePairing();
-        status::indicate(status::Indication::PairingSucceeded, 1000);
+        if (status::closePairing()) {
+            status::indicate(status::Indication::PairingSucceeded, 1000);
+        } else {
+            increment(&Snapshot::rejectedFrames);
+        }
     }
 }
 

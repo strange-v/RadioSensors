@@ -14,6 +14,7 @@ namespace gateway::registry_store {
 bool begin();
 uint32_t generation();
 size_t recordCount();
+bool isActiveNode(uint8_t nodeId);
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
     radiosensors::registry::ReserveResult& result);

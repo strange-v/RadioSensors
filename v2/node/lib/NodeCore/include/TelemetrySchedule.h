@@ -8,6 +8,40 @@ namespace node {
 constexpr uint32_t kEventNodeKeepAliveMs = 60UL * 60UL * 1000UL;
 constexpr uint32_t kCounterMinimumReportMs = 60UL * 1000UL;
 
+class ClimateReportPolicy {
+public:
+    static ClimateReportPolicy fixed(const uint32_t intervalMs) {
+        return ClimateReportPolicy(intervalMs, intervalMs, 0);
+    }
+
+    static ClimateReportPolicy adaptive(
+        const uint32_t chargedIntervalMs,
+        const uint32_t lowChargeIntervalMs,
+        const uint16_t lowChargeThresholdMv) {
+        return ClimateReportPolicy(
+            chargedIntervalMs, lowChargeIntervalMs, lowChargeThresholdMv);
+    }
+
+    uint32_t intervalForMillivolts(const uint16_t supplyMillivolts) const {
+        return supplyMillivolts > lowChargeThresholdMv_
+            ? chargedIntervalMs_
+            : lowChargeIntervalMs_;
+    }
+
+private:
+    ClimateReportPolicy(
+        const uint32_t chargedIntervalMs,
+        const uint32_t lowChargeIntervalMs,
+        const uint16_t lowChargeThresholdMv)
+        : chargedIntervalMs_(chargedIntervalMs),
+          lowChargeIntervalMs_(lowChargeIntervalMs),
+          lowChargeThresholdMv_(lowChargeThresholdMv) {}
+
+    uint32_t chargedIntervalMs_;
+    uint32_t lowChargeIntervalMs_;
+    uint16_t lowChargeThresholdMv_;
+};
+
 inline bool intervalElapsed(
     const uint32_t now, const uint32_t since, const uint32_t interval) {
     return static_cast<uint32_t>(now - since) >= interval;
@@ -27,6 +61,8 @@ public:
         lastSuccessfulTransmission_ = now;
         hasSuccessfulTransmission_ = true;
     }
+
+    void setInterval(const uint32_t intervalMs) { intervalMs_ = intervalMs; }
 
 private:
     uint32_t intervalMs_;

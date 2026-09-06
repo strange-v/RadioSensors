@@ -9,6 +9,7 @@
 #include "Diagnostics.h"
 #include "DeviceIdentity.h"
 #include "EthernetService.h"
+#include "FirmwareVersion.h"
 #include "GatewayStatus.h"
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
@@ -44,6 +45,8 @@ void handleHealth(AsyncWebServerRequest* request) {
         "\"pins\":{\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"irq\":%d},"
         "\"counters\":{\"interrupts\":%lu,\"packets\":%lu,\"bytes\":%lu,"
         "\"empty_wakeups\":%lu,\"ack_requests_ignored\":%lu,"
+        "\"telemetry_acks_sent\":%lu,\"telemetry_rejected_inactive\":%lu,"
+        "\"telemetry_frames_queued\":%lu,\"telemetry_frames_dropped\":%lu,"
         "\"v2_frames\":%lu,\"v2_telemetry_frames\":%lu,"
         "\"empty_application_frames\":%lu,"
         "\"unsupported_protocol_versions\":%lu,"
@@ -52,7 +55,7 @@ void handleHealth(AsyncWebServerRequest* request) {
         "\"commands_queued\":%lu,\"commands_dropped\":%lu,"
         "\"commands_processed\":%lu},"
         "\"last_packet\":{\"at_ms\":%lu,\"sender_id\":%u,\"rssi\":%d}}}",
-        GATEWAY_FIRMWARE_VERSION,
+        firmware::version,
         board::current.name,
         identity::hostname(),
         diagnostics::resetReason(),
@@ -101,6 +104,10 @@ void handleHealth(AsyncWebServerRequest* request) {
         radioSnapshot.bytes,
         radioSnapshot.emptyWakeups,
         radioSnapshot.ackRequestsIgnored,
+        radioSnapshot.telemetryAcksSent,
+        radioSnapshot.telemetryRejectedInactive,
+        radioSnapshot.telemetryFramesQueued,
+        radioSnapshot.telemetryFramesDropped,
         radioSnapshot.v2Frames,
         radioSnapshot.v2TelemetryFrames,
         radioSnapshot.emptyApplicationFrames,

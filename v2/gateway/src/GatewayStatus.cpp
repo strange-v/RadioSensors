@@ -39,7 +39,12 @@ void setRgb(const uint8_t red, const uint8_t green, const uint8_t blue) {
 
 void togglePairing(const uint32_t now) {
     if (pairingActive()) {
-        radio::requestProfile(radio::Profile::Operational);
+        if (!radio::requestProfile(radio::Profile::Operational)) {
+            current.store(Indication::Error);
+            indicationEndsAt.store(now + 3000);
+            Serial.println("Pairing close failed: radio profile did not switch");
+            return;
+        }
         pairingEndsAt.store(0);
         current.store(Indication::Operational);
         Serial.println("Pairing window closed by BOOT button");
@@ -105,10 +110,16 @@ void begin() {
 void loop() {
     const uint32_t now = millis();
     if (deadlineReached(now, pairingEndsAt.load())) {
-        radio::requestProfile(radio::Profile::Operational);
+        const bool switched = radio::requestProfile(radio::Profile::Operational);
         pairingEndsAt.store(0);
-        if (indicationEndsAt.load() == 0) current.store(Indication::Operational);
-        Serial.println("Pairing window expired");
+        if (switched) {
+            if (indicationEndsAt.load() == 0) current.store(Indication::Operational);
+            Serial.println("Pairing window expired");
+        } else {
+            current.store(Indication::Error);
+            indicationEndsAt.store(now + 3000);
+            Serial.println("Pairing expiry failed: radio profile did not switch");
+        }
     }
     if (deadlineReached(now, indicationEndsAt.load())) {
         indicationEndsAt.store(0);
@@ -139,11 +150,18 @@ uint32_t pairingRemainingSeconds() {
     return (pairingEndsAt.load() - millis() + 999) / 1000;
 }
 
-void closePairing() {
+bool closePairing() {
     pairingEndsAt.store(0);
-    radio::requestProfile(radio::Profile::Operational);
-    current.store(Indication::Operational);
-    indicationEndsAt.store(0);
+    if (radio::requestProfile(radio::Profile::Operational)) {
+        current.store(Indication::Operational);
+        indicationEndsAt.store(0);
+        return true;
+    } else {
+        current.store(Indication::Error);
+        indicationEndsAt.store(millis() + 3000);
+        Serial.println("Pairing completion failed: radio profile did not switch");
+        return false;
+    }
 }
 
 void indicate(const Indication indication, const uint32_t durationMs) {
