@@ -1,37 +1,34 @@
-# Wireless solar-powered sensor node
-A solar-powered node that stores energy in a supercapacitor, wakes-up regularly, measures different parameters, and sends them to a gateway.
+# RadioSensors
 
-Please visit [hackaday.io](https://hackaday.io/project/175514-wireless-solar-powered-sensor-node) to find more information about the project.
+RadioSensors is a local, low-power sensor system built around ATtiny1614 nodes, RFM69 radio, an Ethernet ESP32 gateway, and a Home Assistant integration. The current development line is v2; legacy firmware remains under `v1/` only as a migration reference.
 
-# node
-This is a firmware for the node. It uses [MiniCore](https://github.com/MCUdude/MiniCore) to be able to run ATmega328P with non-default quartz (4MHz).
+## Repository map
 
-In the platformio.ini you will find a few build flags:
+- `v2/node` — production node firmware, one build per telemetry profile.
+- `v2/node_test` — ATtiny1614 bench and commissioning firmware.
+- `v2/gateway` — ESP32 gateway for WT32-ETH01 and Waveshare ESP32-S3-ETH.
+- `v2/shared/RadioProtocol` — portable wire and persistence codecs.
+- `v2/protocol` — canonical radio protocol specification and native tests.
 
-#### NODE_DEBUG
-Use it to print different debug information via UART0. Won't work properly when NODE_TRUE_SLEEP is define.
+The Home Assistant integration is maintained in the separate `ha_rfm_gateway` repository.
 
-#### NODE_TRUE_SLEEP
-Without this flag, the node emulates deep sleep using the delay function (useful for testing purposes).
+System boundaries and design decisions are in [ARCHITECTURE.md](ARCHITECTURE.md). The short list of unfinished work is in [ROADMAP.md](ROADMAP.md).
 
-#### NODE_PIN_DEBUG=N
-Used to debug different work stages of the node triggering pin N.
+Protocol references:
 
-#### VCC_EEPROM
-An optional flag for the Vcc library that measures supply voltage. Using it, calibration value can be loaded from the EEPROM.
+- [RFM69 application protocol and node payloads](v2/protocol/PROTOCOL.md)
+- [Gateway REST API](v2/gateway/API.md)
+- [Gateway binary WebSocket protocol](v2/gateway/WEBSOCKET.md)
+- [Gateway persistent formats](v2/gateway/STORAGE.md)
+- [Node EEPROM formats](v2/node/EEPROM.md)
 
-#### SENSOR_*
-Defines what sensor is used in the node. Supported options for now:
-- SENSOR_HTU21D
-- SENSOR_BME280=0x76
-Where 0x76 represents the I2C address.
+## Verification
 
-#### RADIO_*
-Options for RFM69 library. Node id, gateway id, network id. The encryption key is loaded by a different mechanism but also can be added here.
+From the repository root:
 
-# gateway
-Contains a gateway firmware. It supports a regular ESP32 and WT32-ETH01 module (with Ethernet). A few notes about it:
-- heavily uses FreeRTOS functionality
-- fully interrupt driven (requires the latest changes in the RFM69 library, see the [PR](https://github.com/LowPowerLab/RFM69/pull/181))
+```powershell
+wsl bash v2/protocol/scripts/run_native_tests_wsl.sh
+wsl bash v2/node/scripts/run_native_tests_wsl.sh
+```
 
-`pre:../../env.py` is used to securely add sensitive information (WiFi SSID, different passwords, radio encryption key).
+Gateway and node build commands are documented in their respective READMEs.

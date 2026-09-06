@@ -1,55 +1,51 @@
 # RadioSensors v2 node firmware
 
-This PlatformIO project builds one statically composed firmware image per node
-profile. It is intentionally separate from `node_test`, which remains board
-bring-up and commissioning test code.
+This PlatformIO project produces one statically composed ATtiny1614 image per stable telemetry profile. Shared code owns commissioning, radio, EEPROM, scheduling, power, and command sessions; profiles own sensor acquisition and payload encoding. `node_test` remains separate bench firmware.
 
-Declared build environments:
+## Builds
 
-| Environment | Profile | Features |
-| --- | ---: | --- |
-| `climate_tmp112` | 2 | TMP112 temperature, supply voltage |
-| `door` | 5 | Reed/binary state, supply voltage |
-| `door_sht40` | 7 | Reed/binary state, SHT40 temperature and humidity, supply voltage |
-| `door_tmp112` | 8 | Reed/binary state, TMP112 temperature, supply voltage |
-| `counter_reed` | 6 | Persistent reed pulse counter, supply voltage |
+| Environment | Profile | Measurements | Runtime status |
+| --- | ---: | --- | --- |
+| `climate_tmp112` | 2 | TMP112 temperature, supply voltage | implemented |
+| `climate_tmp112_debug` | 2 | same, with UART diagnostics | implemented |
+| `door` | 5 | binary state, supply voltage | declared, runtime pending |
+| `counter_reed` | 6 | pulse count, supply voltage | declared, runtime pending |
+| `door_sht40` | 7 | binary state, temperature, humidity, supply voltage | declared, runtime pending |
+| `door_tmp112` | 8 | binary state, temperature, supply voltage | declared, runtime pending |
 
-The first completed vertical runtime slice is `climate_tmp112`: commissioning,
-dual-slot EEPROM configuration, TMP112/Vcc telemetry, acknowledged radio
-transmission, and RTC power-down scheduling. The remaining declared profiles
-will be enabled as their event runtime is connected; the default build contains
-only the completed climate environment.
+Build or upload one environment:
 
-`climate_tmp112` is the solar/supercapacitor build. It reports every 60 seconds
-above 2500 mV and every 300 seconds at or below 2500 mV. Battery-powered climate
-builds use one interval selected in their PlatformIO build environment; this is
-not persisted or remotely configurable.
+```powershell
+pio run -e climate_tmp112
+pio run -e climate_tmp112 -t upload
+```
 
-`climate_tmp112_debug` enables 9600-baud UART logging on PB2. It keeps the RTC
-timebase active but never calls `sleep_cpu()`; idle iterations use a short
-delay. This environment is for functional bring-up and commissioning
-diagnostics, not sleep-current measurement.
+Hardware environments inherit serial UPDI on COM6 at 115200 baud. Adjust the local upload port in `platformio.ini` when necessary.
 
-Production and debug environments use the same serial UPDI upload settings as
-`v2/node_test`: `serialupdi` on COM6 at 115200 baud. Upload a selected image
-with `platformio run -e <environment> -t upload`.
+## Implemented climate runtime
 
-PA6 is configured as an interrupt-driven active-low provisioning button. On an
-unconfigured node, a debounced press wakes the MCU and requests commissioning
-immediately instead of waiting for the periodic retry. Configured-node command
-sessions and long-press factory reset remain future work.
+The production climate image supports UID-based commissioning, recovery of provisional commissioning, dual-slot network configuration, TMP112 one-shot measurement, Vcc measurement, acknowledged telemetry, bounded 1/5/15/60-minute radio retry, and RTC power-down scheduling independent of sleeping `millis()`.
 
-Profile IDs describe only the byte-level telemetry and command contract. Gas,
-water, door, and window presentation belongs to installation configuration and
-Home Assistant.
+The solar/supercapacitor policy schedules nominal 60 seconds above 2500 mV and 300 seconds at or below it. The 32-second RTC step yields about 64/320 seconds. Battery-powered climate builds use one compile-time interval and do not persist it.
 
-The project structure and implementation constraints are defined in
-`ARCHITECTURE.md`. Current implementation status and the exact continuation
-point are recorded in `HANDOFF.md`. The production mapping assigns the reed/counter
-input to PA5 and the provisioning/factory-reset button to PA6.
+`climate_tmp112_debug` logs at 9600 baud on PB2. It preserves the RTC timebase but never calls `sleep_cpu()`; idle iterations use a short delay. Do not use it to measure sleep current.
 
-Run the host-side storage tests with:
+## Event-node policy
 
-```sh
+PA5 is the active-low reed/counter input. It is sampled every 250 ms and accepts meter LOW and HIGH phases of at least one second. A door sends confirmed changes immediately. Door and counter profiles use a rolling one-hour keep-alive from the last acknowledged report. A counter persists every confirmed LOW-to-HIGH pulse and reports the absolute count no more than once per minute while dirty.
+
+PA6 is the active-low provisioning button. An unconfigured-node press triggers commissioning immediately. The planned configured behavior is a short `COMMAND_READY` session and a 10-second network reset that preserves counter state.
+
+## Persistence and protocols
+
+Network configuration uses two CRC-protected generation slots. Counter state uses a separate wear-levelled journal, and accepted `SET_COUNT` results have recoverable slots. Exact layouts are in [EEPROM.md](EEPROM.md).
+
+Radio frame and telemetry payload bytes are defined only in [../protocol/PROTOCOL.md](../protocol/PROTOCOL.md). Profile IDs describe measurements, not installation labels.
+
+## Native tests
+
+```powershell
 wsl bash v2/node/scripts/run_native_tests_wsl.sh
 ```
+
+Remaining implementation work is tracked in [../../ROADMAP.md](../../ROADMAP.md).

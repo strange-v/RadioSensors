@@ -120,6 +120,13 @@ bool isActiveNode(const uint8_t nodeId) {
     return (word & (1UL << (nodeId % 32U))) != 0;
 }
 
+bool hasActiveNodes() {
+    for (size_t index = 0; index < 4; ++index) {
+        if (activeNodeIds[index].load(std::memory_order_acquire) != 0) return true;
+    }
+    return false;
+}
+
 bool activeProfileId(const uint8_t nodeId, uint16_t& profileId) {
     if (!initialized || mutex == nullptr) return false;
     if (xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return false;

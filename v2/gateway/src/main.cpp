@@ -2,6 +2,7 @@
 
 #include "BoardProfile.h"
 #include "CommissioningService.h"
+#include "ConfigurationStore.h"
 #include "Diagnostics.h"
 #include "DeviceIdentity.h"
 #include "EthernetService.h"
@@ -50,6 +51,7 @@ void setup() {
     const bool watchdogStarted = gateway::diagnostics::beginWatchdog();
     Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 
+    gateway::configuration_store::begin();
     gateway::registry_store::begin();
     gateway::telemetry_store::begin();
     gateway::status::begin();

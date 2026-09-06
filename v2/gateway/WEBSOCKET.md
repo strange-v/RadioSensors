@@ -1,5 +1,9 @@
 # Gateway telemetry WebSocket
 
+The byte layout below is the hardware-validated firmware 0.7.0 vertical
+slice. It is provisional and must not be treated as the final Home Assistant
+contract. `API.md` defines the complete lifecycle and required additions.
+
 `ws://<gateway>/ws` exposes accepted node telemetry as binary messages. The
 gateway does not decode profile-specific telemetry. All multi-byte integers are
 little-endian.
@@ -15,6 +19,12 @@ little-endian.
 Message kinds are `1` (`SNAPSHOT_BEGIN`), `2` (`TELEMETRY`), and `3`
 (`SNAPSHOT_END`). Begin and end messages are exactly six bytes. Their sequence
 is the cache watermark observed while producing the snapshot.
+
+Before the stream is frozen it must also identify the stable gateway ID,
+per-boot ID, registry generation, and sequence space, and add a
+`REGISTRY_CHANGED` notification. These may be carried by a new `HELLO` message
+and expanded snapshot control messages. Their exact byte layouts remain to be
+designed and covered by shared known vectors.
 
 ## TELEMETRY
 
@@ -41,3 +51,7 @@ The gateway starts SNTP after Ethernet obtains an address and stores only UTC.
 A zero timestamp means the packet arrived before the gateway had synchronized;
 the consumer should then use its own receipt time. Gateway uptime is diagnostic
 only and is not part of the telemetry stream.
+
+The current endpoint is unauthenticated. The production endpoint requires a
+read-only bearer token during the WebSocket handshake and must reject clients
+without the `telemetry:read` scope.

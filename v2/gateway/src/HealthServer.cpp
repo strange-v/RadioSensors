@@ -2,13 +2,19 @@
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
+#include <AsyncJson.h>
 #include <ESP.h>
 #include <GatewayStream.h>
+#include <ArduinoJson.h>
+#include <esp_random.h>
+#include <mbedtls/md.h>
+#include <mbedtls/pkcs5.h>
 
 #include <atomic>
 
 #include "BoardProfile.h"
 #include "CommissioningService.h"
+#include "ConfigurationStore.h"
 #include "Diagnostics.h"
 #include "DeviceIdentity.h"
 #include "EthernetService.h"
@@ -33,6 +39,150 @@ constexpr uint16_t kMaximumWebSocketClients = 4;
 std::atomic<uint32_t> websocketConnections{0};
 std::atomic<uint32_t> websocketMessagesSent{0};
 std::atomic<uint32_t> websocketMessagesDropped{0};
+SemaphoreHandle_t setupMutex = nullptr;
+constexpr uint32_t kPasswordIterations = 100000;
+
+void sendError(AsyncWebServerRequest* request, int status, const char* code) {
+    char body[96]{};
+    snprintf(body, sizeof(body), "{\"error\":\"%s\"}", code);
+    request->send(status, "application/json", body);
+}
+
+void handleSetupStatus(AsyncWebServerRequest* request) {
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    response->printf(
+        "{\"setup_required\":%s,\"physical_window_active\":%s,"
+        "\"remaining_seconds\":%lu}",
+        status::setupRequired() ? "true" : "false",
+        status::setupActive() ? "true" : "false",
+        static_cast<unsigned long>(status::setupRemainingSeconds()));
+    request->send(response);
+}
+
+uint8_t randomOperationalNetworkId(uint8_t commissioningNetworkId) {
+    uint8_t value = 0;
+    do value = static_cast<uint8_t>(esp_random());
+    while (value == 0 || value == commissioningNetworkId);
+    return value;
+}
+
+void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
+    if (setupMutex == nullptr || xSemaphoreTake(setupMutex, 0) != pdTRUE) {
+        sendError(request, 409, "setup_busy");
+        return;
+    }
+    if (!status::setupRequired()) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 409, "setup_already_complete");
+        return;
+    }
+    if (!status::setupActive()) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 403, "physical_setup_required");
+        return;
+    }
+    if (!json.is<JsonObject>()) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    JsonObject object = json.as<JsonObject>();
+    const char* username = object["username"].is<const char*>()
+        ? object["username"].as<const char*>() : nullptr;
+    const char* password = object["password"].is<const char*>()
+        ? object["password"].as<const char*>() : nullptr;
+    const char* displayName = object["display_name"].is<const char*>()
+        ? object["display_name"].as<const char*>() : "";
+    const size_t usernameLength = username == nullptr ? 0 : strlen(username);
+    const size_t passwordLength = password == nullptr ? 0 : strlen(password);
+    const size_t displayNameLength = strlen(displayName);
+    if (usernameLength == 0 || usernameLength > radiosensors::gateway_storage::kUsernameSize ||
+        passwordLength < 8 || passwordLength > 128 ||
+        displayNameLength > radiosensors::gateway_storage::kDisplayNameSize) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 422, "invalid_setup_values");
+        return;
+    }
+
+    auto secrets = configuration_store::secrets();
+    if (!secrets.installationKeyPresent) {
+        secrets.installationKeyPresent = true;
+        esp_fill_random(secrets.installationKey,
+                        radiosensors::gateway_storage::kRadioKeySize);
+        secrets.operationalNetworkId = randomOperationalNetworkId(
+            secrets.commissioningNetworkId);
+    }
+    if (object["operational_network_id"].is<uint8_t>()) {
+        const uint8_t requested = object["operational_network_id"].as<uint8_t>();
+        if (requested == 0 ||
+            (secrets.commissioningKeyPresent &&
+             requested == secrets.commissioningNetworkId)) {
+            xSemaphoreGive(setupMutex);
+            sendError(request, 422, "invalid_operational_network_id");
+            return;
+        }
+        secrets.operationalNetworkId = requested;
+    }
+
+    auto settings = configuration_store::settings();
+    memset(settings.displayName, 0, sizeof(settings.displayName));
+    settings.displayNameLength = static_cast<uint8_t>(displayNameLength);
+    memcpy(settings.displayName, displayName, displayNameLength);
+
+    auto authentication = radiosensors::gateway_storage::defaultAuthentication();
+    authentication.userCount = 1;
+    authentication.nextUserId = 2;
+    auto& user = authentication.users[0];
+    user.id = 1;
+    user.usernameLength = static_cast<uint8_t>(usernameLength);
+    memcpy(user.username, username, usernameLength);
+    user.role = radiosensors::gateway_storage::UserRole::Admin;
+    user.enabled = true;
+    user.hashAlgorithm =
+        radiosensors::gateway_storage::PasswordHashAlgorithm::Pbkdf2HmacSha256;
+    user.pbkdf2Iterations = kPasswordIterations;
+    esp_fill_random(user.salt, sizeof(user.salt));
+    const uint32_t hashStartedAt = millis();
+    const int hashResult = mbedtls_pkcs5_pbkdf2_hmac_ext(
+        MBEDTLS_MD_SHA256,
+        reinterpret_cast<const unsigned char*>(password), passwordLength,
+        user.salt, sizeof(user.salt), user.pbkdf2Iterations,
+        sizeof(user.passwordHash), user.passwordHash);
+    if (hashResult != 0) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 500, "password_hash_failed");
+        return;
+    }
+    Serial.printf("Initial password hash completed in %lu ms (%lu iterations)\n",
+                  static_cast<unsigned long>(millis() - hashStartedAt),
+                  static_cast<unsigned long>(user.pbkdf2Iterations));
+
+    const auto secretResult = configuration_store::saveSecrets(secrets);
+    if ((secretResult != configuration_store::SaveStatus::Ok &&
+         secretResult != configuration_store::SaveStatus::NoChange)) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 500, "setup_storage_failed");
+        return;
+    }
+    const auto settingsResult = configuration_store::saveSettings(settings);
+    if (settingsResult != configuration_store::SaveStatus::Ok &&
+        settingsResult != configuration_store::SaveStatus::NoChange) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 500, "setup_storage_failed");
+        return;
+    }
+    if (configuration_store::saveAuthentication(authentication) !=
+        configuration_store::SaveStatus::Ok) {
+        xSemaphoreGive(setupMutex);
+        sendError(request, 500, "setup_storage_failed");
+        return;
+    }
+
+    status::closeSetup();
+    xSemaphoreGive(setupMutex);
+    request->send(201, "application/json", "{\"status\":\"configured\"}");
+}
 
 size_t encodeTelemetryFrame(
     const telemetry_store::Record& record,
@@ -111,6 +261,9 @@ void handleHealth(AsyncWebServerRequest* request) {
         "{\"status\":\"ok\",\"firmware\":\"%s\",\"board\":\"%s\",\"hostname\":\"%s\","
         "\"reset_reason\":\"%s\",\"uptime_ms\":%lu,\"free_heap\":%lu,"
         "\"registry\":{\"records\":%u,\"generation\":%lu},"
+        "\"setup\":{\"required\":%s,\"active\":%s,\"remaining_seconds\":%lu},"
+        "\"storage\":{\"ready\":%s,\"settings_generation\":%lu,"
+        "\"auth_generation\":%lu,\"secrets_generation\":%lu},"
         "\"pairing\":{\"active\":%s,\"remaining_seconds\":%lu,\"indication\":\"%s\"},"
         "\"commissioning\":{\"join_requests\":%lu,\"join_accepts_queued\":%lu,"
         "\"join_confirms\":%lu,\"join_completes_queued\":%lu,"
@@ -150,6 +303,13 @@ void handleHealth(AsyncWebServerRequest* request) {
         ESP.getFreeHeap(),
         static_cast<unsigned>(registry_store::recordCount()),
         static_cast<unsigned long>(registry_store::generation()),
+        status::setupRequired() ? "true" : "false",
+        status::setupActive() ? "true" : "false",
+        static_cast<unsigned long>(status::setupRemainingSeconds()),
+        configuration_store::ready() ? "true" : "false",
+        static_cast<unsigned long>(configuration_store::settingsGeneration()),
+        static_cast<unsigned long>(configuration_store::authenticationGeneration()),
+        static_cast<unsigned long>(configuration_store::secretsGeneration()),
         status::pairingActive() ? "true" : "false",
         static_cast<unsigned long>(status::pairingRemainingSeconds()),
         status::indicationName(),
@@ -252,9 +412,13 @@ void handleLastTelemetry(AsyncWebServerRequest* request) {
 }  // namespace
 
 void begin() {
+    setupMutex = xSemaphoreCreateMutex();
     telemetrySocket.onEvent(handleWebSocketEvent);
     server.addHandler(&telemetrySocket);
     server.on("/health", HTTP_GET, handleHealth);
+    server.on("/api/v1/setup", HTTP_GET, handleSetupStatus);
+    auto& setupHandler = server.on("/api/v1/setup", HTTP_POST, handleInitialSetup);
+    setupHandler.setMaxContentLength(1024);
     server.on("/telemetry/last", HTTP_GET, handleLastTelemetry);
     server.onNotFound([](AsyncWebServerRequest* request) {
         request->send(404, "application/json", "{\"error\":\"not_found\"}");

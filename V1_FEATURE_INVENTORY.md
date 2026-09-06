@@ -1,5 +1,7 @@
 # V1 Firmware Feature Inventory
 
+Temporary migration reference. Move this file to archive or delete it after v2 node feature-parity review.
+
 Purpose: regression checklist for preserving functionality while replacing the legacy firmware. Scope: projects under `v1/`; `v1/gateway` is intentionally excluded.
 
 ## Shared radio behavior

@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "RadioService.h"
+#include "ConfigurationStore.h"
 
 namespace gateway::status {
 namespace {
@@ -18,6 +19,7 @@ constexpr int kRgbPin = 21;
 
 std::atomic<Indication> current{Indication::Operational};
 std::atomic<uint32_t> pairingEndsAt{0};
+std::atomic<uint32_t> setupEndsAt{0};
 std::atomic<uint32_t> indicationEndsAt{0};
 bool rawButtonPressed = false;
 bool stableButtonPressed = false;
@@ -62,12 +64,34 @@ void togglePairing(const uint32_t now) {
     indicationEndsAt.store(0);
 }
 
+void toggleSetup(const uint32_t now) {
+    if (setupActive()) {
+        setupEndsAt.store(0);
+        current.store(Indication::Operational);
+        Serial.println("Initial setup window closed by BOOT button");
+        return;
+    }
+    const radiosensors::gateway_storage::GatewaySettings settings =
+        configuration_store::settings();
+    setupEndsAt.store(now + static_cast<uint32_t>(settings.setupWindowSeconds) * 1000U);
+    current.store(Indication::Setup);
+    indicationEndsAt.store(0);
+    Serial.printf("Initial setup window opened by BOOT button for %u seconds\n",
+                  settings.setupWindowSeconds);
+}
+
 void render(const uint32_t now) {
     const uint32_t phase = now % 1000;
     switch (current.load()) {
         case Indication::Operational:
             setRgb(0, kBrightness, 0);
             break;
+        case Indication::Setup: {
+            const uint32_t triangle = phase < 500 ? phase : 1000 - phase;
+            const uint8_t level = static_cast<uint8_t>(8 + triangle * 40 / 500);
+            setRgb(level, 0, level);
+            break;
+        }
         case Indication::Pairing: {
             const uint32_t triangle = phase < 500 ? phase : 1000 - phase;
             const uint8_t level = static_cast<uint8_t>(8 + triangle * 64 / 500);
@@ -121,6 +145,11 @@ void loop() {
             Serial.println("Pairing expiry failed: radio profile did not switch");
         }
     }
+    if (deadlineReached(now, setupEndsAt.load())) {
+        setupEndsAt.store(0);
+        current.store(Indication::Operational);
+        Serial.println("Initial setup window expired");
+    }
     if (deadlineReached(now, indicationEndsAt.load())) {
         indicationEndsAt.store(0);
         current.store(pairingActive() ? Indication::Pairing : Indication::Operational);
@@ -134,7 +163,10 @@ void loop() {
     }
     if (pressed != stableButtonPressed && now - rawButtonChangedAt >= kDebounceMs) {
         stableButtonPressed = pressed;
-        if (stableButtonPressed) togglePairing(now);
+        if (stableButtonPressed) {
+            if (setupRequired()) toggleSetup(now);
+            else togglePairing(now);
+        }
     }
 #endif
     render(now);
@@ -148,6 +180,27 @@ bool pairingActive() {
 uint32_t pairingRemainingSeconds() {
     if (!pairingActive()) return 0;
     return (pairingEndsAt.load() - millis() + 999) / 1000;
+}
+
+bool setupRequired() {
+    return configuration_store::authentication().userCount == 0;
+}
+
+bool setupActive() {
+    if (!setupRequired()) return false;
+    const uint32_t deadline = setupEndsAt.load();
+    return deadline != 0 && static_cast<int32_t>(deadline - millis()) > 0;
+}
+
+uint32_t setupRemainingSeconds() {
+    if (!setupActive()) return 0;
+    return (setupEndsAt.load() - millis() + 999) / 1000;
+}
+
+void closeSetup() {
+    setupEndsAt.store(0);
+    current.store(Indication::Operational);
+    indicationEndsAt.store(0);
 }
 
 bool closePairing() {
@@ -172,6 +225,7 @@ void indicate(const Indication indication, const uint32_t durationMs) {
 const char* indicationName() {
     switch (current.load()) {
         case Indication::Operational: return "operational";
+        case Indication::Setup: return "setup";
         case Indication::Pairing: return "pairing";
         case Indication::PersistingNode: return "persisting_node";
         case Indication::AwaitingConfirm: return "awaiting_confirm";
