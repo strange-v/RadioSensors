@@ -6,6 +6,7 @@
 #include <ESP.h>
 #include <GatewayStream.h>
 #include <JoinRequest.h>
+#include <UserManagement.h>
 #include <ArduinoJson.h>
 #include <esp_random.h>
 #include <mbedtls/md.h>
@@ -49,6 +50,22 @@ constexpr uint32_t kPasswordIterations = 100000;
 constexpr const char* kSessionCookieName = "rs_session";
 
 void sendError(AsyncWebServerRequest* request, int status, const char* code);
+
+bool hashPassword(
+    const char* password, const size_t passwordLength,
+    radiosensors::user_management::PasswordCredential& credential) {
+    if (password == nullptr || passwordLength < 8 || passwordLength > 128)
+        return false;
+    credential.algorithm =
+        radiosensors::gateway_storage::PasswordHashAlgorithm::Pbkdf2HmacSha256;
+    credential.iterations = kPasswordIterations;
+    esp_fill_random(credential.salt, sizeof(credential.salt));
+    return mbedtls_pkcs5_pbkdf2_hmac_ext(
+        MBEDTLS_MD_SHA256,
+        reinterpret_cast<const unsigned char*>(password), passwordLength,
+        credential.salt, sizeof(credential.salt), credential.iterations,
+        sizeof(credential.hash), credential.hash) == 0;
+}
 
 const char* roleName(const radiosensors::gateway_storage::UserRole role) {
     return role == radiosensors::gateway_storage::UserRole::Admin
@@ -243,7 +260,7 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
     const size_t usernameLength = username == nullptr ? 0 : strlen(username);
     const size_t passwordLength = password == nullptr ? 0 : strlen(password);
     const size_t displayNameLength = strlen(displayName);
-    if (usernameLength == 0 || usernameLength > radiosensors::gateway_storage::kUsernameSize ||
+    if (!radiosensors::user_management::validUsername(username, usernameLength) ||
         passwordLength < 8 || passwordLength > 128 ||
         displayNameLength > radiosensors::gateway_storage::kDisplayNameSize) {
         xSemaphoreGive(setupMutex);
@@ -458,6 +475,222 @@ void addTokenScopes(JsonArray output, const uint16_t scopes) {
         output.add("registry:read");
     if ((scopes & radiosensors::gateway_storage::TokenScope::TelemetryRead) != 0)
         output.add("telemetry:read");
+}
+
+void addUser(JsonObject output,
+             const radiosensors::gateway_storage::UserRecord& source) {
+    output["id"] = source.id;
+    output["username"] = String(source.username, source.usernameLength);
+    output["role"] = roleName(source.role);
+    output["enabled"] = source.enabled;
+}
+
+bool parseUserRole(const JsonVariantConst value,
+                   radiosensors::gateway_storage::UserRole& role) {
+    if (!value.is<const char*>()) return false;
+    const char* name = value.as<const char*>();
+    if (strcmp(name, "admin") == 0) {
+        role = radiosensors::gateway_storage::UserRole::Admin;
+        return true;
+    }
+    if (strcmp(name, "viewer") == 0) {
+        role = radiosensors::gateway_storage::UserRole::Viewer;
+        return true;
+    }
+    return false;
+}
+
+void sendUserMutationError(
+    AsyncWebServerRequest* request,
+    const radiosensors::user_management::Status status) {
+    using radiosensors::user_management::Status;
+    switch (status) {
+        case Status::InvalidValue:
+            sendError(request, 422, "invalid_user_values");
+            break;
+        case Status::NotFound:
+            sendError(request, 404, "user_not_found");
+            break;
+        case Status::UsernameExists:
+            sendError(request, 409, "username_already_exists");
+            break;
+        case Status::CapacityReached:
+            sendError(request, 409, "user_capacity_reached");
+            break;
+        case Status::LastAdminRequired:
+            sendError(request, 409, "last_admin_required");
+            break;
+        case Status::Ok:
+            break;
+    }
+}
+
+void handleUsers(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, false)) return;
+    const auto data = configuration_store::authentication();
+    JsonDocument document;
+    JsonArray users = document["users"].to<JsonArray>();
+    for (uint8_t index = 0; index < data.userCount; ++index)
+        addUser(users.add<JsonObject>(), data.users[index]);
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    serializeJson(document, *response);
+    request->send(response);
+}
+
+void handleCreateUser(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    const JsonObject object = json.as<JsonObject>();
+    const char* username = object["username"].is<const char*>()
+        ? object["username"].as<const char*>() : nullptr;
+    const char* password = object["password"].is<const char*>()
+        ? object["password"].as<const char*>() : nullptr;
+    const size_t usernameLength = username == nullptr ? 0 : strlen(username);
+    const size_t passwordLength = password == nullptr ? 0 : strlen(password);
+    radiosensors::gateway_storage::UserRole role{};
+    if (!radiosensors::user_management::validUsername(username, usernameLength) ||
+        passwordLength < 8 ||
+        passwordLength > 128 || !parseUserRole(object["role"], role) ||
+        (!object["enabled"].isNull() && !object["enabled"].is<bool>())) {
+        sendError(request, 422, "invalid_user_values");
+        return;
+    }
+    if (managementMutex == nullptr ||
+        xSemaphoreTake(managementMutex, 0) != pdTRUE) {
+        sendError(request, 409, "mutation_busy");
+        return;
+    }
+    auto data = configuration_store::authentication();
+    radiosensors::user_management::PasswordCredential credential{};
+    if (!hashPassword(password, passwordLength, credential)) {
+        xSemaphoreGive(managementMutex);
+        sendError(request, 500, "password_hash_failed");
+        return;
+    }
+    uint32_t createdId = 0;
+    const auto mutation = radiosensors::user_management::create(
+        data, username, usernameLength, role, object["enabled"] | true,
+        credential, createdId);
+    (void)createdId;
+    memset(&credential, 0, sizeof(credential));
+    if (mutation != radiosensors::user_management::Status::Ok) {
+        xSemaphoreGive(managementMutex);
+        sendUserMutationError(request, mutation);
+        return;
+    }
+    const auto saved = configuration_store::saveAuthentication(data);
+    xSemaphoreGive(managementMutex);
+    if (saved != configuration_store::SaveStatus::Ok) {
+        sendError(request, 500, "user_storage_failed");
+        return;
+    }
+    const auto& user = data.users[data.userCount - 1];
+    JsonDocument document;
+    addUser(document.to<JsonObject>(), user);
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->setCode(201);
+    response->addHeader("Cache-Control", "no-store");
+    serializeJson(document, *response);
+    request->send(response);
+}
+
+void handleUpdateUser(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>() || !json["id"].is<uint32_t>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    const JsonObject object = json.as<JsonObject>();
+    const char* username = object["username"].is<const char*>()
+        ? object["username"].as<const char*>() : nullptr;
+    const size_t usernameLength = username == nullptr ? 0 : strlen(username);
+    radiosensors::gateway_storage::UserRole role{};
+    const bool hasPassword = !object["password"].isNull();
+    const char* password = hasPassword && object["password"].is<const char*>()
+        ? object["password"].as<const char*>() : nullptr;
+    const size_t passwordLength = password == nullptr ? 0 : strlen(password);
+    if (!radiosensors::user_management::validUsername(username, usernameLength) ||
+        !parseUserRole(object["role"], role) || !object["enabled"].is<bool>() ||
+        (hasPassword && (passwordLength < 8 || passwordLength > 128))) {
+        sendError(request, 422, "invalid_user_values");
+        return;
+    }
+    if (managementMutex == nullptr ||
+        xSemaphoreTake(managementMutex, 0) != pdTRUE) {
+        sendError(request, 409, "mutation_busy");
+        return;
+    }
+    auto data = configuration_store::authentication();
+    const uint32_t id = object["id"].as<uint32_t>();
+    radiosensors::user_management::PasswordCredential credential{};
+    if (hasPassword && !hashPassword(password, passwordLength, credential)) {
+        xSemaphoreGive(managementMutex);
+        sendError(request, 500, "password_hash_failed");
+        return;
+    }
+    const auto mutation = radiosensors::user_management::update(
+        data, id, username, usernameLength, role, object["enabled"].as<bool>(),
+        hasPassword ? &credential : nullptr);
+    memset(&credential, 0, sizeof(credential));
+    if (mutation != radiosensors::user_management::Status::Ok) {
+        xSemaphoreGive(managementMutex);
+        sendUserMutationError(request, mutation);
+        return;
+    }
+    const auto saved = configuration_store::saveAuthentication(data);
+    xSemaphoreGive(managementMutex);
+    if (saved != configuration_store::SaveStatus::Ok &&
+        saved != configuration_store::SaveStatus::NoChange) {
+        sendError(request, 500, "user_storage_failed");
+        return;
+    }
+    authentication::invalidateUserSessions(id);
+    uint8_t index = 0;
+    while (data.users[index].id != id) ++index;
+    const auto& user = data.users[index];
+    JsonDocument document;
+    addUser(document.to<JsonObject>(), user);
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    serializeJson(document, *response);
+    request->send(response);
+}
+
+void handleDeleteUser(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>() || !json["id"].is<uint32_t>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    if (managementMutex == nullptr ||
+        xSemaphoreTake(managementMutex, 0) != pdTRUE) {
+        sendError(request, 409, "mutation_busy");
+        return;
+    }
+    auto data = configuration_store::authentication();
+    const uint32_t id = json["id"].as<uint32_t>();
+    const auto mutation = radiosensors::user_management::remove(data, id);
+    if (mutation != radiosensors::user_management::Status::Ok) {
+        xSemaphoreGive(managementMutex);
+        sendUserMutationError(request, mutation);
+        return;
+    }
+    const auto saved = configuration_store::saveAuthentication(data);
+    xSemaphoreGive(managementMutex);
+    if (saved != configuration_store::SaveStatus::Ok) {
+        sendError(request, 500, "user_storage_failed");
+        return;
+    }
+    authentication::invalidateUserSessions(id);
+    request->send(204);
 }
 
 void handleTokens(AsyncWebServerRequest* request) {
@@ -838,6 +1071,7 @@ void handleHealth(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->printf(
         "{\"status\":\"ok\",\"firmware\":\"%s\",\"api_version\":%u,\"board\":\"%s\",\"hostname\":\"%s\","
+        "\"gateway_id\":\"%s\",\"boot_id\":\"%s\","
         "\"reset_reason\":\"%s\",\"uptime_ms\":%lu,\"free_heap\":%lu,"
         "\"registry\":{\"records\":%u,\"generation\":%lu},"
         "\"setup\":{\"required\":%s,\"active\":%s,\"remaining_seconds\":%lu},"
@@ -880,6 +1114,8 @@ void handleHealth(AsyncWebServerRequest* request) {
         static_cast<unsigned>(api::version),
         board::current.name,
         identity::hostname(),
+        identity::gatewayId(),
+        identity::bootId(),
         diagnostics::resetReason(),
         millis(),
         ESP.getFreeHeap(),
@@ -980,6 +1216,8 @@ void handleInfo(AsyncWebServerRequest* request) {
     document["ui"]["required_api_version"] = web_ui::requiredApiVersion();
     document["board"] = board::current.name;
     document["hostname"] = identity::hostname();
+    document["gateway_id"] = identity::gatewayId();
+    document["boot_id"] = identity::bootId();
     AsyncResponseStream* response = request->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-store");
     serializeJson(document, *response);
@@ -1035,6 +1273,16 @@ void begin() {
     auto& settingsHandler = server.on(
         "/api/v1/settings", HTTP_PUT, handleUpdateSettings);
     settingsHandler.setMaxContentLength(1024);
+    server.on("/api/v1/users", HTTP_GET, handleUsers);
+    auto& createUserHandler = server.on(
+        "/api/v1/users", HTTP_POST, handleCreateUser);
+    createUserHandler.setMaxContentLength(512);
+    auto& updateUserHandler = server.on(
+        "/api/v1/users", HTTP_PUT, handleUpdateUser);
+    updateUserHandler.setMaxContentLength(512);
+    auto& deleteUserHandler = server.on(
+        "/api/v1/users", HTTP_DELETE, handleDeleteUser);
+    deleteUserHandler.setMaxContentLength(128);
     server.on("/api/v1/tokens", HTTP_GET, handleTokens);
     auto& createTokenHandler = server.on(
         "/api/v1/tokens", HTTP_POST, handleCreateToken);

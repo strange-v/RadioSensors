@@ -1,0 +1,112 @@
+/* Application shell: sidebar, topbar, page frame. */
+
+.app-layout { min-height: 100vh; display: grid; grid-template-columns: 224px minmax(0, 1fr); }
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--line);
+  background: var(--bg-shell);
+}
+
+.brand { display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-1) var(--space-2); color: var(--ink); text-decoration: none; }
+.brand-mark { width: 30px; height: 30px; flex: none; display: flex; align-items: center; justify-content: center; gap: 2px; border-radius: var(--radius-md); background: var(--primary-strong); }
+.brand-mark i { display: block; width: 2px; border-radius: 1px; background: #fff; }
+.brand-mark i:nth-child(1) { height: 8px; }
+.brand-mark i:nth-child(2) { height: 16px; }
+.brand-mark i:nth-child(3) { height: 11px; }
+.brand-name { min-width: 0; overflow: hidden; font-size: var(--text-md); font-weight: 600; letter-spacing: .01em; text-overflow: ellipsis; white-space: nowrap; }
+
+.primary-nav { display: grid; gap: 2px; }
+.primary-nav a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 38px;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: var(--text-md);
+  font-weight: 500;
+  transition: color var(--transition), background var(--transition);
+}
+.primary-nav a:hover { color: var(--ink); background: var(--surface-hover); }
+.primary-nav a.router-link-active { border-left-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.nav-icon { width: 20px; flex: none; display: grid; place-items: center; font-size: var(--text-lg); }
+
+
+.workspace { min-width: 0; display: flex; min-height: 100vh; flex-direction: column; }
+.topbar {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-shell);
+}
+.gateway-address { overflow: hidden; color: var(--muted); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.topbar-actions { display: flex; align-items: center; gap: var(--space-2); }
+.workspace > main { width: 100%; max-width: 1280px; margin: 0 auto; flex: 1; }
+footer { padding: var(--space-5); color: var(--muted); font-size: var(--text-xs); text-align: center; }
+
+.standalone-layout { min-height: 100vh; display: flex; flex-direction: column; }
+.standalone-layout > main { width: min(100% - 32px, 1280px); margin: auto; flex: 1; }
+.standalone-header {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) max(var(--space-4), calc((100% - 1232px) / 2));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-shell);
+}
+.standalone-header .brand { padding-inline: 0; }
+
+.page { padding: var(--space-6); }
+.page.narrow, .page.auth { margin: auto; padding-top: var(--space-8); }
+.page.narrow { width: min(620px, 100%); }
+/* Two fields and a button do not need the width the setup form asks for. */
+.page.auth { width: min(400px, 100%); }
+.narrow-workflow { width: min(760px, 100%); margin: auto; padding-top: var(--space-8); }
+
+@media (max-width: 900px) {
+  .app-layout { grid-template-columns: 64px minmax(0, 1fr); }
+  .sidebar { padding-inline: var(--space-2); }
+  .brand { justify-content: center; padding-inline: 0; }
+  .brand-name, .primary-nav a span:last-child { display: none; }
+  .primary-nav a { justify-content: center; padding-inline: var(--space-2); }
+}
+
+@media (max-width: 640px) {
+  .app-layout { display: block; }
+  .sidebar {
+    position: sticky;
+    z-index: 4;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  /* The rail collapses into a top bar here, so the wordmark fits again. */
+  .brand { justify-content: flex-start; }
+  .brand-name { display: block; }
+  .primary-nav { display: flex; margin-left: auto; }
+  .primary-nav a { min-width: 40px; min-height: 40px; border-left: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-md); }
+  .primary-nav a.router-link-active { border-left-color: transparent; border-bottom-color: var(--primary); }
+  .topbar { min-height: 48px; padding: var(--space-2) var(--space-3); }
+  .page { padding: var(--space-4) var(--space-3); }
+  .page.narrow, .page.auth, .narrow-workflow { padding-top: var(--space-5); }
+}

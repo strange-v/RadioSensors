@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api, errorCode } from '../api/client'
+import Icon from '../components/Icon.vue'
 import type { GatewayInfo } from '../api/types'
 
 const info = ref<GatewayInfo | null>(null)
@@ -28,7 +29,7 @@ onMounted(async () => { try { info.value = await api.info() } catch { /* The pag
 
 <template>
   <div class="page narrow-workflow">
-    <div class="workflow-heading"><span class="workflow-symbol" aria-hidden="true">⌂</span><p class="eyebrow">Home Assistant</p><h1>{{ $t('ha.title') }}</h1><p>{{ $t('ha.subtitle') }}</p></div>
+    <div class="workflow-heading"><span class="workflow-symbol" aria-hidden="true"><Icon name="home-assistant" /></span><p class="eyebrow">Home Assistant</p><h1>{{ $t('ha.title') }}</h1><p>{{ $t('ha.subtitle') }}</p></div>
 
     <div class="workflow-steps">
       <section class="panel workflow-step"><span class="step-number">1</span><div><h2>{{ $t('ha.stepTokenTitle') }}</h2><p>{{ $t('ha.stepTokenHint') }}</p><div v-if="failure" class="notice error">{{ $t(`error.${failure}`) }}</div><template v-if="token"><code class="generated-token">{{ token }}</code><button class="button secondary" type="button" @click="copyToken">{{ copied ? $t('ha.copied') : $t('ha.copyToken') }}</button><small class="availability-note">{{ $t('ha.saveToken') }}</small></template><button v-else class="button primary" :disabled="creating" type="button" @click="createToken">{{ creating ? $t('ha.creatingToken') : $t('ha.createToken') }}</button></div></section>

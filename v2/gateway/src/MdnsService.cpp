@@ -43,8 +43,16 @@ void apply() {
     }
     MDNS.addService("radiosensors", "tcp", 80);
     MDNS.addServiceTxt("radiosensors", "tcp", "api", String(api::version));
+    MDNS.addServiceTxt(
+        "radiosensors", "tcp", "api_version", String(api::version));
+    MDNS.addServiceTxt(
+        "radiosensors", "tcp", "gateway_id", identity::gatewayId());
+    MDNS.addServiceTxt(
+        "radiosensors", "tcp", "boot_id", identity::bootId());
     MDNS.addServiceTxt("radiosensors", "tcp", "firmware", firmware::version);
     MDNS.addServiceTxt("radiosensors", "tcp", "board", board::current.name);
+    MDNS.addServiceTxt(
+        "radiosensors", "tcp", "hostname", identity::hostname());
     active = true;
     appliedGeneration = generation;
     retryAt = 0;

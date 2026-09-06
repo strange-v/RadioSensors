@@ -14,17 +14,23 @@ constexpr uint8_t kConfirmAttempts = 3;
 
 CommissioningService::CommissioningService(
     NodeRadio& radio, const uint16_t profileId,
-    const protocol::FirmwareVersion firmware,
-    const char* commissioningKey)
+    const protocol::FirmwareVersion firmware)
     : radio_(radio),
+      factoryStore_(userRow_),
       store_(eeprom_),
       profileId_(profileId),
-      firmware_(firmware),
-      commissioningKey_(commissioningKey) {}
+      firmware_(firmware) {}
 
 bool CommissioningService::begin() {
     readDeviceUid();
     const bool hasConfig = store_.load(config_);
+    const bool hasFactoryCredentials = factoryStore_.load(factoryCredentials_);
+    if (!hasConfig && !hasFactoryCredentials) {
+#if defined(NODE_DEBUG)
+        Serial.println(F("commissioning: factory credentials missing or corrupt"));
+#endif
+        return false;
+    }
 #if defined(NODE_DEBUG)
     Serial.print(F("commissioning: EEPROM "));
     Serial.println(hasConfig ? F("configuration found") : F("unconfigured"));
@@ -35,7 +41,7 @@ bool CommissioningService::begin() {
     if (hasConfig) {
         radio_.useOperationalProfile(config_);
     } else {
-        radio_.useCommissioningProfile(commissioningKey_);
+        radio_.useCommissioningProfile(factoryCredentials_.key);
     }
     radio_.sleep();
     return true;
@@ -78,7 +84,7 @@ bool CommissioningService::requestJoin() {
 #if defined(NODE_DEBUG)
     Serial.println(F("commissioning: sending JOIN_REQUEST"));
 #endif
-    radio_.useCommissioningProfile(commissioningKey_);
+    radio_.useCommissioningProfile(factoryCredentials_.key);
     protocol::JoinRequest request{};
     memcpy(request.deviceUid, deviceUid_, sizeof(deviceUid_));
     request.profileId = profileId_;

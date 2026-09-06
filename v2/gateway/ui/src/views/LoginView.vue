@@ -28,8 +28,8 @@ async function submit() {
 </script>
 
 <template>
-  <div class="page narrow">
-    <div class="page-title"><p class="eyebrow">RadioSensors</p><h1>{{ $t('login.title') }}</h1><p>{{ $t('login.intro') }}</p></div>
+  <div class="page auth">
+    <div class="page-title"><h1>{{ $t('login.title') }}</h1><p>{{ $t('login.intro') }}</p></div>
     <form class="setup-card" @submit.prevent="submit">
       <label><span>{{ $t('login.username') }}</span><input v-model.trim="username" autocomplete="username" maxlength="32" autofocus></label>
       <label><span>{{ $t('login.password') }}</span><input v-model="password" type="password" autocomplete="current-password" maxlength="128"></label>

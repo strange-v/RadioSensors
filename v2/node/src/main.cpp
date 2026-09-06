@@ -11,14 +11,6 @@
 #include "ProvisioningButton.h"
 #include "Profiles/ClimateTmp112Profile.h"
 
-#ifndef NODE_COMMISSIONING_KEY
-#error "NODE_COMMISSIONING_KEY must be an exactly 16-byte string"
-#endif
-
-static_assert(
-    sizeof(NODE_COMMISSIONING_KEY) == 17,
-    "NODE_COMMISSIONING_KEY must be exactly 16 bytes");
-
 namespace {
 using namespace radiosensors;
 
@@ -31,7 +23,7 @@ node::LowPowerClock clock;
 node::ProvisioningButton button(NODE_BUTTON_PIN);
 node::ClimateTmp112Profile profile(Wire, NODE_TMP112_ADDRESS);
 node::CommissioningService commissioning(
-    radio, kProfileId, kFirmwareVersion, NODE_COMMISSIONING_KEY);
+    radio, kProfileId, kFirmwareVersion);
 #if defined(NODE_CLIMATE_ADAPTIVE_REPORTING)
 const node::ClimateReportPolicy reportPolicy =
     node::ClimateReportPolicy::adaptive(

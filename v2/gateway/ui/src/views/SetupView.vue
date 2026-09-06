@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, errorCode } from '../api/client'
 import type { SetupStatus } from '../api/types'
+import Icon from '../components/Icon.vue'
 const { t } = useI18n(), status = ref<SetupStatus | null>(null), loadError = ref(''), submitError = ref(''), saving = ref(false), completed = ref(false), attempted = ref(false)
 const form = reactive({ username: '', password: '', displayName: '', networkId: '' })
 let timer: number | undefined
@@ -28,10 +29,10 @@ onMounted(() => { refresh(); timer = window.setInterval(refresh, 1000) })
 onBeforeUnmount(() => window.clearInterval(timer))
 </script>
 <template><div class="page narrow">
-  <div v-if="completed" class="success-panel"><span class="state-icon success">✓</span><p class="eyebrow">RadioSensors</p><h1>{{ $t('setup.successTitle') }}</h1><p>{{ $t('setup.success') }}</p><div class="success-actions"><RouterLink class="button primary" to="/home-assistant">{{ $t('setup.continueHa') }}</RouterLink><RouterLink class="button secondary" to="/status">{{ $t('setup.skipHa') }}</RouterLink></div></div>
+  <div v-if="completed" class="success-panel"><span class="state-icon success"><Icon name="check" /></span><h1>{{ $t('setup.successTitle') }}</h1><p>{{ $t('setup.success') }}</p><div class="success-actions"><RouterLink class="button primary" to="/home-assistant">{{ $t('setup.continueHa') }}</RouterLink><RouterLink class="button secondary" to="/status">{{ $t('setup.skipHa') }}</RouterLink></div></div>
   <template v-else><div v-if="!status || status.setup_required" class="page-title"><p class="eyebrow">{{ $t('setup.eyebrow') }}</p><h1>{{ $t('setup.title') }}</h1><p>{{ $t('setup.intro') }}</p></div>
     <div v-if="loadError" class="notice error"><strong>{{ $t('error.title') }}</strong><span>{{ $t(`error.${loadError}`) }}</span></div>
-    <section v-else-if="status && !status.setup_required" class="empty-state panel"><span class="state-icon info" aria-hidden="true">✓</span><h1>{{ $t('setup.alreadyConfigured') }}</h1><p>{{ $t('setup.alreadyConfiguredHint') }}</p><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></section>
+    <section v-else-if="status && !status.setup_required" class="empty-state panel"><span class="state-icon info" aria-hidden="true"><Icon name="check" /></span><h1>{{ $t('setup.alreadyConfigured') }}</h1><p>{{ $t('setup.alreadyConfiguredHint') }}</p><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></section>
     <form v-else class="setup-card" novalidate @submit.prevent="submit">
       <div class="physical-status" :class="{ open: status?.physical_window_active }"><span class="pulse" aria-hidden="true"></span><div><strong>{{ $t('setup.physicalTitle') }}</strong><p>{{ status?.physical_window_active ? $t('setup.physicalOpen', { seconds: status.remaining_seconds }) : $t('setup.physicalClosed') }}</p></div></div>
       <label><span>{{ $t('setup.username') }}</span><input v-model.trim="form.username" autocomplete="username" maxlength="32" placeholder="admin"><small :class="{ invalid: attempted && errors.username }">{{ attempted && errors.username ? errors.username : $t('setup.usernameHint') }}</small></label>

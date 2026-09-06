@@ -2,6 +2,25 @@
 
 ATtiny1614 provides 256 bytes of EEPROM organized in 32-byte physical pages.
 
+The separate 32-byte USERROW stores immutable manufacturing credentials. It is
+programmed through UPDI, is not part of the EEPROM address space, and survives
+ordinary flash/chip erase operations.
+
+| USERROW offset | Size | Field |
+| ---: | ---: | --- |
+| 0 | 4 | Magic `RSFC` |
+| 4 | 1 | Schema version (`1`) |
+| 5 | 1 | Flags (`1` means provisioned) |
+| 6 | 2 | Reserved zero |
+| 8 | 16 | Unique factory commissioning key |
+| 24 | 2 | CRC16-CCITT over bytes 0..23, little-endian |
+| 26 | 2 | Bitwise inverse of the stored CRC bytes |
+| 28 | 4 | Reserved zero |
+
+The chip UID is never duplicated in writable memory; firmware and the
+provisioning station read its 10 bytes from `SIGROW_SERNUM0`. An unconfigured
+node without a valid USERROW record does not start its commissioning radio.
+
 ## Common nodes
 
 All node profiles reserve two independently validated 32-byte network
@@ -30,14 +49,15 @@ Each network configuration slot has this exact format:
 | 30 | 2 | CRC16-CCITT over bytes 0..29, little-endian |
 
 Profile ID, firmware version, sensor selection, pins, and reporting intervals
-are compile-time values and are not stored here. UID comes from `SIGROW`.
+are compile-time values and are not stored here.
 
 Saving always targets the older/inactive slot. Its magic is invalidated first,
 the payload and CRC are written next, and the two magic bytes are committed
 last. On boot, both slots are validated and the newest generation is selected,
 including across the 8-bit generation wrap.
 
-Factory reset invalidates only the two common configuration slots.
+Network factory reset invalidates only the two common configuration slots. It
+does not modify USERROW or profile-owned EEPROM.
 
 ## Counter node
 

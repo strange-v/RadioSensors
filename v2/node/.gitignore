@@ -1,3 +1,4 @@
 .pio/
 .vscode/
 include/LocalSecrets.h
+provisioned_nodes/

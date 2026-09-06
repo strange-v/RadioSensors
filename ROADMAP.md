@@ -4,8 +4,9 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 
 ## Gateway
 
-- Complete users, stable and boot identity, and richer mDNS discovery. Browser
-  login/session, editable runtime settings, API-token management,
+- Complete richer discovery capabilities beyond the implemented stable gateway
+  ID, per-boot ID, and mDNS identity metadata. Browser login/session, user and
+  API-token management, editable runtime settings,
   bearer-authenticated registry/WebSocket access, `/api/v1/nodes`, and
   transaction-only manually entered commissioning credentials are implemented.
 - Add optional QR scanning for the existing pairing credential fields.
@@ -20,6 +21,5 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 - Freeze generic `COMMAND` and `COMMAND_RESULT` payloads and add the ACK pending hint flow.
 - Measure sleep current and choose the final PA5 low-power configuration.
 - Measure commissioning retry/RX-window and command receive durations.
-- Replace development keys with production UID/key provisioning.
 
 `V1_FEATURE_INVENTORY.md` remains a temporary parity checklist until these node profiles are reviewed, then it should move to archive or be deleted.

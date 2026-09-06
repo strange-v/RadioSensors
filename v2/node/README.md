@@ -22,9 +22,29 @@ pio run -e climate_tmp112 -t upload
 
 Hardware environments inherit serial UPDI on COM6 at 115200 baud. Adjust the local upload port in `platformio.ini` when necessary.
 
+## Factory provisioning
+
+Production firmware contains no shared commissioning key. Each ATtiny1614 must
+receive a unique 16-byte factory key in its 32-byte USERROW after the common
+firmware is flashed. Install the QR exporter once and provision a connected
+node through the same SerialUPDI adapter:
+
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m pip install -r scripts/requirements-provisioning.txt
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" scripts/provision_node.py --port COM6
+```
+
+The tool reads the 10-byte SIGROW UID, refuses to replace an existing valid
+record unless `--force` is supplied, generates the key with the operating
+system CSPRNG, writes and verifies USERROW, then exports a text credential, SVG
+QR, and `manifest.csv` under the git-ignored `provisioned_nodes/` directory.
+The QR payload is
+`radiosensors://pair?v=1&uid=<20 HEX>&key=<32 HEX>`. Treat every exported file
+as a secret manufacturing artifact and back it up outside the repository.
+
 ## Implemented climate runtime
 
-The production climate image supports UID-based commissioning, recovery of provisional commissioning, dual-slot network configuration, TMP112 one-shot measurement, Vcc measurement, acknowledged telemetry, bounded 1/5/15/60-minute radio retry, and RTC power-down scheduling independent of sleeping `millis()`.
+The production climate image supports per-node-key UID commissioning, recovery of provisional commissioning, dual-slot network configuration, TMP112 one-shot measurement, Vcc measurement, acknowledged telemetry, bounded 1/5/15/60-minute radio retry, and RTC power-down scheduling independent of sleeping `millis()`.
 
 The solar/supercapacitor policy schedules nominal 60 seconds above 2500 mV and 300 seconds at or below it. The 32-second RTC step yields about 64/320 seconds. Battery-powered climate builds use one compile-time interval and do not persist it.
 

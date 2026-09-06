@@ -16,6 +16,7 @@ common_sources=(
     ../shared/RadioProtocol/src/NodeRegistry.cpp
     ../shared/RadioProtocol/src/RegistryPersistence.cpp
     ../shared/RadioProtocol/src/GatewayStorage.cpp
+    ../shared/RadioProtocol/src/UserManagement.cpp
     "${unity_dir}/unity.c"
 )
 common_flags=(

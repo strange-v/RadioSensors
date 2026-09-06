@@ -16,10 +16,14 @@ bool NodeRadio::begin(const uint8_t nodeId, const uint8_t networkId) {
     return initialized;
 }
 
-void NodeRadio::useCommissioningProfile(const char* commissioningKey) {
+void NodeRadio::useCommissioningProfile(const uint8_t commissioningKey[16]) {
+    char key[17];
+    memcpy(key, commissioningKey, 16);
+    key[16] = '\0';
     radio_.setAddress(0);
     radio_.setNetwork(0);
-    radio_.encrypt(commissioningKey);
+    radio_.encrypt(key);
+    memset(key, 0, sizeof(key));
     radio_.setPowerLevel(NODE_DEFAULT_POWER_LEVEL);
 }
 

@@ -9,6 +9,8 @@ namespace node {
 namespace storage {
 
 constexpr size_t kEepromSize = 256;
+constexpr size_t kFactoryCredentialSize = 32;
+constexpr size_t kFactoryKeySize = 16;
 constexpr size_t kNetworkConfigSlotSize = 32;
 constexpr size_t kNetworkConfigSlotA = 0x00;
 constexpr size_t kNetworkConfigSlotB = 0x20;
@@ -37,6 +39,10 @@ struct NetworkConfig {
     uint8_t installationKey[16]{};
     uint32_t requestNonce = 0;
     uint16_t lastPowerCommandId = 0;
+};
+
+struct FactoryCredentials {
+    uint8_t key[kFactoryKeySize]{};
 };
 
 enum class SetCountStatus : uint8_t {
@@ -88,6 +94,63 @@ inline uint32_t read32(const uint8_t* input) {
         (static_cast<uint32_t>(input[2]) << 16) |
         (static_cast<uint32_t>(input[3]) << 24);
 }
+
+inline bool encodeFactoryCredentials(
+    const FactoryCredentials& value, uint8_t* output,
+    const size_t capacity) {
+    if (output == nullptr || capacity < kFactoryCredentialSize) return false;
+    uint8_t combined = 0;
+    for (size_t index = 0; index < sizeof(value.key); ++index)
+        combined |= value.key[index];
+    if (combined == 0) return false;
+    memset(output, 0, kFactoryCredentialSize);
+    output[0] = 'R';
+    output[1] = 'S';
+    output[2] = 'F';
+    output[3] = 'C';
+    output[4] = 1;
+    output[5] = 1;
+    memcpy(output + 8, value.key, sizeof(value.key));
+    write16(output + 24, crc16Ccitt(output, 24));
+    output[26] = static_cast<uint8_t>(~output[24]);
+    output[27] = static_cast<uint8_t>(~output[25]);
+    return true;
+}
+
+inline bool decodeFactoryCredentials(
+    const uint8_t* input, const size_t size, FactoryCredentials& value) {
+    if (input == nullptr || size != kFactoryCredentialSize ||
+        input[0] != 'R' || input[1] != 'S' || input[2] != 'F' ||
+        input[3] != 'C' || input[4] != 1 || input[5] != 1 ||
+        input[6] != 0 || input[7] != 0 ||
+        input[26] != static_cast<uint8_t>(~input[24]) ||
+        input[27] != static_cast<uint8_t>(~input[25]) ||
+        read16(input + 24) != crc16Ccitt(input, 24)) return false;
+    for (size_t index = 28; index < kFactoryCredentialSize; ++index)
+        if (input[index] != 0) return false;
+    uint8_t combined = 0;
+    for (size_t index = 0; index < kFactoryKeySize; ++index)
+        combined |= input[8 + index];
+    if (combined == 0) return false;
+    memcpy(value.key, input + 8, sizeof(value.key));
+    return true;
+}
+
+template <typename Storage>
+class FactoryCredentialStore {
+public:
+    explicit FactoryCredentialStore(Storage& storage) : storage_(storage) {}
+
+    bool load(FactoryCredentials& value) const {
+        uint8_t bytes[kFactoryCredentialSize];
+        for (size_t index = 0; index < sizeof(bytes); ++index)
+            bytes[index] = storage_.read(index);
+        return decodeFactoryCredentials(bytes, sizeof(bytes), value);
+    }
+
+private:
+    Storage& storage_;
+};
 
 inline bool encodeNetworkConfig(
     const NetworkConfig& value, uint8_t* output, const size_t capacity) {

@@ -40,7 +40,6 @@ void setup() {
     delay(kSerialStartupDelayMs);
 
     Serial.println();
-    gateway::identity::begin();
     Serial.println("RadioSensors gateway");
     Serial.printf("Firmware: %s\n", gateway::firmware::version);
     Serial.printf("Board: %s\n", gateway::board::current.name);
@@ -49,12 +48,14 @@ void setup() {
         ethernetControllerName(gateway::board::current.ethernetController));
     Serial.printf("PoE profile: %s\n", gateway::board::current.hasPoe ? "yes" : "no");
     Serial.printf("Reset reason: %s\n", gateway::diagnostics::resetReason());
-    Serial.printf("Hostname: %s\n", gateway::identity::hostname());
-
     const bool watchdogStarted = gateway::diagnostics::beginWatchdog();
     Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 
     gateway::configuration_store::begin();
+    gateway::identity::begin();
+    Serial.printf("Hostname: %s\n", gateway::identity::hostname());
+    Serial.printf("Gateway ID: %s\n", gateway::identity::gatewayId());
+    Serial.printf("Boot ID: %s\n", gateway::identity::bootId());
     gateway::authentication::begin();
     gateway::registry_store::begin();
     gateway::telemetry_store::begin();
