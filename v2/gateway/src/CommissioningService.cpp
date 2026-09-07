@@ -12,7 +12,8 @@
 namespace gateway::commissioning {
 namespace {
 
-// Registry transactions serialize and verify a complete 1360-byte snapshot.
+// Registry transaction snapshots and persistence workspaces stay off this task
+// stack, leaving it for radio frames and commissioning control flow.
 constexpr uint32_t kTaskStackSize = 8192;
 constexpr UBaseType_t kTaskPriority = 6;
 constexpr BaseType_t kTaskCore = 1;

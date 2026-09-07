@@ -68,6 +68,11 @@ bool bootstrapSecrets() {
     currentSecrets = defaultSecrets();
     currentSecrets.deviceSecretPresent = true;
     esp_fill_random(currentSecrets.deviceSecret, kDeviceSecretSize);
+    // Give the record a usable network id from the very first boot: the
+    // default struct is zero-filled, and zero would otherwise be reported by
+    // /health and handed to the radio on a gateway that has not been set up.
+    do currentSecrets.operationalNetworkId = static_cast<uint8_t>(esp_random());
+    while (currentSecrets.operationalNetworkId == 0);
 
     return secretStore.save(currentSecrets);
 }

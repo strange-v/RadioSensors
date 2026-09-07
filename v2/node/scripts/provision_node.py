@@ -61,6 +61,28 @@ def locate_pymcuprog() -> Path:
     return libs
 
 
+def write_user_row(backend, record: bytes) -> None:
+    """Erase and write the complete USERROW page through SerialUPDI.
+
+    pymcuprog routes a generic USER_ROW write through its flash page-write
+    implementation.  On the ATtiny1614 that command does not erase the page,
+    so it cannot restore zero bits left by an earlier provisioning attempt.
+    Use the NVM controller's atomic erase-and-write command instead.
+    """
+    from pymcuprog.serialupdi import constants
+
+    device_model = backend.programmer.device_model
+    device_model.avr.nvm.write_nvm(
+        device_model.dut.userrow_address,
+        bytearray(record),
+        # USERROW is byte-addressable.  Word access through some SerialUPDI
+        # adapters writes only the low byte of each word, leaving every odd
+        # address erased (0xFF).
+        use_word_access=False,
+        nvmcommand=constants.UPDI_V0_NVMCTRL_CTRLA_ERASE_WRITE_PAGE,
+    )
+
+
 def provision_over_updi(port: str, baud: int, force: bool) -> tuple[bytes, bytes]:
     sys.path.insert(0, str(locate_pymcuprog()))
     from pymcuprog.backend import Backend, SessionConfig
@@ -86,10 +108,13 @@ def provision_over_updi(port: str, baud: int, force: bool) -> tuple[bytes, bytes
             raise RuntimeError("node is already provisioned; use --force to replace its factory key")
         key = secrets.token_bytes(KEY_SIZE)
         record = encode_factory_record(key)
-        backend.write_memory(bytearray(record), MemoryNames.USER_ROW, 0)
+        write_user_row(backend, record)
         verified = bytes(backend.read_memory(MemoryNames.USER_ROW, 0, FACTORY_SIZE)[0].data)
         if verified != record or decode_factory_record(verified) != key:
-            raise RuntimeError("USERROW verification failed")
+            raise RuntimeError(
+                "USERROW verification failed "
+                f"(expected {record.hex().upper()}, read {verified.hex().upper()})"
+            )
         return uid, key
     finally:
         backend.end_session()
@@ -99,7 +124,10 @@ def provision_over_updi(port: str, baud: int, force: bool) -> tuple[bytes, bytes
 def export_credentials(uid: bytes, key: bytes, output: Path, no_qr: bool) -> str:
     uid_hex = uid.hex().upper()
     key_hex = key.hex().upper()
-    uri = f"radiosensors://pair?v=1&uid={uid_hex}&key={key_hex}"
+    uri = (
+        "web+opensmartkit:pair?v=1&family=sense"
+        f"&uid={uid_hex}&key={key_hex}"
+    )
     output.mkdir(parents=True, exist_ok=True)
     credential_path = output / f"{uid_hex}.txt"
     credential_path.write_text(

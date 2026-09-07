@@ -3,9 +3,9 @@
 #include <Arduino.h>
 #include <esp_random.h>
 #include <mbedtls/md.h>
-#include <mbedtls/pkcs5.h>
 
 #include "ConfigurationStore.h"
+#include "PasswordHashService.h"
 
 namespace gateway::authentication {
 namespace {
@@ -233,12 +233,11 @@ LoginStatus login(
     if (matched != nullptr) memcpy(expected, matched->passwordHash, sizeof(expected));
     const uint32_t iterations = matched == nullptr ? 100000 : matched->pbkdf2Iterations;
     uint8_t computed[radiosensors::gateway_storage::kPasswordHashSize]{};
-    const int hashStatus = mbedtls_pkcs5_pbkdf2_hmac_ext(
-        MBEDTLS_MD_SHA256,
-        reinterpret_cast<const unsigned char*>(password), passwordLength,
+    const bool hashStatus = password_hash::computePbkdf2Sha256(
+        password, passwordLength,
         salt, radiosensors::gateway_storage::kPasswordSaltSize,
-        iterations, sizeof(computed), computed);
-    const bool valid = hashStatus == 0 && matched != nullptr &&
+        iterations, computed, sizeof(computed));
+    const bool valid = hashStatus && matched != nullptr &&
         constantTimeEqual(computed, expected, sizeof(computed));
     memset(computed, 0, sizeof(computed));
     memset(expected, 0, sizeof(expected));

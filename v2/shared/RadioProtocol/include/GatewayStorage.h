@@ -6,7 +6,7 @@
 
 namespace radiosensors::gateway_storage {
 
-constexpr uint16_t kStorageVersion = 1;
+constexpr uint16_t kStorageVersion = 2;
 constexpr size_t kSnapshotHeaderSize = 12;
 constexpr size_t kSnapshotCrcSize = 4;
 
@@ -87,12 +87,9 @@ struct AuthenticationData {
 
 struct InstallationSecrets {
     bool installationKeyPresent;
-    bool commissioningKeyPresent;
     bool deviceSecretPresent;
     uint8_t operationalNetworkId;
-    uint8_t commissioningNetworkId;
     uint8_t installationKey[kRadioKeySize];
-    uint8_t commissioningKey[kRadioKeySize];
     uint8_t deviceSecret[kDeviceSecretSize];
 };
 

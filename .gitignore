@@ -1,0 +1,3 @@
+.qr-samples/
+__pycache__/
+*.py[cod]

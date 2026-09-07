@@ -4,6 +4,8 @@
 #include <RegistryPersistence.h>
 
 #include <atomic>
+#include <memory>
+#include <new>
 #include <string.h>
 
 namespace gateway::registry_store {
@@ -161,8 +163,13 @@ RegistryCommitStatus reserveAndSave(
     radiosensors::registry::ReserveResult& result) {
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
-    radiosensors::registry::NodeRegistry candidate = nodes;
-    result = candidate.reserve(request);
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
+        new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
+    if (!candidate) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    result = candidate->reserve(request);
     const bool changed =
         result.status == radiosensors::registry::ReserveStatus::Created ||
         result.status == radiosensors::registry::ReserveStatus::ExistingPendingUpdated;
@@ -170,11 +177,11 @@ RegistryCommitStatus reserveAndSave(
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(candidate)) {
+    if (!store.save(*candidate)) {
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::StorageError;
     }
-    nodes = candidate;
+    nodes = *candidate;
     publishActiveNodes();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
@@ -187,18 +194,100 @@ RegistryCommitStatus confirmAndSave(
     radiosensors::registry::ConfirmStatus& result) {
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
-    radiosensors::registry::NodeRegistry candidate = nodes;
-    result = candidate.confirm(deviceUid, nodeId, nonce);
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
+        new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
+    if (!candidate) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    result = candidate->confirm(deviceUid, nodeId, nonce);
     if (result != radiosensors::registry::ConfirmStatus::Confirmed) {
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(candidate)) {
+    if (!store.save(*candidate)) {
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::StorageError;
     }
-    nodes = candidate;
+    nodes = *candidate;
     publishActiveNodes();
+    xSemaphoreGive(mutex);
+    return RegistryCommitStatus::Ok;
+}
+
+RegistryCommitStatus renameAndSave(
+    const uint8_t nodeId, const char* const displayName, const size_t length,
+    radiosensors::registry::RenameStatus& result) {
+    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
+        new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
+    if (!candidate) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    result = candidate->rename(nodeId, displayName, length);
+    if (result != radiosensors::registry::RenameStatus::Renamed) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::NoChange;
+    }
+    if (!store.save(*candidate)) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    nodes = *candidate;
+    xSemaphoreGive(mutex);
+    return RegistryCommitStatus::Ok;
+}
+
+RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
+    removed = false;
+    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
+        new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
+    if (!candidate) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    removed = candidate->remove(nodeId);
+    if (!removed) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::NoChange;
+    }
+    if (!store.save(*candidate)) {
+        removed = false;
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    nodes = *candidate;
+    publishActiveNodes();
+    xSemaphoreGive(mutex);
+    return RegistryCommitStatus::Ok;
+}
+
+RegistryCommitStatus clearAndSave(size_t& removed) {
+    removed = 0;
+    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    const size_t previous = nodes.size();
+    if (previous == 0) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::NoChange;
+    }
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> empty(
+        new (std::nothrow) radiosensors::registry::NodeRegistry());
+    if (!empty) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    if (!store.save(*empty)) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    nodes = *empty;
+    publishActiveNodes();
+    removed = previous;
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }

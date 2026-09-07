@@ -1,5 +1,7 @@
 import importlib.util
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -32,13 +34,54 @@ class ProvisionNodeTests(unittest.TestCase):
             output = Path(directory)
             uri = provision_node.export_credentials(uid, key, output, no_qr=False)
             self.assertEqual(
-                "radiosensors://pair?v=1&uid=102132435465768798A9&"
+                "web+opensmartkit:pair?v=1&family=sense&uid=102132435465768798A9&"
                 "key=00112233445566778899AABBCCDDEEFF",
                 uri,
             )
             self.assertIn(uri, (output / "102132435465768798A9.txt").read_text())
             self.assertIn("factory_key", (output / "manifest.csv").read_text())
             self.assertTrue((output / "102132435465768798A9.svg").read_text().startswith("<?xml"))
+
+    def test_user_row_uses_atomic_erase_and_write(self):
+        calls = []
+
+        class Nvm:
+            def write_nvm(self, address, data, use_word_access, nvmcommand):
+                calls.append((address, bytes(data), use_word_access, nvmcommand))
+
+        backend = types.SimpleNamespace(
+            programmer=types.SimpleNamespace(
+                device_model=types.SimpleNamespace(
+                    dut=types.SimpleNamespace(userrow_address=0x1300),
+                    avr=types.SimpleNamespace(nvm=Nvm()),
+                )
+            )
+        )
+        constants = types.ModuleType("pymcuprog.serialupdi.constants")
+        constants.UPDI_V0_NVMCTRL_CTRLA_ERASE_WRITE_PAGE = 0x03
+        serialupdi = types.ModuleType("pymcuprog.serialupdi")
+        serialupdi.constants = constants
+        pymcuprog = types.ModuleType("pymcuprog")
+        pymcuprog.serialupdi = serialupdi
+
+        modules = {
+            "pymcuprog": pymcuprog,
+            "pymcuprog.serialupdi": serialupdi,
+            "pymcuprog.serialupdi.constants": constants,
+        }
+        previous = {name: sys.modules.get(name) for name in modules}
+        try:
+            sys.modules.update(modules)
+            record = bytes(range(32))
+            provision_node.write_user_row(backend, record)
+        finally:
+            for name, old_module in previous.items():
+                if old_module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = old_module
+
+        self.assertEqual([(0x1300, record, False, 0x03)], calls)
 
 
 if __name__ == "__main__":

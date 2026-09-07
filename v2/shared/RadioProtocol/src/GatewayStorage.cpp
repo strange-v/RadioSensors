@@ -209,13 +209,7 @@ CodecStatus validateSecrets(const InstallationSecrets& value) {
         return CodecStatus::InvalidValue;
     if (value.installationKeyPresent && value.operationalNetworkId == 0)
         return CodecStatus::InvalidValue;
-    if (!value.commissioningKeyPresent &&
-        (value.commissioningNetworkId != 0 || !allZero(value.commissioningKey, kRadioKeySize)))
-        return CodecStatus::InvalidValue;
     if (!value.deviceSecretPresent && !allZero(value.deviceSecret, kDeviceSecretSize))
-        return CodecStatus::InvalidValue;
-    if (value.installationKeyPresent && value.commissioningKeyPresent &&
-        value.operationalNetworkId == value.commissioningNetworkId)
         return CodecStatus::InvalidValue;
     return CodecStatus::Ok;
 }
@@ -286,12 +280,9 @@ bool authenticationEqual(const AuthenticationData& left, const AuthenticationDat
 }
 bool secretsEqual(const InstallationSecrets& left, const InstallationSecrets& right) {
     return left.installationKeyPresent == right.installationKeyPresent &&
-        left.commissioningKeyPresent == right.commissioningKeyPresent &&
         left.deviceSecretPresent == right.deviceSecretPresent &&
         left.operationalNetworkId == right.operationalNetworkId &&
-        left.commissioningNetworkId == right.commissioningNetworkId &&
         bytesEqual(left.installationKey, right.installationKey, kRadioKeySize) &&
-        bytesEqual(left.commissioningKey, right.commissioningKey, kRadioKeySize) &&
         bytesEqual(left.deviceSecret, right.deviceSecret, kDeviceSecretSize);
 }
 
@@ -440,13 +431,10 @@ CodecStatus encodeSecrets(const InstallationSecrets& value, const uint32_t gener
     writeHeader(output, kSecretsMagic, generation, kSecretsSnapshotSize);
     uint16_t flags = 0;
     if (value.installationKeyPresent) flags |= 1U;
-    if (value.commissioningKeyPresent) flags |= 2U;
     if (value.deviceSecretPresent) flags |= 4U;
     protocol::writeUint16Le(output + 12, flags);
     output[14] = value.operationalNetworkId;
-    output[15] = value.commissioningNetworkId;
     memcpy(output + 16, value.installationKey, kRadioKeySize);
-    memcpy(output + 32, value.commissioningKey, kRadioKeySize);
     memcpy(output + 48, value.deviceSecret, kDeviceSecretSize);
     protocol::writeUint32Le(output + 80, crc32(output, 80));
     return CodecStatus::Ok;
@@ -458,15 +446,14 @@ CodecStatus decodeSecrets(const uint8_t* data, const size_t size,
                                         kSecretsSnapshotSize, generation);
     if (status != CodecStatus::Ok) return status;
     const uint16_t flags = protocol::readUint16Le(data + 12);
-    if ((flags & ~7U) != 0) return CodecStatus::InvalidFlags;
+    if ((flags & ~5U) != 0) return CodecStatus::InvalidFlags;
+    if (data[15] != 0 || !allZero(data + 32, 16))
+        return CodecStatus::InvalidReservedData;
     InstallationSecrets candidate{};
     candidate.installationKeyPresent = (flags & 1U) != 0;
-    candidate.commissioningKeyPresent = (flags & 2U) != 0;
     candidate.deviceSecretPresent = (flags & 4U) != 0;
     candidate.operationalNetworkId = data[14];
-    candidate.commissioningNetworkId = data[15];
     memcpy(candidate.installationKey, data + 16, kRadioKeySize);
-    memcpy(candidate.commissioningKey, data + 32, kRadioKeySize);
     memcpy(candidate.deviceSecret, data + 48, kDeviceSecretSize);
     status = validateSecrets(candidate);
     if (status == CodecStatus::Ok) value = candidate;

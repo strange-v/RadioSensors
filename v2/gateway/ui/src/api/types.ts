@@ -11,17 +11,22 @@ export interface PairingStatus { active: boolean; remaining_seconds: number; ind
 export interface GatewayInfo { firmware_version: string; api_version: number; display_name: string; ui: { state: string; version: string; required_api_version: number }; board: string; hostname: string }
 export interface GatewayNode {
   node_id: number
+  // Immutable uppercase factory UID. With gateway_id this is the stable Home
+  // Assistant identity; the radio node_id is reusable and is not.
+  device_uid: string
+  display_name: string
   profile_id: number
   firmware: string
   state: 'pending' | 'active' | 'disabled' | string
-  name?: string
   last_seen_at_ms?: number
   rssi?: number
   has_telemetry?: boolean
 }
+export interface RadioNetworkReset { operational_network_id: number; removed_nodes: number; restarting: boolean }
+export interface RenamedNode { node_id: number; display_name: string; registry_generation: number }
 export interface NodeRegistry { registry_generation: number; nodes: GatewayNode[] }
 export interface Health {
-  status: string; firmware: string; api_version: number; board: string; hostname: string; reset_reason: string; uptime_ms: number; free_heap: number;
+  status: string; firmware: string; api_version: number; board: string; hostname: string; gateway_id: string; boot_id: string; reset_reason: string; uptime_ms: number; free_heap: number;
   registry: { records: number; generation: number }; setup: { required: boolean; active: boolean; remaining_seconds: number };
   pairing: PairingStatus;
   storage: { ready: boolean; settings_generation: number; auth_generation: number; secrets_generation: number };

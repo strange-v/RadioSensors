@@ -29,7 +29,7 @@ onMounted(() => { refresh(); timer = window.setInterval(refresh, 1000) })
 onBeforeUnmount(() => window.clearInterval(timer))
 </script>
 <template><div class="page narrow">
-  <div v-if="completed" class="success-panel"><span class="state-icon success"><Icon name="check" /></span><h1>{{ $t('setup.successTitle') }}</h1><p>{{ $t('setup.success') }}</p><div class="success-actions"><RouterLink class="button primary" to="/home-assistant">{{ $t('setup.continueHa') }}</RouterLink><RouterLink class="button secondary" to="/status">{{ $t('setup.skipHa') }}</RouterLink></div></div>
+  <div v-if="completed" class="success-panel"><span class="state-icon success"><Icon name="check" /></span><h1>{{ $t('setup.successTitle') }}</h1><p>{{ $t('setup.success') }}</p><div class="success-actions"><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></div></div>
   <template v-else><div v-if="!status || status.setup_required" class="page-title"><p class="eyebrow">{{ $t('setup.eyebrow') }}</p><h1>{{ $t('setup.title') }}</h1><p>{{ $t('setup.intro') }}</p></div>
     <div v-if="loadError" class="notice error"><strong>{{ $t('error.title') }}</strong><span>{{ $t(`error.${loadError}`) }}</span></div>
     <section v-else-if="status && !status.setup_required" class="empty-state panel"><span class="state-icon info" aria-hidden="true"><Icon name="check" /></span><h1>{{ $t('setup.alreadyConfigured') }}</h1><p>{{ $t('setup.alreadyConfiguredHint') }}</p><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></section>

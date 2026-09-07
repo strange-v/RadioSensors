@@ -42,6 +42,13 @@
 .button.secondary { border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
 .button.secondary:hover:not(:disabled) { background: var(--surface-hover); }
 .button.compact { min-height: 32px; padding-inline: var(--space-3); font-size: var(--text-sm); }
+.button.danger { border-color: var(--danger); color: #fff; background: var(--danger); }
+.button.danger:hover:not(:disabled) { filter: brightness(1.1); }
+/* The way into a destructive action is quiet; only the confirmation is loud. */
+.button.danger-text { color: var(--danger); background: transparent; }
+.button.danger-text:hover:not(:disabled) { background: var(--danger-soft); }
+.settings-card .button.danger-text { justify-self: start; padding-inline: 0; }
+.settings-card .button.danger-text:hover:not(:disabled) { background: transparent; text-decoration: underline; }
 .button.full { width: 100%; }
 .text-action {
   border: 0;
@@ -202,6 +209,13 @@
   transition: background var(--transition);
 }
 .node-row:hover { background: var(--surface-hover); }
+/* Rows on the nodes page are buttons that open the node dialog. */
+/* No width:100% -- it resolves against the containing block and ignores the
+   negative inline margins, which made every row 2x padding narrower than the
+   header and pulled the shared fr tracks out of line. As a grid item it
+   stretches to the right width on its own. */
+button.node-row { border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+button.node-row:hover { background: var(--surface-hover); }
 .node-row + .node-row { box-shadow: 0 -1px 0 var(--line); }
 .node-symbol, .integration-symbol { display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
 .node-symbol { width: 30px; height: 30px; border-radius: var(--radius-md); }
@@ -209,6 +223,63 @@
 .node-name strong, .node-seen strong { overflow: hidden; font-size: var(--text-md); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .node-name small, .node-seen small { color: var(--muted); font-size: var(--text-xs); }
 .node-seen { text-align: right; font-variant-numeric: tabular-nums; }
+.node-seen-signal { display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+
+/* The nodes page shows the full record; the overview keeps the compact row.
+   The list owns the columns and the header and rows are subgrids of it, so a
+   track cannot resolve differently in the header than in the rows -- including
+   `auto` tracks, which used to be unusable here for exactly that reason. Every
+   responsive change belongs on the list, not on the rows. */
+.node-list.detailed {
+  --node-columns: 32px minmax(140px, 1.4fr) minmax(70px, .45fr) minmax(105px, .6fr) minmax(80px, .5fr) minmax(96px, .5fr);
+  grid-template-columns: var(--node-columns);
+  column-gap: var(--space-3);
+}
+.node-list.detailed .node-row, .node-list.detailed .node-list-head { grid-column: 1 / -1; grid-template-columns: subgrid; }
+/* Without subgrid the declaration above is dropped and the rows would collapse
+   to one column, so fall back to the tracks the list already defines. They are
+   sized per row again, which is what used to drift -- but only on a browser
+   older than 2023, and it still reads as a list. */
+@supports not (grid-template-columns: subgrid) {
+  .node-list.detailed .node-row, .node-list.detailed .node-list-head { grid-template-columns: var(--node-columns); }
+}
+.node-list.detailed .node-seen { text-align: left; }
+.node-list.detailed .inline-status, .node-list-head > :last-child { justify-self: end; }
+
+.node-list-head {
+  display: grid;
+  align-items: center;
+  gap: var(--space-3);
+  margin-inline: calc(var(--space-2) * -1);
+  padding: 0 var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.node-list-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.node-list-head button:hover { color: var(--ink-soft); }
+.node-list-head button.active { color: var(--primary); }
+.node-list.detailed .node-row + .node-row { box-shadow: 0 -1px 0 var(--line); }
+
+.node-firmware { color: var(--ink-soft); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.node-signal { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-soft); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.node-signal small { color: var(--muted); font-size: var(--text-xs); }
 
 .panel-message { padding: var(--space-5) var(--space-2) var(--space-2); color: var(--muted); text-align: center; }
 .panel-message strong { color: var(--ink); font-size: var(--text-md); }
@@ -271,6 +342,7 @@
 .settings-card.editable p { margin-bottom: 2px; }
 .settings-card label { display: grid; gap: var(--space-2); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 500; }
 .settings-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--radius-md); color: var(--primary); background: var(--primary-soft); font-size: var(--text-lg); }
+.settings-icon.danger { color: var(--danger); background: var(--danger-soft); }
 .pref-row { display: grid; gap: var(--space-2); justify-items: start; }
 .pref-row > span { color: var(--ink-soft); font-size: var(--text-sm); font-weight: 500; }
 .toggle-row { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
@@ -299,6 +371,12 @@
 label small { color: var(--muted); font-weight: 400; }
 label small.invalid { color: var(--danger); }
 .pairing-instructions { color: var(--ink-soft); font-size: var(--text-md); }
+/* The scan outcome sits below in a .notice, so this row holds only the button
+   (and the file input it stands in for, which is off-screen). */
+.pairing-scan { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+/* Off-screen rather than display:none: a hidden file input cannot be opened
+   by click() in some browsers, and it stays reachable by keyboard. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 
 /* --- Workflows (setup, pairing) ------------------------------------------ */
@@ -359,6 +437,12 @@ label small.invalid { color: var(--danger); }
   .summary-strip strong { font-size: var(--text-xl); }
   .node-row { grid-template-columns: 32px minmax(100px, 1fr) auto; }
   .node-seen { display: none; }
+  /* Six sortable columns do not fit a phone; the list keeps its default order
+     and drops to name plus signal. */
+  /* Bars alone carry the reading on a phone; the exact dBm figure would wrap.
+     SignalBars keeps it in its aria-label. */
+  .node-list-head, .node-firmware, .node-rssi { display: none; }
+  .node-list.detailed { --node-columns: 32px minmax(90px, 1fr) auto auto; }
   .attention-banner, .notice { align-items: flex-start; flex-direction: column; }
   .offline-banner { padding-inline: var(--space-3); }
   .success-actions { display: grid; }

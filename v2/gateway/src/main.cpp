@@ -13,6 +13,7 @@
 #include "GatewayStatus.h"
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
+#include "PasswordHashService.h"
 #include "RadioService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
@@ -56,6 +57,9 @@ void setup() {
     Serial.printf("Hostname: %s\n", gateway::identity::hostname());
     Serial.printf("Gateway ID: %s\n", gateway::identity::gatewayId());
     Serial.printf("Boot ID: %s\n", gateway::identity::bootId());
+    if (!gateway::password_hash::begin()) {
+        Serial.println("Password hash worker initialization failed");
+    }
     gateway::authentication::begin();
     gateway::registry_store::begin();
     gateway::telemetry_store::begin();

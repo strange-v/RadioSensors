@@ -72,6 +72,40 @@ bool find(const uint8_t nodeId, Record& record) {
     return found;
 }
 
+void clear() {
+    if (mutex == nullptr || xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return;
+    for (uint8_t nodeId = kFirstNodeId; nodeId <= kLastNodeId; ++nodeId) {
+        present[nodeId] = false;
+        records[nodeId] = Record{};
+    }
+    nodesSeen = 0;
+    lastNodeId = 0;
+    xSemaphoreGive(mutex);
+}
+
+void erase(const uint8_t nodeId) {
+    if (mutex == nullptr || nodeId < kFirstNodeId || nodeId > kLastNodeId ||
+        xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return;
+    if (present[nodeId]) {
+        present[nodeId] = false;
+        records[nodeId] = Record{};
+        if (nodesSeen != 0) --nodesSeen;
+        if (lastNodeId == nodeId) {
+            lastNodeId = 0;
+            uint32_t newestSequence = 0;
+            for (uint8_t candidate = kFirstNodeId;
+                 candidate <= kLastNodeId; ++candidate) {
+                if (present[candidate] &&
+                    records[candidate].sequence > newestSequence) {
+                    newestSequence = records[candidate].sequence;
+                    lastNodeId = candidate;
+                }
+            }
+        }
+    }
+    xSemaphoreGive(mutex);
+}
+
 Snapshot snapshot() {
     Snapshot result{};
     if (mutex == nullptr || xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) {

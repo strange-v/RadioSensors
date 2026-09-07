@@ -39,7 +39,7 @@ std::atomic<uint8_t> currentNetworkId{0};
 uint8_t operationalNetworkId = 0;
 uint8_t commissioningNetworkId = 0;
 char operationalKey[radiosensors::gateway_storage::kRadioKeySize + 1]{};
-uint8_t commissioningKey[radiosensors::gateway_storage::kRadioKeySize]{};
+uint8_t pairingKey[radiosensors::gateway_storage::kRadioKeySize]{};
 bool operationalEnabled = false;
 bool commissioningEnabled = false;
 TaskHandle_t radioTaskHandle = nullptr;
@@ -58,7 +58,7 @@ struct RadioCommand {
     Profile profile;
     uint16_t targetId;
     uint8_t data[kMaxPayloadSize];
-    uint8_t commissioningKey[radiosensors::gateway_storage::kRadioKeySize];
+    uint8_t pairingKey[radiosensors::gateway_storage::kRadioKeySize];
     uint8_t size;
     bool requestAck;
     bool switchAfterSend;
@@ -217,18 +217,17 @@ void drainReceivedFrame() {
 
 void processCommand(const RadioCommand& command) {
     if (command.kind == CommandKind::BeginCommissioning) {
-        memcpy(commissioningKey, command.commissioningKey,
-               sizeof(commissioningKey));
+        memcpy(pairingKey, command.pairingKey, sizeof(pairingKey));
         commissioningEnabled = true;
         rfm69.setNetwork(commissioningNetworkId);
-        rfm69.encrypt(reinterpret_cast<const char*>(commissioningKey));
+        rfm69.encrypt(reinterpret_cast<const char*>(pairingKey));
         currentProfile.store(Profile::Commissioning);
         currentNetworkId.store(commissioningNetworkId);
     } else if (command.kind == CommandKind::SetProfile) {
         if (command.profile == Profile::Commissioning) {
             if (commissioningEnabled) {
                 rfm69.setNetwork(commissioningNetworkId);
-                rfm69.encrypt(reinterpret_cast<const char*>(commissioningKey));
+                rfm69.encrypt(reinterpret_cast<const char*>(pairingKey));
                 currentProfile.store(Profile::Commissioning);
                 currentNetworkId.store(commissioningNetworkId);
             }
@@ -237,7 +236,7 @@ void processCommand(const RadioCommand& command) {
             rfm69.encrypt(operationalKey);
             currentProfile.store(Profile::Operational);
             currentNetworkId.store(operationalNetworkId);
-            memset(commissioningKey, 0, sizeof(commissioningKey));
+            memset(pairingKey, 0, sizeof(pairingKey));
             commissioningEnabled = false;
         }
     } else {
@@ -249,7 +248,7 @@ void processCommand(const RadioCommand& command) {
         if (command.switchAfterSend) {
             if (command.profile == Profile::Commissioning && commissioningEnabled) {
                 rfm69.setNetwork(commissioningNetworkId);
-                rfm69.encrypt(reinterpret_cast<const char*>(commissioningKey));
+                rfm69.encrypt(reinterpret_cast<const char*>(pairingKey));
                 currentProfile.store(Profile::Commissioning);
                 currentNetworkId.store(commissioningNetworkId);
             } else if (command.profile == Profile::Operational) {
@@ -257,7 +256,7 @@ void processCommand(const RadioCommand& command) {
                 rfm69.encrypt(operationalKey);
                 currentProfile.store(Profile::Operational);
                 currentNetworkId.store(operationalNetworkId);
-                memset(commissioningKey, 0, sizeof(commissioningKey));
+                memset(pairingKey, 0, sizeof(pairingKey));
                 commissioningEnabled = false;
             }
         }
@@ -487,7 +486,7 @@ bool beginCommissioning(
     if (commandQueue == nullptr || key == nullptr) return false;
     RadioCommand command{};
     command.kind = CommandKind::BeginCommissioning;
-    memcpy(command.commissioningKey, key, sizeof(command.commissioningKey));
+    memcpy(command.pairingKey, key, sizeof(command.pairingKey));
     const bool result = queueAndWaitForCompletion(command);
     memset(&command, 0, sizeof(command));
     return result;

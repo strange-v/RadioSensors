@@ -4,9 +4,10 @@ import { useI18n } from 'vue-i18n'
 import { api, errorCode } from '../api/client'
 import type { GatewayInfo, GatewayNode, Health } from '../api/types'
 import Icon from '../components/Icon.vue'
-import { lastSeen, signal } from '../utils/time'
+import SignalBars from '../components/SignalBars.vue'
+import { dateTime, lastSeen, megahertz, nodeName, signal, timeOfDay } from '../utils/format'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const health = ref<Health | null>(null)
 const info = ref<GatewayInfo | null>(null)
 const nodes = ref<GatewayNode[]>([])
@@ -16,17 +17,34 @@ const refreshing = ref(false)
 const updatedAt = ref<Date | null>(null)
 let timer: number | undefined
 
-const healthy = computed(() => health.value?.status === 'ok' && health.value?.ethernet.has_ip && health.value?.radio.present && health.value?.storage.ready && health.value?.time.state === 'synced')
+// TimeService reports waiting_for_network | disabled | synchronizing |
+// synchronized. Turning NTP off in settings is a deliberate choice, so it does
+// not make the gateway unhealthy; the two transient states do, because until
+// the clock is set telemetry carries a zero timestamp.
+const timeHealthy = computed(() => health.value?.time.state === 'synchronized' || health.value?.time.state === 'disabled')
+const healthy = computed(() => health.value?.status === 'ok' && health.value?.ethernet.has_ip && health.value?.radio.present && health.value?.storage.ready && timeHealthy.value)
 const nodeProblem = computed(() => nodes.value.find((node) => node.state !== 'active'))
 const needsAttention = computed(() => !healthy.value || Boolean(nodeProblem.value))
 const activeNodes = computed(() => nodesAvailable.value ? nodes.value.filter((node) => node.state === 'active').length : health.value?.telemetry.nodes_seen ?? 0)
 
+// The widget answers "what needs attention", so it leads with nodes that are
+// not active and then with the freshest contacts, rather than showing whichever
+// four the registry happened to return first.
+const overviewNodes = computed(() => [...nodes.value]
+  .sort((left, right) => {
+    const problem = Number(right.state !== 'active') - Number(left.state !== 'active')
+    return problem !== 0 ? problem : (right.last_seen_at_ms ?? 0) - (left.last_seen_at_ms ?? 0)
+  })
+  .slice(0, 4))
+
 const fmt = (value: unknown) => value === undefined || value === null || value === '' ? '—' : String(value)
-const dateTime = (ms: number | undefined) => ms ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(ms) : '—'
 
 async function load() {
+  // A request may now take far longer than the polling interval, so skip a
+  // tick rather than stacking calls on a gateway that is already struggling.
+  if (refreshing.value) return
   refreshing.value = true
-  const results = await Promise.allSettled([api.health(), api.info(), api.nodes()])
+  const results = await Promise.allSettled([api.poll.health(), api.poll.info(), api.poll.nodes()])
   if (results[0].status === 'fulfilled') {
     health.value = results[0].value
     failure.value = ''
@@ -54,7 +72,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
     <div class="page-heading">
       <div><h1>{{ $t('overview.title') }}</h1><p>{{ $t('overview.subtitle') }}</p></div>
       <div class="heading-actions">
-        <button class="button secondary compact" :disabled="refreshing" type="button" @click="load"><Icon name="refresh" /> {{ $t('common.refresh') }}</button>
+        <button class="button secondary compact" type="button" @click="load"><Icon name="refresh" /> {{ $t('common.refresh') }}</button>
         <RouterLink class="button primary" to="/nodes?pair=1"><Icon name="plus" /> {{ $t('nodes.add') }}</RouterLink>
       </div>
     </div>
@@ -67,7 +85,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
     <template v-else-if="health">
       <div v-if="health.api_version !== 1" class="notice error">{{ $t('status.apiMismatch', { version: health.api_version }) }}</div>
       <div v-if="needsAttention" class="attention-banner">
-        <div><span class="attention-icon" aria-hidden="true"><Icon name="alert" /></span><span><strong>{{ $t('overview.attentionTitle') }}</strong><small>{{ nodeProblem ? $t('overview.nodeAttention', { name: nodeProblem.name || `ID ${nodeProblem.node_id}` }) : $t('overview.gatewayAttention') }}</small></span></div>
+        <div><span class="attention-icon" aria-hidden="true"><Icon name="alert" /></span><span><strong>{{ $t('overview.attentionTitle') }}</strong><small>{{ nodeProblem ? $t('overview.nodeAttention', { name: nodeName(t, nodeProblem) }) : $t('overview.gatewayAttention') }}</small></span></div>
         <RouterLink class="text-action" :to="nodeProblem ? '/nodes' : '/settings'">{{ $t('common.view') }} →</RouterLink>
       </div>
 
@@ -81,10 +99,14 @@ onBeforeUnmount(() => window.clearInterval(timer))
           </div>
 
           <div v-if="nodesAvailable && nodes.length" class="node-list compact-list">
-            <RouterLink v-for="node in nodes.slice(0, 4)" :key="node.node_id" class="node-row" to="/nodes">
+            <RouterLink v-for="node in overviewNodes" :key="node.node_id" class="node-row" to="/nodes">
               <span class="node-symbol" aria-hidden="true"><Icon name="access-point" /></span>
-              <span class="node-name"><strong>{{ node.name || $t('nodes.unnamed', { id: node.node_id }) }}</strong><small>{{ $t('nodes.profile', { id: node.profile_id }) }}</small></span>
-              <span class="node-seen"><strong>{{ lastSeen(t, node.last_seen_at_ms) }}</strong><small>{{ signal(node.rssi) }}</small></span>
+              <span class="node-name"><strong>{{ nodeName(t, node) }}</strong><small>{{ $t('nodes.profile', { id: node.profile_id }) }}</small></span>
+              <span class="node-seen">
+                <strong>{{ lastSeen(t, node.last_seen_at_ms) }}</strong>
+                <small v-if="node.has_telemetry === false">{{ $t('nodes.noTelemetry') }}</small>
+                <small v-else class="node-seen-signal"><SignalBars :rssi="node.rssi" />{{ signal(node.rssi) }}</small>
+              </span>
               <span class="inline-status" :class="{ warning: node.state !== 'active' }">{{ $t(`nodes.state.${node.state}`) }}</span>
             </RouterLink>
           </div>
@@ -96,8 +118,8 @@ onBeforeUnmount(() => window.clearInterval(timer))
             <header class="panel-heading"><div><h2>{{ $t('overview.gateway') }}</h2><p>{{ $t('overview.gatewayHint') }}</p></div><span class="inline-status" :class="{ warning: !healthy }">{{ healthy ? $t('common.working') : $t('common.attention') }}</span></header>
             <dl class="health-list">
               <div><dt><span aria-hidden="true"><Icon name="lan" /></span>{{ $t('status.network') }}</dt><dd><strong>{{ health.ethernet.has_ip ? $t('common.connected') : $t('common.disconnected') }}</strong><small>{{ fmt(health.ethernet.ip) }}</small></dd></div>
-              <div><dt><span aria-hidden="true"><Icon name="access-point" /></span>{{ $t('status.radio') }}</dt><dd><strong>{{ health.radio.present ? `${(health.radio.frequency_hz / 1e6).toFixed(2)} MHz` : $t('common.unavailable') }}</strong><small>{{ $t('status.networkId') }} {{ health.radio.network_id }}</small></dd></div>
-              <div><dt><span aria-hidden="true"><Icon name="clock-outline" /></span>{{ $t('status.time') }}</dt><dd><strong>{{ health.time.state === 'synced' ? $t('common.synchronized') : health.time.state }}</strong><small>{{ dateTime(health.time.last_sync_ms) }}</small></dd></div>
+              <div><dt><span aria-hidden="true"><Icon name="access-point" /></span>{{ $t('status.radio') }}</dt><dd><strong>{{ health.radio.present ? megahertz(health.radio.frequency_hz) : $t('common.unavailable') }}</strong><small>{{ $t('status.networkId') }} {{ health.radio.network_id }}</small></dd></div>
+              <div><dt><span aria-hidden="true"><Icon name="clock-outline" /></span>{{ $t('status.time') }}</dt><dd><strong>{{ $t(`status.timeState.${health.time.state}`) }}</strong><small>{{ dateTime(locale, health.time.last_sync_ms) }}</small></dd></div>
               <div><dt><span aria-hidden="true"><Icon name="database" /></span>{{ $t('status.storage') }}</dt><dd><strong>{{ health.storage.ready ? $t('common.ready') : $t('common.attention') }}</strong><small>{{ $t('status.registryGeneration') }} {{ health.registry.generation }}</small></dd></div>
             </dl>
           </section>
@@ -110,7 +132,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
         </div>
       </div>
 
-      <p v-if="updatedAt" class="updated-note">{{ $t('status.updated', { time: updatedAt.toLocaleTimeString() }) }} · {{ $t('status.autoRefresh') }}</p>
+      <p v-if="updatedAt" class="updated-note">{{ $t('status.updated', { time: timeOfDay(locale, updatedAt) }) }} · {{ $t('status.autoRefresh') }}</p>
       <details class="diagnostics"><summary>{{ $t('common.details') }}</summary><pre>{{ JSON.stringify({ info, health }, null, 2) }}</pre></details>
     </template>
   </div>

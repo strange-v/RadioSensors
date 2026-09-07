@@ -1,5 +1,5 @@
-// Relative "last seen" formatting shared by the overview and the node list so
-// both read the same way. Takes the translator rather than importing i18n, to
+// Display formatting shared by the overview and the node list so both read the
+// same way. Takes the translator rather than importing i18n, to
 // stay usable from any component and testable without a live app instance.
 type Translate = (key: string, named?: Record<string, unknown>) => string
 
@@ -13,6 +13,51 @@ export function lastSeen(t: Translate, atMs: number | undefined): string {
   return t('time.days', { value: Math.floor(hours / 24) })
 }
 
+// RFM69 RSSI domain. The driver reports -RegRssiValue/2 from an 8-bit register
+// (SX1231 6.4: RssiValue is twice the absolute dBm), so a genuine reading is
+// -128..0 dBm and is negative for any real link -- 0 dBm at the antenna is a
+// milliwatt. The driver also parks the value at 0 when nothing has been
+// received yet (RFM69::receiveBegin), and the gateway's own lastRssi starts
+// there, so 0 means "no measurement", not "perfect signal".
+export const RSSI_MIN_DBM = -128
+export const RSSI_MAX_DBM = -1
+
+export function isMeasuredRssi(rssi: number | undefined): rssi is number {
+  return rssi !== undefined && Number.isFinite(rssi) && rssi >= RSSI_MIN_DBM && rssi <= RSSI_MAX_DBM
+}
+
 export function signal(rssi: number | undefined): string {
-  return rssi === undefined ? '—' : `${rssi} dBm`
+  return isMeasuredRssi(rssi) ? `${rssi} dBm` : '—'
+}
+
+export function megahertz(hz: number): string {
+  // 868.00 MHz claims a precision the radio does not have. Trailing zeros go,
+  // but genuine fractions must survive: 868.3 and 433.92 are real band centres.
+  return `${Number((hz / 1e6).toFixed(3))} MHz`
+}
+
+// A node may legitimately have no name: the API accepts an empty display_name
+// to clear one. Fall back to the radio id so a row is never blank.
+export function nodeName(t: Translate, node: { display_name?: string; node_id: number }): string {
+  return node.display_name || t('nodes.unnamed', { id: node.node_id })
+}
+
+// display_name limits are counted in UTF-8 bytes, not characters: Cyrillic
+// costs two bytes apiece, so 48 bytes is about 24 Ukrainian letters.
+export function byteLength(value: string): number {
+  return new TextEncoder().encode(value).length
+}
+
+// Dates follow the language chosen in the UI rather than the browser default.
+// Passing undefined as the locale, as this used to, resolves to whatever the
+// browser is set to -- commonly en-US, which prints 12-hour times with AM/PM no
+// matter how the operating system is configured. The hour cycle is pinned to
+// h23 because a device console reads better with unambiguous 24-hour times.
+export function dateTime(locale: string, atMs: number | undefined): string {
+  if (!atMs) return '—'
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23' }).format(atMs)
+}
+
+export function timeOfDay(locale: string, at: Date): string {
+  return new Intl.DateTimeFormat(locale, { timeStyle: 'medium', hourCycle: 'h23' }).format(at)
 }

@@ -39,7 +39,7 @@ record unless `--force` is supplied, generates the key with the operating
 system CSPRNG, writes and verifies USERROW, then exports a text credential, SVG
 QR, and `manifest.csv` under the git-ignored `provisioned_nodes/` directory.
 The QR payload is
-`radiosensors://pair?v=1&uid=<20 HEX>&key=<32 HEX>`. Treat every exported file
+`web+opensmartkit:pair?v=1&family=sense&uid=<20 HEX>&key=<32 HEX>`. Treat every exported file
 as a secret manufacturing artifact and back it up outside the repository.
 
 ## Implemented climate runtime
