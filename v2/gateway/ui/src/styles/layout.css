@@ -70,13 +70,13 @@ footer { padding: var(--space-5); color: var(--muted); font-size: var(--text-xs)
   background: var(--bg-shell);
 }
 .standalone-header .brand { padding-inline: 0; }
+.standalone-actions { display: flex; align-items: center; gap: var(--space-2); }
 
 .page { padding: var(--space-6); }
 .page.narrow, .page.auth { margin: auto; padding-top: var(--space-8); }
 .page.narrow { width: min(620px, 100%); }
 /* Two fields and a button do not need the width the setup form asks for. */
 .page.auth { width: min(400px, 100%); }
-.narrow-workflow { width: min(760px, 100%); margin: auto; padding-top: var(--space-8); }
 
 @media (max-width: 900px) {
   .app-layout { grid-template-columns: 64px minmax(0, 1fr); }
@@ -108,5 +108,5 @@ footer { padding: var(--space-5); color: var(--muted); font-size: var(--text-xs)
   .primary-nav a.router-link-active { border-left-color: transparent; border-bottom-color: var(--primary); }
   .topbar { min-height: 48px; padding: var(--space-2) var(--space-3); }
   .page { padding: var(--space-4) var(--space-3); }
-  .page.narrow, .page.auth, .narrow-workflow { padding-top: var(--space-5); }
+  .page.narrow, .page.auth { padding-top: var(--space-5); }
 }

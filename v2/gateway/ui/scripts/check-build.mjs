@@ -3,12 +3,12 @@ import { basename, join, resolve } from 'node:path'
 
 const output = resolve(import.meta.dirname, '../../data')
 // `app` is the bundle every page load pays for; `deferred` covers the chunks
-// only some sessions fetch (today: the pairing QR scanner and its jsQR
-// dependency, measured at ~47 KB gzip). They are budgeted separately so a
-// rarely used feature cannot quietly slow down the first paint -- jsQR alone
-// is over half the size of the whole application and would not fit under the
-// `app` limit at all.
-const limits = { app: 80 * 1024, deferred: 56 * 1024, css: 20 * 1024, total: 250 * 1024 }
+// only some sessions fetch (today: the pairing QR scanner with its jsQR
+// dependency at ~48 KB gzip, and the administration page at ~5 KB). They are
+// budgeted separately so a rarely used feature cannot quietly slow down the
+// first paint -- jsQR alone is over half the size of the whole application and
+// would not fit under the `app` limit at all.
+const limits = { app: 90 * 1024, deferred: 56 * 1024, css: 20 * 1024, total: 250 * 1024 }
 const files = readdirSync(output, { recursive: true }).map((name) => join(output, name)).filter((name) => statSync(name).isFile())
 let total = 0
 const compressed = { app: 0, deferred: 0, css: 0 }

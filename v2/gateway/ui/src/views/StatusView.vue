@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { api, errorCode } from '../api/client'
-import type { GatewayInfo, GatewayNode, Health } from '../api/types'
+import { api, errorCode, sessionUser } from '../api/client'
+import type { ApiToken, GatewayInfo, GatewayNode, Health } from '../api/types'
 import Icon from '../components/Icon.vue'
 import SignalBars from '../components/SignalBars.vue'
 import { dateTime, lastSeen, megahertz, nodeName, signal, timeOfDay } from '../utils/format'
+import { clientState, offersSetup } from '../utils/clients'
 
 const { t, locale } = useI18n()
 const health = ref<Health | null>(null)
@@ -15,6 +16,11 @@ const nodesAvailable = ref(false)
 const failure = ref('')
 const refreshing = ref(false)
 const updatedAt = ref<Date | null>(null)
+const uiVersion = __UI_VERSION__
+// Null while unread: only an admin may list keys, and a viewer's card has to
+// say less rather than guess. Keys change far too rarely to poll, so this is
+// read once.
+const tokens = ref<ApiToken[] | null>(null)
 let timer: number | undefined
 
 // TimeService reports waiting_for_network | disabled | synchronizing |
@@ -25,7 +31,7 @@ const timeHealthy = computed(() => health.value?.time.state === 'synchronized' |
 const healthy = computed(() => health.value?.status === 'ok' && health.value?.ethernet.has_ip && health.value?.radio.present && health.value?.storage.ready && timeHealthy.value)
 const nodeProblem = computed(() => nodes.value.find((node) => node.state !== 'active'))
 const needsAttention = computed(() => !healthy.value || Boolean(nodeProblem.value))
-const activeNodes = computed(() => nodesAvailable.value ? nodes.value.filter((node) => node.state === 'active').length : health.value?.telemetry.nodes_seen ?? 0)
+const seenNodes = computed(() => nodesAvailable.value ? nodes.value.filter((node) => node.has_telemetry === true).length : health.value?.telemetry.nodes_seen ?? 0)
 
 // The widget answers "what needs attention", so it leads with nodes that are
 // not active and then with the freshest contacts, rather than showing whichever
@@ -38,6 +44,9 @@ const overviewNodes = computed(() => [...nodes.value]
   .slice(0, 4))
 
 const fmt = (value: unknown) => value === undefined || value === null || value === '' ? '—' : String(value)
+
+const clients = computed(() => clientState(health.value, tokens.value))
+const stream = computed(() => health.value?.websocket)
 
 async function load() {
   // A request may now take far longer than the polling interval, so skip a
@@ -62,6 +71,11 @@ async function load() {
 
 onMounted(() => {
   load()
+  if (sessionUser.value?.role === 'admin') {
+    // A failure leaves the card in its 'unknown' state, which is accurate: the
+    // stream is still readable, the keys are not.
+    api.tokens().then((list) => { tokens.value = list.tokens }).catch(() => { tokens.value = null })
+  }
   timer = window.setInterval(load, 10000)
 })
 onBeforeUnmount(() => window.clearInterval(timer))
@@ -94,7 +108,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
           <header class="panel-heading"><div><h2>{{ $t('nodes.title') }}</h2><p>{{ $t('overview.nodesHint') }}</p></div><RouterLink class="text-action" to="/nodes">{{ $t('common.viewAll') }} →</RouterLink></header>
           <div class="summary-strip">
             <div><span>{{ $t('nodes.registered') }}</span><strong>{{ health.registry.records }}</strong></div>
-            <div><span>{{ $t('nodes.seen') }}</span><strong>{{ activeNodes }}</strong></div>
+            <div><span>{{ $t('nodes.seen') }}</span><strong>{{ seenNodes }}</strong></div>
             <div><span>{{ $t('nodes.updates') }}</span><strong>{{ health.telemetry.updates }}</strong></div>
           </div>
 
@@ -117,17 +131,42 @@ onBeforeUnmount(() => window.clearInterval(timer))
           <section class="panel">
             <header class="panel-heading"><div><h2>{{ $t('overview.gateway') }}</h2><p>{{ $t('overview.gatewayHint') }}</p></div><span class="inline-status" :class="{ warning: !healthy }">{{ healthy ? $t('common.working') : $t('common.attention') }}</span></header>
             <dl class="health-list">
-              <div><dt><span aria-hidden="true"><Icon name="lan" /></span>{{ $t('status.network') }}</dt><dd><strong>{{ health.ethernet.has_ip ? $t('common.connected') : $t('common.disconnected') }}</strong><small>{{ fmt(health.ethernet.ip) }}</small></dd></div>
+              <div><dt><span aria-hidden="true"><Icon name="lan" /></span>{{ $t('status.network') }}</dt><dd><strong>{{ health.ethernet.has_ip ? $t('common.connected') : $t('common.disconnected') }}</strong><small>{{ fmt(health.ethernet.ip) }}<template v-if="info?.hostname"> · {{ info.hostname }}</template></small></dd></div>
               <div><dt><span aria-hidden="true"><Icon name="access-point" /></span>{{ $t('status.radio') }}</dt><dd><strong>{{ health.radio.present ? megahertz(health.radio.frequency_hz) : $t('common.unavailable') }}</strong><small>{{ $t('status.networkId') }} {{ health.radio.network_id }}</small></dd></div>
               <div><dt><span aria-hidden="true"><Icon name="clock-outline" /></span>{{ $t('status.time') }}</dt><dd><strong>{{ $t(`status.timeState.${health.time.state}`) }}</strong><small>{{ dateTime(locale, health.time.last_sync_ms) }}</small></dd></div>
               <div><dt><span aria-hidden="true"><Icon name="database" /></span>{{ $t('status.storage') }}</dt><dd><strong>{{ health.storage.ready ? $t('common.ready') : $t('common.attention') }}</strong><small>{{ $t('status.registryGeneration') }} {{ health.registry.generation }}</small></dd></div>
             </dl>
           </section>
 
-          <section class="panel home-assistant-card">
-            <header class="panel-heading"><div><h2>Home Assistant</h2><p>{{ $t('ha.cardHint') }}</p></div><span class="inline-status warning">{{ $t('ha.notConfigured') }}</span></header>
-            <div class="integration-row"><span class="integration-symbol" aria-hidden="true"><Icon name="home-assistant" /></span><div><strong>{{ $t('ha.connectTitle') }}</strong><p>{{ $t('ha.connectHint') }}</p></div></div>
-            <RouterLink class="button primary full" to="/home-assistant">{{ $t('ha.configure') }}</RouterLink>
+          <!-- This card names nobody. The gateway cannot tell which client is
+               on the stream -- see utils/clients.ts -- so it reports whether
+               anything is reading it, and invites a key only when nothing
+               could connect at all, and only to someone who can make one. -->
+          <section class="panel clients-card">
+            <header class="panel-heading">
+              <div><h2>{{ $t('clients.title') }}</h2><p>{{ $t('clients.hint') }}</p></div>
+              <span class="inline-status" :class="{ warning: clients === 'unconfigured' }">{{ $t(`clients.state.${clients}`) }}</span>
+            </header>
+            <div class="integration-row">
+              <span class="integration-symbol" aria-hidden="true"><Icon name="key" /></span>
+              <div><strong>{{ $t(`clients.stateTitle.${clients}`) }}</strong><p>{{ $t(`clients.stateHint.${clients}`) }}</p></div>
+            </div>
+            <dl v-if="clients === 'connected' && stream" class="simple-details">
+              <div><dt>{{ $t('clients.streams') }}</dt><dd>{{ stream.clients }}</dd></div>
+              <div><dt>{{ $t('clients.messagesSent') }}</dt><dd>{{ stream.messages_sent }}</dd></div>
+              <div v-if="stream.messages_dropped > 0"><dt>{{ $t('clients.messagesDropped') }}</dt><dd>{{ stream.messages_dropped }}</dd></div>
+            </dl>
+            <RouterLink v-if="offersSetup(clients)" class="button primary full" to="/admin">{{ $t('clients.createKey') }}</RouterLink>
+          </section>
+          <!-- Read-only build facts. They lived in Settings, where nothing
+               about them could be set, and the Save button appeared to own
+               them. -->
+          <section class="panel">
+            <header class="panel-heading"><div><h2>{{ $t('overview.versions') }}</h2><p>{{ $t('overview.versionsHint') }}</p></div></header>
+            <dl class="simple-details">
+              <div><dt>{{ $t('status.firmware') }}</dt><dd>{{ info?.firmware_version || health.firmware || '—' }}</dd></div>
+              <div><dt>Web UI</dt><dd>{{ info?.ui.version || uiVersion }}</dd></div>
+            </dl>
           </section>
         </div>
       </div>

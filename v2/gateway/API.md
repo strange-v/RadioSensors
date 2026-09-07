@@ -133,11 +133,11 @@ changed `boot_id` to detect lost in-memory state and resynchronize.
 
 `display_name` is the current value of the settings field of the same name and may be empty. Web UI and Home Assistant integration releases have their own SemVer versions because they are installed independently. Both declare the integer `api_version` they support. This contract number changes only for an incompatible external REST or WebSocket change; it is separate from the radio protocol version. The gateway serves the LittleFS UI only when its required API version exactly matches.
 
-Future additions include stream versions, registry generation, current UTC state,
-and capabilities. The info endpoint never returns radio keys, node UIDs,
-credentials, or tokens. `_radiosensors._tcp` mDNS discovery advertises port 80
-and TXT keys `api` (legacy alias), `api_version`, `gateway_id`, `boot_id`,
-`firmware`, `board`, and `hostname`.
+The info endpoint never returns radio keys, node UIDs, credentials, or tokens.
+`_radiosensors._tcp` mDNS discovery advertises port 80 and TXT keys `api`
+(legacy alias), `api_version`, `stream_version`, `gateway_id`, `boot_id`,
+`firmware`, `board`, and `hostname`. `stream_version` matches the first byte of
+every binary WebSocket message.
 
 ## Nodes
 
@@ -251,10 +251,11 @@ non-empty array containing only the three scopes above:
 {"name":"Home Assistant","scopes":["gateway:read","registry:read","telemetry:read"]}
 ```
 
-The `201` response contains the generated `token` exactly once. `DELETE
-/api/v1/tokens` requires CSRF and a JSON body such as `{"id":1}`; it returns
-`204`. Token mutations are serialized and return `409 mutation_busy` when
-another management write is in progress.
+Names are at most 32 UTF-8 bytes and need not be unique. The `201` response
+contains the generated `token` exactly once and omits `enabled`; a new token is
+always enabled. `DELETE /api/v1/tokens` requires CSRF and a JSON body such as
+`{"id":1}`; it returns `204`. Token mutations are serialized and return `409
+mutation_busy` when another management write is in progress.
 
 ## WebSocket bootstrap
 

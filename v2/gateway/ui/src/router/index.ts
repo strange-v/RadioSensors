@@ -5,12 +5,13 @@ import SetupView from '../views/SetupView.vue'
 import LoginView from '../views/LoginView.vue'
 import StatusView from '../views/StatusView.vue'
 import NodesView from '../views/NodesView.vue'
-import HomeAssistantView from '../views/HomeAssistantView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
 // Views are imported eagerly: the production build ships a single application
 // bundle (see vite.config.ts), so a lazy route deferred nothing and only cost
-// a chunk boundary. The pairing QR scanner is the one deliberate exception.
+// a chunk boundary. Two exceptions earn their chunk -- the pairing QR scanner
+// (jsQR), and administration below: users, API tokens and their dialogs grew
+// to ~4.8 KB gzip that only an admin who opens the page ever needs.
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -19,8 +20,8 @@ export const router = createRouter({
     { path: '/login', component: LoginView, meta: { chrome: false } },
     { path: '/status', component: StatusView, meta: { requiresAuth: true } },
     { path: '/nodes', component: NodesView, meta: { requiresAuth: true } },
-    { path: '/home-assistant', component: HomeAssistantView, meta: { requiresAuth: true } },
     { path: '/settings', component: SettingsView, meta: { requiresAuth: true } },
+    { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
@@ -30,5 +31,6 @@ router.beforeEach(async (to) => {
     path: to.path,
     fullPath: to.fullPath,
     requiresAuth: to.meta.requiresAuth === true,
+    requiresAdmin: to.meta.requiresAdmin === true,
   })
 })

@@ -16,6 +16,9 @@ little-endian.
 | 1 | 1 | message kind |
 | 2 | 4 | gateway telemetry sequence |
 
+The same stream version is advertised as the `stream_version` TXT field of the
+gateway's `_radiosensors._tcp` mDNS service.
+
 Message kinds are `1` (`SNAPSHOT_BEGIN`), `2` (`TELEMETRY`), and `3`
 (`SNAPSHOT_END`). Begin and end messages are exactly six bytes. Their sequence
 is the cache watermark observed while producing the snapshot.

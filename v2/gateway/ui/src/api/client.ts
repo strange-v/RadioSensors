@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { ApiTokenList, CreatedApiToken, GatewayInfo, GatewaySettings, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, TokenScope } from './types'
+import type { ApiTokenList, CreatedApiToken, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, TokenScope, UserList, UserWrite } from './types'
 
 export class ApiError extends Error { constructor(public status: number, public code: string) { super(code) } }
 
@@ -46,6 +46,14 @@ function rememberSession(session: Session): Session {
   return session
 }
 
+// Drops the local half of a session the gateway has already revoked -- a user
+// mutation on your own account does exactly that, so DELETE /session would
+// only answer 401.
+export function forgetSession() {
+  csrfToken = ''
+  sessionUser.value = null
+}
+
 export const api = {
   setupStatus: () => request<SetupStatus>('/api/v1/setup'),
   setup: async (payload: SetupRequest) => rememberSession(await request<Session>('/api/v1/setup', { method: 'POST', body: JSON.stringify(payload) })),
@@ -70,6 +78,12 @@ export const api = {
   // Omitting the id lets the gateway generate one. The gateway restarts right
   // after answering, so this call is the last one the session can make.
   resetRadioNetwork: (networkId?: number) => request<RadioNetworkReset>('/api/v1/radio/reset', { method: 'POST', body: JSON.stringify(networkId ? { operational_network_id: networkId } : {}) }),
+  users: () => request<UserList>('/api/v1/users'),
+  createUser: (user: UserWrite & { password: string }) => request<GatewayUser>('/api/v1/users', { method: 'POST', body: JSON.stringify(user) }),
+  // Replaces username, role and enabled; a password is only sent when set.
+  // Every session of that user is revoked, including this one when it is you.
+  updateUser: (id: number, user: UserWrite) => request<GatewayUser>('/api/v1/users', { method: 'PUT', body: JSON.stringify({ id, ...user }) }),
+  deleteUser: (id: number) => request<void>('/api/v1/users', { method: 'DELETE', body: JSON.stringify({ id }) }),
   tokens: () => request<ApiTokenList>('/api/v1/tokens'),
   createToken: (name: string, scopes: TokenScope[]) => request<CreatedApiToken>('/api/v1/tokens', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
   deleteToken: (id: number) => request<void>('/api/v1/tokens', { method: 'DELETE', body: JSON.stringify({ id }) }),
