@@ -63,6 +63,10 @@ SnapshotStatus encodeRegistrySnapshot(
         output[offset + 15] = record.firmware.patch;
         output[offset + 16] = static_cast<uint8_t>(record.state);
         protocol::writeUint32Le(output + offset + 17, record.requestNonce);
+        output[offset + 21] = record.displayNameLength;
+        for (size_t nameIndex = 0; nameIndex < kNodeDisplayNameSize; ++nameIndex) {
+            output[offset + 22 + nameIndex] = record.displayName[nameIndex];
+        }
         offset += kStoredNodeRecordSize;
     }
 
@@ -71,11 +75,12 @@ SnapshotStatus encodeRegistrySnapshot(
     return SnapshotStatus::Ok;
 }
 
-SnapshotStatus decodeRegistrySnapshot(
+static SnapshotStatus decodeRegistrySnapshotUsingRecords(
     const uint8_t* const data,
     const size_t size,
     NodeRegistry& registry,
-    uint32_t& generation) {
+    uint32_t& generation,
+    NodeRecord* const records) {
     if (data == nullptr || size < kRegistryHeaderSize + kRegistryCrcSize) {
         return SnapshotStatus::InvalidSize;
     }
@@ -101,7 +106,9 @@ SnapshotStatus decodeRegistrySnapshot(
         return SnapshotStatus::CrcMismatch;
     }
 
-    NodeRecord records[kMaxNodes]{};
+    for (size_t index = 0; index < kMaxNodes; ++index) {
+        records[index] = NodeRecord{};
+    }
     size_t offset = kRegistryHeaderSize;
     for (size_t index = 0; index < count; ++index) {
         NodeRecord& record = records[index];
@@ -114,6 +121,12 @@ SnapshotStatus decodeRegistrySnapshot(
             data[offset + 13], data[offset + 14], data[offset + 15]};
         record.state = static_cast<NodeState>(data[offset + 16]);
         record.requestNonce = protocol::readUint32Le(data + offset + 17);
+        record.displayNameLength = data[offset + 21];
+        if (record.displayNameLength > kNodeDisplayNameSize)
+            return SnapshotStatus::InvalidRegistry;
+        for (size_t nameIndex = 0; nameIndex < kNodeDisplayNameSize; ++nameIndex) {
+            record.displayName[nameIndex] = data[offset + 22 + nameIndex];
+        }
         offset += kStoredNodeRecordSize;
     }
 
@@ -124,27 +137,40 @@ SnapshotStatus decodeRegistrySnapshot(
     return SnapshotStatus::Ok;
 }
 
+SnapshotStatus decodeRegistrySnapshot(
+    const uint8_t* const data,
+    const size_t size,
+    NodeRegistry& registry,
+    uint32_t& generation) {
+    NodeRecord records[kMaxNodes]{};
+    return decodeRegistrySnapshotUsingRecords(
+        data, size, registry, generation, records);
+}
+
 DualSlotRegistryStore::DualSlotRegistryStore(RegistrySlotStorage& storage)
     : storage_(storage), generation_(0), activeSlot_(-1) {}
 
 LoadStatus DualSlotRegistryStore::load(NodeRegistry& registry) {
-    uint8_t buffer[kMaxRegistrySnapshotSize];
     uint32_t newestGeneration = 0;
     int8_t newestSlot = -1;
 
     for (uint8_t slot = 0; slot < 2; ++slot) {
         size_t size = 0;
-        if (!storage_.read(slot, buffer, sizeof(buffer), size)) {
+        if (!storage_.read(slot, buffer_, kMaxRegistrySnapshotSize, size)) {
             continue;
         }
-        NodeRegistry candidate;
+        scratchRegistry_ = NodeRegistry{};
         uint32_t candidateGeneration = 0;
-        if (decodeRegistrySnapshot(
-                buffer, size, candidate, candidateGeneration) != SnapshotStatus::Ok) {
+        if (decodeRegistrySnapshotUsingRecords(
+                buffer_,
+                size,
+                scratchRegistry_,
+                candidateGeneration,
+                scratchRecords_) != SnapshotStatus::Ok) {
             continue;
         }
         if (newestSlot < 0 || isNewerGeneration(candidateGeneration, newestGeneration)) {
-            registry = candidate;
+            registry = scratchRegistry_;
             newestGeneration = candidateGeneration;
             newestSlot = static_cast<int8_t>(slot);
         }
@@ -163,32 +189,33 @@ LoadStatus DualSlotRegistryStore::load(NodeRegistry& registry) {
 }
 
 bool DualSlotRegistryStore::save(const NodeRegistry& registry) {
-    uint8_t encoded[kMaxRegistrySnapshotSize];
     size_t encodedSize = 0;
     const uint32_t nextGeneration = generation_ + 1;
     if (encodeRegistrySnapshot(
             registry,
             nextGeneration,
-            encoded,
-            sizeof(encoded),
+            buffer_,
+            kMaxRegistrySnapshotSize,
             encodedSize) != SnapshotStatus::Ok) {
         return false;
     }
 
     const uint8_t targetSlot = activeSlot_ == 0 ? 1 : 0;
-    if (!storage_.write(targetSlot, encoded, encodedSize)) {
+    if (!storage_.write(targetSlot, buffer_, encodedSize)) {
         return false;
     }
 
     size_t verifySize = 0;
-    NodeRegistry verified;
     uint32_t verifiedGeneration = 0;
-    if (!storage_.read(targetSlot, encoded, sizeof(encoded), verifySize) ||
-        decodeRegistrySnapshot(
-            encoded,
+    scratchRegistry_ = NodeRegistry{};
+    if (!storage_.read(
+            targetSlot, buffer_, kMaxRegistrySnapshotSize, verifySize) ||
+        decodeRegistrySnapshotUsingRecords(
+            buffer_,
             verifySize,
-            verified,
-            verifiedGeneration) != SnapshotStatus::Ok ||
+            scratchRegistry_,
+            verifiedGeneration,
+            scratchRecords_) != SnapshotStatus::Ok ||
         verifiedGeneration != nextGeneration) {
         return false;
     }

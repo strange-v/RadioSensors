@@ -28,6 +28,10 @@ bool deadlineReached(const uint32_t now, const uint32_t deadline) {
     return deadline != 0 && static_cast<int32_t>(now - deadline) >= 0;
 }
 
+Indication idleIndication() {
+    return setupRequired() ? Indication::Unconfigured : Indication::Operational;
+}
+
 void setRgb(const uint8_t red, const uint8_t green, const uint8_t blue) {
 #if defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
     rgbLedWrite(kRgbPin, red, green, blue);
@@ -47,7 +51,7 @@ void togglePairing(const uint32_t now) {
             return;
         }
         pairingEndsAt.store(0);
-        current.store(Indication::Operational);
+        current.store(idleIndication());
         Serial.println("Pairing window closed by BOOT button");
     } else {
         Serial.println("Pairing requires QR credentials from the management UI");
@@ -58,7 +62,7 @@ void togglePairing(const uint32_t now) {
 void toggleSetup(const uint32_t now) {
     if (setupActive()) {
         setupEndsAt.store(0);
-        current.store(Indication::Operational);
+        current.store(Indication::Unconfigured);
         Serial.println("Initial setup window closed by BOOT button");
         return;
     }
@@ -74,6 +78,9 @@ void toggleSetup(const uint32_t now) {
 void render(const uint32_t now) {
     const uint32_t phase = now % 1000;
     switch (current.load()) {
+        case Indication::Unconfigured:
+            setRgb(0, phase < 500 ? kBrightness : 0, 0);
+            break;
         case Indication::Operational:
             setRgb(0, kBrightness, 0);
             break;
@@ -119,6 +126,7 @@ void begin() {
     stableButtonPressed = rawButtonPressed;
     rawButtonChangedAt = millis();
 #endif
+    current.store(idleIndication());
     render(millis());
 }
 
@@ -128,7 +136,7 @@ void loop() {
         const bool switched = radio::requestProfile(radio::Profile::Operational);
         pairingEndsAt.store(0);
         if (switched) {
-            if (indicationEndsAt.load() == 0) current.store(Indication::Operational);
+            if (indicationEndsAt.load() == 0) current.store(idleIndication());
             Serial.println("Pairing window expired");
         } else {
             current.store(Indication::Error);
@@ -138,12 +146,12 @@ void loop() {
     }
     if (deadlineReached(now, setupEndsAt.load())) {
         setupEndsAt.store(0);
-        current.store(Indication::Operational);
+        current.store(idleIndication());
         Serial.println("Initial setup window expired");
     }
     if (deadlineReached(now, indicationEndsAt.load())) {
         indicationEndsAt.store(0);
-        current.store(pairingActive() ? Indication::Pairing : Indication::Operational);
+        current.store(pairingActive() ? Indication::Pairing : idleIndication());
     }
 
 #if defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
@@ -226,6 +234,7 @@ void indicate(const Indication indication, const uint32_t durationMs) {
 
 const char* indicationName() {
     switch (current.load()) {
+        case Indication::Unconfigured: return "unconfigured";
         case Indication::Operational: return "operational";
         case Indication::Setup: return "setup";
         case Indication::Pairing: return "pairing";

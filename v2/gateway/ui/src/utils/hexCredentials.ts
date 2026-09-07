@@ -21,6 +21,30 @@ export function normalizeHexFragment(input: string): string {
   return result
 }
 
+export const HEX_GROUP_SEPARATOR = '-'
+
+// Splits a normalized hex string into fixed-size groups for display.
+export function groupHex(clean: string, groupSize: number): string {
+  const groups: string[] = []
+  for (let index = 0; index < clean.length; index += groupSize) {
+    groups.push(clean.slice(index, index + groupSize))
+  }
+  return groups.join(HEX_GROUP_SEPARATOR)
+}
+
+// Caret position holding `digits` hex characters to its left, skipping past a
+// separator so the next keystroke opens the following group.
+export function caretAfterHexDigits(text: string, digits: number): number {
+  if (digits <= 0) return 0
+  let seen = 0
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== HEX_GROUP_SEPARATOR) seen++
+    if (seen < digits) continue
+    return text[index + 1] === HEX_GROUP_SEPARATOR ? index + 2 : index + 1
+  }
+  return text.length
+}
+
 export interface ParsedPairingCredentials {
   uid?: string
   key?: string
@@ -42,6 +66,11 @@ function readField(source: unknown, keys: string[]): string | undefined {
 export function parsePairingPaste(text: string): ParsedPairingCredentials {
   const trimmed = text.trim()
   if (!trimmed) return {}
+
+  // Someone with the QR text in hand (a desktop scanner, a chat message) can
+  // paste it instead of photographing the label again.
+  const uri = parsePairingUri(trimmed)
+  if (uri) return { uid: uri.uid, key: uri.key }
 
   try {
     const parsed: unknown = JSON.parse(trimmed)
@@ -73,4 +102,61 @@ export function parsePairingPaste(text: string): ParsedPairingCredentials {
     return { uid: clean.slice(0, PAIRING_UID_HEX_LENGTH), key: clean.slice(PAIRING_UID_HEX_LENGTH) }
   }
   return {}
+}
+
+// --- Canonical pairing URI (printed QR code) -------------------------------
+//
+// web+opensmartkit:pair?v=1&family=sense&uid=<20 HEX>&key=<32 HEX>
+//
+// Parsed strictly rather than through normalizeHexFragment: a QR code is
+// machine-produced, so anything that does not match exactly is a foreign or
+// corrupted code and must be reported, not silently repaired.
+export const PAIRING_URI_SCHEME = 'web+opensmartkit'
+export const PAIRING_URI_ACTION = 'pair'
+export const PAIRING_URI_VERSION = '1'
+export const PAIRING_URI_FAMILY = 'sense'
+
+export interface PairingUri {
+  uid: string
+  key: string
+}
+
+// Exactly one occurrence, or the code is ambiguous about which value applies.
+function soleParam(params: URLSearchParams, name: string): string | null {
+  const values = params.getAll(name)
+  return values.length === 1 ? values[0] : null
+}
+
+function strictHex(value: string | null, length: number): string | null {
+  if (value === null || value.length !== length) return null
+  return /^[0-9a-fA-F]+$/.test(value) ? value.toUpperCase() : null
+}
+
+// Returns the credentials, or null when `text` is not a pairing URI this
+// version understands. Unknown extra parameters are tolerated so a future
+// optional hint does not break a v1 reader; every specified field must match.
+export function parsePairingUri(text: string): PairingUri | null {
+  const trimmed = text.trim()
+  let url: URL
+  try {
+    url = new URL(trimmed)
+  } catch {
+    return null
+  }
+
+  // URL lowercases the scheme itself; schemes are case-insensitive per
+  // RFC 3986, and QR alphanumeric mode can only carry uppercase.
+  if (url.protocol !== `${PAIRING_URI_SCHEME}:`) return null
+  // An opaque path: `web+opensmartkit://pair?...` would put "pair" in the
+  // host and is a different, unsupported shape.
+  if (url.host !== '' || url.pathname !== PAIRING_URI_ACTION) return null
+
+  const params = url.searchParams
+  if (soleParam(params, 'v') !== PAIRING_URI_VERSION) return null
+  if (soleParam(params, 'family') !== PAIRING_URI_FAMILY) return null
+
+  const uid = strictHex(soleParam(params, 'uid'), PAIRING_UID_HEX_LENGTH)
+  const key = strictHex(soleParam(params, 'key'), PAIRING_KEY_HEX_LENGTH)
+  if (!uid || !key) return null
+  return { uid, key }
 }

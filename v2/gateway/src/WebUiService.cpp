@@ -13,6 +13,14 @@ namespace {
 
 constexpr char kPartitionLabel[] = "web";
 constexpr char kManifestPath[] = "/ui-manifest.json";
+constexpr char kIndexPath[] = "/index.html";
+constexpr char kIndexGzipPath[] = "/index.html.gz";
+
+// The build ships index.html gzipped; AsyncFileResponse serves the .gz variant
+// transparently, so either name counts as a present page.
+bool indexPresent() {
+    return LittleFS.exists(kIndexPath) || LittleFS.exists(kIndexGzipPath);
+}
 constexpr size_t kMaximumManifestBytes = 1024;
 constexpr size_t kMaximumVersionLength = 31;
 
@@ -54,7 +62,7 @@ void inspectManifest() {
     if (uiVersion == nullptr || uiVersion[0] == '\0' ||
         strlen(uiVersion) > kMaximumVersionLength ||
         !document["api_version"].is<uint16_t>() ||
-        !LittleFS.exists("/index.html")) {
+        !indexPresent()) {
         currentState = State::InvalidManifest;
         return;
     }
@@ -90,7 +98,14 @@ void begin() {
 
 void addRoutes(AsyncWebServer& server) {
     if (currentState == State::Ready) {
-        server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+        // Only the hashed build output is reachable over HTTP. Serving the
+        // filesystem root instead would also expose /ui-manifest.json, which
+        // no browser reads -- the firmware parses it locally at boot -- and
+        // which carries the build SHA. Every name here contains a content
+        // hash, so the response can be cached permanently; index.html is sent
+        // by handlePageRequest with its own revalidating header.
+        server.serveStatic("/assets/", LittleFS, "/assets/")
+            .setCacheControl("public, max-age=31536000, immutable");
     }
 }
 
@@ -111,7 +126,7 @@ bool handlePageRequest(AsyncWebServerRequest* request) {
     if (request->method() != HTTP_GET || !acceptsHtml(request)) return false;
     if (currentState == State::Ready && mounted) {
         AsyncWebServerResponse* response =
-            request->beginResponse(LittleFS, "/index.html", "text/html");
+            request->beginResponse(LittleFS, kIndexPath, "text/html");
         response->addHeader("Cache-Control", "no-cache");
         request->send(response);
     } else {

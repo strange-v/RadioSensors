@@ -14,6 +14,7 @@ constexpr uint8_t kLastNodeId = 99;
 constexpr uint8_t kUnprovisionedNodeId = 0;
 constexpr uint8_t kGatewayNodeId = 100;
 constexpr uint8_t kBroadcastNodeId = 255;
+constexpr size_t kNodeDisplayNameSize = 48;
 
 enum class NodeState : uint8_t {
     Pending = 1,
@@ -28,6 +29,15 @@ struct NodeRecord {
     protocol::FirmwareVersion firmware;
     NodeState state;
     uint32_t requestNonce;
+    uint8_t displayNameLength;
+    char displayName[kNodeDisplayNameSize];
+};
+
+enum class RenameStatus : uint8_t {
+    Renamed,
+    NoChange,
+    NotFound,
+    InvalidName,
 };
 
 enum class ReserveStatus : uint8_t {
@@ -70,6 +80,7 @@ public:
         uint32_t requestNonce);
     bool disable(uint8_t nodeId);
     bool remove(uint8_t nodeId);
+    RenameStatus rename(uint8_t nodeId, const char* displayName, size_t length);
 
     bool restore(const NodeRecord* records, size_t count);
 
@@ -85,6 +96,8 @@ private:
     NodeRecord* findMutableByUid(const uint8_t* deviceUid);
     NodeRecord* findMutableByNodeId(uint8_t nodeId);
 };
+
+bool validDisplayName(const char* value, size_t length);
 
 }  // namespace registry
 }  // namespace radiosensors

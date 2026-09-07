@@ -32,5 +32,15 @@ RegistryCommitStatus confirmAndSave(
     uint8_t nodeId,
     uint32_t nonce,
     radiosensors::registry::ConfirmStatus& result);
+RegistryCommitStatus renameAndSave(
+    uint8_t nodeId,
+    const char* displayName,
+    size_t length,
+    radiosensors::registry::RenameStatus& result);
+RegistryCommitStatus removeAndSave(uint8_t nodeId, bool& removed);
+// Drops every record in a single commit. Used by the radio network reset,
+// where removing nodes one at a time would mean one flash write each and a
+// half-emptied registry if any of them failed.
+RegistryCommitStatus clearAndSave(size_t& removed);
 
 }  // namespace gateway::registry_store

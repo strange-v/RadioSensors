@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, errorCode } from '../api/client'
+import { api, errorCode, isAdmin } from '../api/client'
 import type { GatewayInfo, GatewaySettings, Health } from '../api/types'
 import Icon from '../components/Icon.vue'
+import { byteLength } from '../utils/format'
 import LanguageSelect from '../components/LanguageSelect.vue'
+import RadioResetDialog from '../components/RadioResetDialog.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 const info = ref<GatewayInfo | null>(null), health = ref<Health | null>(null), settings = ref<GatewaySettings | null>(null)
 const failure = ref(''), saved = ref(false), saving = ref(false), uiVersion = __UI_VERSION__
+const showRadioReset = ref(false)
 const form = reactive({ displayName: '', mdnsEnabled: true, ntpEnabled: true, ntpServers: '', pairingSeconds: 120, setupSeconds: 600 })
-const byteLength = (value: string) => new TextEncoder().encode(value).length
 const servers = computed(() => form.ntpServers.split('\n').map(value => value.trim()).filter(Boolean))
 const invalid = computed(() => byteLength(form.displayName) > 48 || servers.value.length > 3 || (form.ntpEnabled && servers.value.length === 0) || servers.value.some(value => value.length > 63 || !/^[A-Za-z0-9.:-]+$/.test(value)) || new Set(servers.value).size !== servers.value.length || form.pairingSeconds < 30 || form.pairingSeconds > 900 || form.setupSeconds < 60 || form.setupSeconds > 1800)
 function apply(value: GatewaySettings) { settings.value = value; form.displayName = value.display_name; form.mdnsEnabled = value.mdns_enabled; form.ntpEnabled = value.ntp_enabled; form.ntpServers = value.ntp_servers.join('\n'); form.pairingSeconds = value.pairing_window_seconds; form.setupSeconds = value.setup_window_seconds }
@@ -22,6 +24,8 @@ onMounted(async () => { const results = await Promise.allSettled([api.info(), ap
     <section class="panel settings-card editable"><span class="settings-icon" aria-hidden="true"><Icon name="timer-outline" /></span><div><h2>{{ $t('settings.windows') }}</h2><p>{{ $t('settings.windowsHint') }}</p><label><span>{{ $t('settings.pairingSeconds') }}</span><input v-model.number="form.pairingSeconds" type="number" min="30" max="900"></label><label><span>{{ $t('settings.setupSeconds') }}</span><input v-model.number="form.setupSeconds" type="number" min="60" max="1800"></label></div></section>
     <section class="panel settings-card"><span class="settings-icon" aria-hidden="true"><Icon name="update" /></span><div><h2>{{ $t('settings.updates') }}</h2><p>{{ $t('settings.updatesHint') }}</p><dl class="simple-details"><div><dt>{{ $t('status.firmware') }}</dt><dd>{{ info?.firmware_version || health?.firmware || '—' }}</dd></div><div><dt>Web UI</dt><dd>{{ info?.ui.version || uiVersion }}</dd></div><div><dt>{{ $t('status.hostname') }}</dt><dd>{{ info?.hostname || '—' }}</dd></div></dl></div></section>
     <section class="panel settings-card editable"><span class="settings-icon" aria-hidden="true"><Icon name="theme-light-dark" /></span><div><h2>{{ $t('settings.interface') }}</h2><p>{{ $t('settings.interfaceHint') }}</p><div class="pref-row"><span>{{ $t('common.language') }}</span><LanguageSelect /></div><div class="pref-row"><span>{{ $t('theme.label') }}</span><ThemeToggle /></div></div></section>
+    <section v-if="isAdmin" class="panel settings-card editable"><span class="settings-icon danger" aria-hidden="true"><Icon name="access-point" /></span><div><h2>{{ $t('radioReset.card') }}</h2><p>{{ $t('radioReset.cardHint') }}</p><dl class="simple-details"><div><dt>{{ $t('status.networkId') }}</dt><dd>{{ health?.radio.network_id ?? '—' }}</dd></div></dl><button class="button danger-text" type="button" @click="showRadioReset = true">{{ $t('radioReset.action') }}</button></div></section>
     <div class="settings-actions"><small v-if="invalid">{{ $t('settings.invalid') }}</small><button class="button primary" :disabled="saving || invalid || !settings" type="submit">{{ saving ? $t('settings.saving') : $t('settings.save') }}</button></div>
   </form>
+  <RadioResetDialog v-if="showRadioReset" :node-count="health?.registry.records ?? 0" @close="showRadioReset = false" />
 </div></template>

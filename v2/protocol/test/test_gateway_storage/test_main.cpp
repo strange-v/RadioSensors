@@ -85,13 +85,10 @@ AuthenticationData populatedAuthentication() {
 InstallationSecrets populatedSecrets() {
     InstallationSecrets value{};
     value.installationKeyPresent = true;
-    value.commissioningKeyPresent = true;
     value.deviceSecretPresent = true;
     value.operationalNetworkId = 128;
-    value.commissioningNetworkId = 0;
     for (size_t index = 0; index < kRadioKeySize; ++index) {
         value.installationKey[index] = index;
-        value.commissioningKey[index] = index + 16;
     }
     for (size_t index = 0; index < kDeviceSecretSize; ++index) value.deviceSecret[index] = index + 32;
     return value;
@@ -180,7 +177,7 @@ void test_validation_rejects_invalid_relationships() {
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::InvalidValue), static_cast<int>(encodeAuthentication(auth, 1, buffer, sizeof(buffer))));
 
     InstallationSecrets secrets = populatedSecrets();
-    secrets.commissioningNetworkId = secrets.operationalNetworkId;
+    secrets.operationalNetworkId = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::InvalidValue), static_cast<int>(encodeSecrets(secrets, 1, buffer, sizeof(buffer))));
 }
 

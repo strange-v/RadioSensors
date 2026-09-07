@@ -5,6 +5,7 @@
 namespace gateway::status {
 
 enum class Indication {
+    Unconfigured,
     Operational,
     Setup,
     Pairing,

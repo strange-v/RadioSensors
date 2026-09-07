@@ -180,11 +180,15 @@ is sent only after the pending registry reservation is durable.
 
 The exact application frame length is 34 bytes. Frequency, bitrate, and default
 node transmit power are profile/firmware constants and are not repeated here.
-The installation key is protected on air only by the commissioning radio
-profile. Each node has a unique factory key supplied together with its UID; the
-gateway loads it into the radio only for that UID's pairing transaction and
-wipes it afterwards. RFM69 AES encryption is not an authenticated key-exchange
-protocol, which is an explicitly accepted limitation of this design.
+The installation key is generated randomly during initial gateway setup. It is
+the operational RFM69 AES network key for one gateway installation and is
+therefore shared by the nodes joined to that gateway; it is not a product-wide,
+build-time, or public commissioning key. It is protected on air only by the
+commissioning radio profile. Each node has a unique factory key supplied
+together with its UID; the gateway loads it into the radio only for that UID's
+pairing transaction and wipes it afterwards. RFM69 AES encryption is not an
+authenticated key-exchange protocol, which is an explicitly accepted
+limitation of this design.
 
 ## Join confirm
 

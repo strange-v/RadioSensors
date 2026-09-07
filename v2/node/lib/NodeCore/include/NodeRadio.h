@@ -14,7 +14,7 @@ public:
     NodeRadio(uint8_t chipSelect, uint8_t interruptPin);
 
     bool begin(uint8_t nodeId, uint8_t networkId);
-    void useCommissioningProfile(const uint8_t commissioningKey[16]);
+    void useCommissioningProfile(const uint8_t factoryKey[16]);
     void useOperationalProfile(const storage::NetworkConfig& config);
     bool sendTelemetry(
         uint8_t gatewayId, const uint8_t* frame, uint8_t size);

@@ -164,6 +164,10 @@ void test_snapshot_round_trip_preserves_records() {
     NodeRegistry source;
     const JoinRequest request = makeRequest(0x10, 0x1234, 0x89ABCDEF);
     source.reserve(request);
+    const char name[] = "\xD0\x94\xD0\xB0\xD1\x82\xD1\x87\xD0\xB8\xD0\xBA";
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RenameStatus::Renamed),
+        static_cast<int>(source.rename(1, name, sizeof(name) - 1)));
     uint8_t encoded[kMaxRegistrySnapshotSize]{};
     size_t encodedSize = 0;
 
@@ -184,6 +188,27 @@ void test_snapshot_round_trip_preserves_records() {
     TEST_ASSERT_NOT_NULL(record);
     TEST_ASSERT_EQUAL_HEX16(request.profileId, record->profileId);
     TEST_ASSERT_EQUAL_HEX32(request.requestNonce, record->requestNonce);
+    TEST_ASSERT_EQUAL_UINT8(sizeof(name) - 1, record->displayNameLength);
+    TEST_ASSERT_EQUAL_MEMORY(name, record->displayName, sizeof(name) - 1);
+}
+
+void test_rename_accepts_utf8_and_rejects_invalid_names() {
+    NodeRegistry registry;
+    registry.reserve(makeRequest(0x10));
+    const char ukrainian[] = "\xD0\x9A\xD1\x96\xD0\xBC\xD0\xBD\xD0\xB0\xD1\x82\xD0\xB0";
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RenameStatus::Renamed),
+        static_cast<int>(registry.rename(1, ukrainian, sizeof(ukrainian) - 1)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RenameStatus::NoChange),
+        static_cast<int>(registry.rename(1, ukrainian, sizeof(ukrainian) - 1)));
+    const char invalid[] = "\xC0\xAF";
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RenameStatus::InvalidName),
+        static_cast<int>(registry.rename(1, invalid, sizeof(invalid) - 1)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RenameStatus::NotFound),
+        static_cast<int>(registry.rename(2, "other", 5)));
 }
 
 void test_snapshot_rejects_crc_corruption() {
@@ -246,6 +271,7 @@ int main(int, char**) {
     RUN_TEST(test_confirm_requires_uid_node_id_and_latest_nonce);
     RUN_TEST(test_registry_capacity_is_bounded);
     RUN_TEST(test_snapshot_round_trip_preserves_records);
+    RUN_TEST(test_rename_accepts_utf8_and_rejects_invalid_names);
     RUN_TEST(test_snapshot_rejects_crc_corruption);
     RUN_TEST(test_dual_slot_falls_back_to_previous_valid_generation);
     RUN_TEST(test_dual_slot_loads_newest_valid_generation);

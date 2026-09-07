@@ -35,9 +35,11 @@ Common error body:
 | GET | `/api/v1/info` | none | implemented |
 | POST, GET, DELETE | `/api/v1/session` | credentials/session | implemented |
 | GET | `/api/v1/nodes` | session or bearer `registry:read` | implemented |
+| PATCH, DELETE | `/api/v1/nodes` | admin session + CSRF | implemented |
 | GET, PUT | `/api/v1/settings` | session; admin for PUT | implemented |
 | GET, POST, PUT, DELETE | `/api/v1/users` | admin | implemented |
 | GET, POST, DELETE | `/api/v1/tokens` | admin | implemented |
+| POST | `/api/v1/radio/reset` | admin session + CSRF | implemented |
 | POST | `/api/v1/pairing/open` | admin | implemented |
 | POST | `/api/v1/pairing/close` | admin | implemented |
 | POST | `/api/v1/commands` | admin | planned |
@@ -132,7 +134,7 @@ changed `boot_id` to detect lost in-memory state and resynchronize.
 `display_name` is the current value of the settings field of the same name and may be empty. Web UI and Home Assistant integration releases have their own SemVer versions because they are installed independently. Both declare the integer `api_version` they support. This contract number changes only for an incompatible external REST or WebSocket change; it is separate from the radio protocol version. The gateway serves the LittleFS UI only when its required API version exactly matches.
 
 Future additions include stream versions, registry generation, current UTC state,
-and capabilities. The endpoint never returns radio keys, factory UIDs,
+and capabilities. The info endpoint never returns radio keys, node UIDs,
 credentials, or tokens. `_radiosensors._tcp` mDNS discovery advertises port 80
 and TXT keys `api` (legacy alias), `api_version`, `gateway_id`, `boot_id`,
 `firmware`, `board`, and `hostname`.
@@ -141,10 +143,26 @@ and TXT keys `api` (legacy alias), `api_version`, `gateway_id`, `boot_id`,
 
 `GET /api/v1/nodes` returns `registry_generation` and all relevant records,
 including nodes without telemetry since boot. Each node contains node ID,
-profile ID, firmware, registry state and telemetry presence. When telemetry is
-available it also includes last-seen UTC and RSSI. User-assigned names and
-read-only command status will be added with their owning stores. Factory UID is
-never returned.
+the immutable uppercase factory `device_uid`, UTF-8 `display_name`, profile ID,
+firmware, registry state and telemetry presence. When telemetry is available it
+also includes last-seen UTC and RSSI. The UID is used with `gateway_id` as the
+stable Home Assistant identity; the reusable radio `node_id` is not.
+
+`PATCH /api/v1/nodes` renames a node and requires an admin session plus CSRF:
+
+```json
+{"node_id":7,"display_name":"Датчик у спальні"}
+```
+
+The name may be empty and must contain at most 48 valid UTF-8 bytes without
+control characters. The response contains the applied name and durable
+`registry_generation`. Invalid names return `422 invalid_display_name` and an
+unknown node returns `404 node_not_found`.
+
+`DELETE /api/v1/nodes` accepts `{"node_id":7}`, requires an admin session plus
+CSRF, removes the durable registry entry and its in-memory telemetry, and returns
+`204`. It does not reset an offline physical node: that node will keep its old
+network credentials and must be factory-reset before it can be paired again.
 
 ## Settings
 
@@ -170,6 +188,34 @@ UID. The key is wiped when pairing succeeds, is closed, or expires. It is never
 written to settings, secrets, registry, diagnostics, or logs. `POST
 /api/v1/pairing/close` ends the window early. Both endpoints require an admin
 session and CSRF and return the current pairing state and remaining seconds.
+
+## Radio network
+
+`POST /api/v1/radio/reset` regenerates the installation key and the operational
+network ID, and requires an admin session plus CSRF. The body is optional:
+
+```json
+{"operational_network_id":42}
+```
+
+A value from 1 to 255 is applied as given; omit the field to have the gateway
+generate one. Zero or a non-integer returns `422 invalid_operational_network_id`.
+
+The operation clears the node registry and cached telemetry before writing the
+new secrets, because every registered node is bound to the previous network and
+key. It answers `202` with the applied ID and the number of removed records,
+then restarts: the radio reads its profile once at boot, so a running gateway
+cannot switch networks in place.
+
+```json
+{"operational_network_id":42,"removed_nodes":6,"restarting":true}
+```
+
+The gateway's own `deviceSecret` is left untouched, so `gateway_id` and the Home
+Assistant identity survive the reset. Browser sessions do not: they live in RAM
+and every client must sign in again once the gateway is back. Physical nodes are
+not reset remotely — each keeps its old credentials and must be factory-reset
+before it can be paired again.
 
 ## Users and tokens
 

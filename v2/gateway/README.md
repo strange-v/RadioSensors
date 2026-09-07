@@ -50,10 +50,11 @@ Every UI image must contain `/index.html` and `/ui-manifest.json`:
 
 `ui_version` identifies independently released UI fixes. `api_version` is the gateway client-contract version and changes only for an incompatible REST/WebSocket contract change. `build` is diagnostic metadata and is not used for compatibility. The firmware serves the UI only when the manifest API version exactly equals its own API version.
 
-The Vue 3 frontend source lives in `ui/`. From that directory:
+The Vue 3 frontend source lives in `ui/`. The generated `data/` directory is
+git-ignored and must not be committed. From `ui/`:
 
 ```powershell
-npm install
+npm ci
 npm run dev
 npm test
 npm run build
@@ -66,7 +67,8 @@ version, API version, and Git SHA, precompresses JavaScript and CSS as determini
 gzip files, and enforces compressed and total-size budgets. `index.html` and
 `ui-manifest.json` remain uncompressed because firmware reads them directly.
 
-Build or upload the contents of `data/` over a local cable:
+Run `npm run build` first, then build or upload the generated contents of
+`data/` over a local cable:
 
 ```powershell
 pio run -e gateway_wt32_eth01 -t buildfs
@@ -91,7 +93,7 @@ One priority-11 task owns RFM69 and all FIFO/SPI operations. Active telemetry en
 
 The gateway exposes `/health`, `/api/v1/info`, the setup REST endpoints, `/telemetry/last` for development diagnostics, and `/ws`. Persistent settings, authentication, registry, and secrets use independent dual-slot stores. SNTP uses configured NTP servers and reapplies changes without reboot.
 
-Before the first user exists, a short BOOT press opens the physical setup window. `POST /api/v1/setup` creates the first admin and can set the display name and operational network ID. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
+Before the first user exists, the Waveshare status LED blinks green and a short BOOT press opens the physical setup window. `POST /api/v1/setup` creates the first admin and can set the display name and operational network ID. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
 
 References:
 

@@ -32,7 +32,22 @@ function manifestPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [vue(), manifestPlugin()],
-  build: { outDir: outputDirectory, emptyOutDir: true, assetsDir: 'assets', sourcemap: false },
+  build: {
+    outDir: outputDirectory,
+    emptyOutDir: true,
+    assetsDir: 'assets',
+    sourcemap: false,
+    // One CSS file, and one application JS file: every extra file costs an HTTP
+    // round trip to the ESP32 plus a whole 4 KB LittleFS block, and route-level
+    // splitting deferred nothing worth deferring (per-view chunks are under
+    // 4 KB each). Views are therefore imported eagerly in src/router/index.ts.
+    //
+    // The one dynamic import left is the pairing QR scanner, which is worth a
+    // chunk of its own: jsQR is ~15 KB gzip that only the people who scan a
+    // label ever download. check-build.mjs budgets the two separately.
+    cssCodeSplit: false,
+    rollupOptions: { output: { entryFileNames: 'assets/app-[hash].js', chunkFileNames: 'assets/[name]-[hash].js' } },
+  },
   server: { proxy: { '/api': gatewayProxy, '/health': gatewayProxy } },
   define: { __UI_VERSION__: JSON.stringify(packageJson.version) },
 })

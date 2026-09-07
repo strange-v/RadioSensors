@@ -9,10 +9,10 @@
 #include <UserManagement.h>
 #include <ArduinoJson.h>
 #include <esp_random.h>
-#include <mbedtls/md.h>
-#include <mbedtls/pkcs5.h>
 
 #include <atomic>
+#include <memory>
+#include <new>
 
 #include "ApiVersion.h"
 #include "AuthenticationService.h"
@@ -26,6 +26,7 @@
 #include "GatewayStatus.h"
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
+#include "PasswordHashService.h"
 #include "RadioConfig.h"
 #include "RadioService.h"
 #include "TelemetryStore.h"
@@ -60,11 +61,10 @@ bool hashPassword(
         radiosensors::gateway_storage::PasswordHashAlgorithm::Pbkdf2HmacSha256;
     credential.iterations = kPasswordIterations;
     esp_fill_random(credential.salt, sizeof(credential.salt));
-    return mbedtls_pkcs5_pbkdf2_hmac_ext(
-        MBEDTLS_MD_SHA256,
-        reinterpret_cast<const unsigned char*>(password), passwordLength,
+    return password_hash::computePbkdf2Sha256(
+        password, passwordLength,
         credential.salt, sizeof(credential.salt), credential.iterations,
-        sizeof(credential.hash), credential.hash) == 0;
+        credential.hash, sizeof(credential.hash));
 }
 
 const char* roleName(const radiosensors::gateway_storage::UserRole role) {
@@ -223,10 +223,12 @@ void handleSetupStatus(AsyncWebServerRequest* request) {
     request->send(response);
 }
 
-uint8_t randomOperationalNetworkId(uint8_t commissioningNetworkId) {
+constexpr uint32_t kRestartDelayMs = 500;
+
+uint8_t randomOperationalNetworkId() {
     uint8_t value = 0;
     do value = static_cast<uint8_t>(esp_random());
-    while (value == 0 || value == commissioningNetworkId);
+    while (value == 0);
     return value;
 }
 
@@ -273,14 +275,17 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
         secrets.installationKeyPresent = true;
         esp_fill_random(secrets.installationKey,
                         radiosensors::gateway_storage::kRadioKeySize);
-        secrets.operationalNetworkId = randomOperationalNetworkId(
-            secrets.commissioningNetworkId);
+    }
+    // Zero is not a usable network id, so generate one whenever the stored
+    // value is unset rather than only alongside a fresh installation key. A
+    // record that already carried a key but no id would otherwise keep zero
+    // for good, because setup runs exactly once.
+    if (secrets.operationalNetworkId == 0) {
+        secrets.operationalNetworkId = randomOperationalNetworkId();
     }
     if (object["operational_network_id"].is<uint8_t>()) {
         const uint8_t requested = object["operational_network_id"].as<uint8_t>();
-        if (requested == 0 ||
-            (secrets.commissioningKeyPresent &&
-             requested == secrets.commissioningNetworkId)) {
+        if (requested == 0) {
             xSemaphoreGive(setupMutex);
             sendError(request, 422, "invalid_operational_network_id");
             return;
@@ -307,12 +312,11 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
     user.pbkdf2Iterations = kPasswordIterations;
     esp_fill_random(user.salt, sizeof(user.salt));
     const uint32_t hashStartedAt = millis();
-    const int hashResult = mbedtls_pkcs5_pbkdf2_hmac_ext(
-        MBEDTLS_MD_SHA256,
-        reinterpret_cast<const unsigned char*>(password), passwordLength,
+    const bool hashResult = password_hash::computePbkdf2Sha256(
+        password, passwordLength,
         user.salt, sizeof(user.salt), user.pbkdf2Iterations,
-        sizeof(user.passwordHash), user.passwordHash);
-    if (hashResult != 0) {
+        user.passwordHash, sizeof(user.passwordHash));
+    if (!hashResult) {
         xSemaphoreGive(setupMutex);
         sendError(request, 500, "password_hash_failed");
         return;
@@ -413,8 +417,9 @@ const char* nodeStateName(const radiosensors::registry::NodeState state) {
 
 void handleNodes(AsyncWebServerRequest* request) {
     if (!authorizeRegistryRead(request)) return;
-    registry_store::Snapshot registry{};
-    if (!registry_store::snapshot(registry)) {
+    const std::unique_ptr<registry_store::Snapshot> registry(
+        new (std::nothrow) registry_store::Snapshot());
+    if (!registry || !registry_store::snapshot(*registry)) {
         sendError(request, 503, "registry_unavailable");
         return;
     }
@@ -423,30 +428,164 @@ void handleNodes(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->printf(
         "{\"registry_generation\":%lu,\"nodes\":[",
-        static_cast<unsigned long>(registry.generation));
-    for (size_t index = 0; index < registry.count; ++index) {
-        const auto& node = registry.records[index];
+        static_cast<unsigned long>(registry->generation));
+    for (size_t index = 0; index < registry->count; ++index) {
+        const auto& node = registry->records[index];
         if (index != 0) response->print(',');
-        response->printf(
-            "{\"node_id\":%u,\"profile_id\":%u,"
-            "\"firmware\":\"%u.%u.%u\",\"state\":\"%s\"",
-            node.nodeId, node.profileId, node.firmware.major,
-            node.firmware.minor, node.firmware.patch,
-            nodeStateName(node.state));
+        JsonDocument document;
+        document["node_id"] = node.nodeId;
+        char uid[radiosensors::protocol::kDeviceUidSize * 2 + 1]{};
+        for (size_t uidIndex = 0; uidIndex < sizeof(node.deviceUid); ++uidIndex)
+            snprintf(uid + uidIndex * 2, 3, "%02X", node.deviceUid[uidIndex]);
+        document["device_uid"] = uid;
+        document["display_name"] = String(
+            node.displayName, node.displayNameLength);
+        document["profile_id"] = node.profileId;
+        char firmware[16]{};
+        snprintf(firmware, sizeof(firmware), "%u.%u.%u", node.firmware.major,
+                 node.firmware.minor, node.firmware.patch);
+        document["firmware"] = firmware;
+        document["state"] = nodeStateName(node.state);
         telemetry_store::Record telemetry{};
         if (telemetry_store::find(node.nodeId, telemetry)) {
-            response->printf(
-                ",\"last_seen_at_ms\":%llu,\"rssi\":%d,"
-                "\"has_telemetry\":true",
-                static_cast<unsigned long long>(telemetry.receivedAtUnixMs),
-                telemetry.rssi);
+            document["last_seen_at_ms"] = telemetry.receivedAtUnixMs;
+            document["rssi"] = telemetry.rssi;
+            document["has_telemetry"] = true;
         } else {
-            response->print(",\"has_telemetry\":false");
+            document["has_telemetry"] = false;
         }
-        response->print('}');
+        serializeJson(document, *response);
     }
     response->print("]}");
     request->send(response);
+}
+
+void handleRenameNode(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    const JsonObjectConst object = json.as<JsonObjectConst>();
+    if (!object["node_id"].is<uint8_t>() ||
+        !object["display_name"].is<const char*>()) {
+        sendError(request, 422, "invalid_node_values");
+        return;
+    }
+    const uint8_t nodeId = object["node_id"].as<uint8_t>();
+    const char* const displayName = object["display_name"].as<const char*>();
+    const size_t length = strlen(displayName);
+    radiosensors::registry::RenameStatus renameStatus{};
+    const RegistryCommitStatus commit = registry_store::renameAndSave(
+        nodeId, displayName, length, renameStatus);
+    if (renameStatus == radiosensors::registry::RenameStatus::InvalidName) {
+        sendError(request, 422, "invalid_display_name");
+    } else if (renameStatus == radiosensors::registry::RenameStatus::NotFound) {
+        sendError(request, 404, "node_not_found");
+    } else if (commit == RegistryCommitStatus::StorageError) {
+        sendError(request, 500, "node_storage_failed");
+    } else if (commit == RegistryCommitStatus::NotInitialized) {
+        sendError(request, 503, "registry_unavailable");
+    } else {
+        JsonDocument response;
+        response["node_id"] = nodeId;
+        response["display_name"] = displayName;
+        response["registry_generation"] = registry_store::generation();
+        String body;
+        serializeJson(response, body);
+        request->send(200, "application/json", body);
+    }
+}
+
+void handleDeleteNode(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>() ||
+        !json.as<JsonObjectConst>()["node_id"].is<uint8_t>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    const uint8_t nodeId = json.as<JsonObjectConst>()["node_id"].as<uint8_t>();
+    bool removed = false;
+    const RegistryCommitStatus commit =
+        registry_store::removeAndSave(nodeId, removed);
+    if (commit == RegistryCommitStatus::StorageError) {
+        sendError(request, 500, "node_storage_failed");
+    } else if (commit == RegistryCommitStatus::NotInitialized) {
+        sendError(request, 503, "registry_unavailable");
+    } else if (!removed) {
+        sendError(request, 404, "node_not_found");
+    } else {
+        telemetry_store::erase(nodeId);
+        request->send(204);
+    }
+}
+
+// Set when a reset has been acknowledged; loop() performs the restart so the
+// response leaves the socket first. Restarting inside the handler would drop
+// the connection and leave the caller unable to tell success from failure.
+uint32_t restartAtMs = 0;
+
+void handleResetRadioNetwork(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+
+    // The body is optional: without one the gateway picks the network id.
+    uint8_t requestedNetworkId = 0;
+    if (json.is<JsonObject>()) {
+        const JsonObjectConst object = json.as<JsonObjectConst>();
+        if (!object["operational_network_id"].isNull()) {
+            if (!object["operational_network_id"].is<uint8_t>() ||
+                object["operational_network_id"].as<uint8_t>() == 0) {
+                sendError(request, 422, "invalid_operational_network_id");
+                return;
+            }
+            requestedNetworkId = object["operational_network_id"].as<uint8_t>();
+        }
+    }
+
+    // Clear the registry first: the nodes in it are bound to the old network
+    // and key, and saveSecrets refuses to change the radio profile while any
+    // of them is still active.
+    size_t removedNodes = 0;
+    const RegistryCommitStatus registryStatus = registry_store::clearAndSave(removedNodes);
+    if (registryStatus == RegistryCommitStatus::StorageError) {
+        sendError(request, 500, "node_storage_failed");
+        return;
+    }
+    if (registryStatus == RegistryCommitStatus::NotInitialized) {
+        sendError(request, 503, "registry_unavailable");
+        return;
+    }
+    telemetry_store::clear();
+
+    auto secrets = configuration_store::secrets();
+    secrets.installationKeyPresent = true;
+    esp_fill_random(secrets.installationKey,
+                    radiosensors::gateway_storage::kRadioKeySize);
+    secrets.operationalNetworkId = requestedNetworkId != 0
+        ? requestedNetworkId
+        : randomOperationalNetworkId();
+
+    const auto secretResult = configuration_store::saveSecrets(secrets);
+    if (secretResult == configuration_store::SaveStatus::LockedByActiveNodes) {
+        sendError(request, 409, "secrets_locked_by_active_nodes");
+        return;
+    }
+    if (secretResult != configuration_store::SaveStatus::Ok) {
+        sendError(request, 500, "secrets_storage_failed");
+        return;
+    }
+
+    JsonDocument response;
+    response["operational_network_id"] = secrets.operationalNetworkId;
+    response["removed_nodes"] = removedNodes;
+    response["restarting"] = true;
+    String body;
+    serializeJson(response, body);
+    request->send(202, "application/json", body);
+    restartAtMs = millis() + kRestartDelayMs;
 }
 
 bool parseTokenScopes(const JsonVariantConst& json, uint16_t& scopes) {
@@ -1269,6 +1408,12 @@ void begin() {
     server.on("/api/v1/session", HTTP_GET, handleCurrentSession);
     server.on("/api/v1/session", HTTP_DELETE, handleLogout);
     server.on("/api/v1/nodes", HTTP_GET, handleNodes);
+    auto& renameNodeHandler = server.on(
+        "/api/v1/nodes", HTTP_PATCH, handleRenameNode);
+    renameNodeHandler.setMaxContentLength(256);
+    auto& deleteNodeHandler = server.on(
+        "/api/v1/nodes", HTTP_DELETE, handleDeleteNode);
+    deleteNodeHandler.setMaxContentLength(128);
     server.on("/api/v1/settings", HTTP_GET, handleSettings);
     auto& settingsHandler = server.on(
         "/api/v1/settings", HTTP_PUT, handleUpdateSettings);
@@ -1290,6 +1435,9 @@ void begin() {
     auto& deleteTokenHandler = server.on(
         "/api/v1/tokens", HTTP_DELETE, handleDeleteToken);
     deleteTokenHandler.setMaxContentLength(128);
+    auto& resetRadioHandler = server.on(
+        "/api/v1/radio/reset", HTTP_POST, handleResetRadioNetwork);
+    resetRadioHandler.setMaxContentLength(128);
     auto& openPairingHandler = server.on(
         "/api/v1/pairing/open", HTTP_POST, handleOpenPairing);
     openPairingHandler.setMaxContentLength(256);
@@ -1307,6 +1455,11 @@ void begin() {
 
 void loop() {
     telemetrySocket.cleanupClients(kMaximumWebSocketClients);
+    if (restartAtMs != 0 && static_cast<int32_t>(millis() - restartAtMs) >= 0) {
+        Serial.println("Radio network reset: restarting");
+        Serial.flush();
+        ESP.restart();
+    }
 }
 
 void publishTelemetry(const telemetry_store::Record& record) {

@@ -4,15 +4,17 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { api, errorCode } from '../api/client'
 import type { GatewayNode, Health } from '../api/types'
-import HexBlockInput from '../components/HexBlockInput.vue'
+import HexInput from '../components/HexInput.vue'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
+import NodeDetail from '../components/NodeDetail.vue'
+import SignalBars from '../components/SignalBars.vue'
 import { PAIRING_KEY_HEX_LENGTH, PAIRING_UID_HEX_LENGTH, parsePairingPaste } from '../utils/hexCredentials'
-import { lastSeen, signal } from '../utils/time'
+import { lastSeen, nodeName, signal } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const nodes = ref<GatewayNode[]>([])
 const health = ref<Health | null>(null)
 const loading = ref(true)
@@ -24,27 +26,116 @@ const pairingActive = ref(false)
 const pairingRemaining = ref(0)
 const pairingBusy = ref(false)
 const credentials = reactive({ uid: '', factoryKey: '' })
-const uidInput = ref<InstanceType<typeof HexBlockInput> | null>(null)
-const keyInput = ref<InstanceType<typeof HexBlockInput> | null>(null)
+// The UID handed to the gateway, and the registry generation just before it:
+// together they say whether the window closed because a node joined.
+const pairingUid = ref('')
+const registryGeneration = ref(0)
+let generationAtOpen = 0
+const uidInput = ref<InstanceType<typeof HexInput> | null>(null)
+const keyInput = ref<InstanceType<typeof HexInput> | null>(null)
+const scanInput = ref<HTMLInputElement | null>(null)
+// '' while idle; otherwise the i18n suffix of the message under the fields.
+type ScanState = '' | 'scanning' | 'read' | 'no_code' | 'unsupported' | 'unreadable'
+const scanState = ref<ScanState>('')
+// jsQR decodes on the main thread, so the dialog is frozen while it runs:
+// mask it rather than leaving a dead-looking dialog under a disabled button.
+const scanning = computed(() => scanState.value === 'scanning')
+
+// Which .notice variant each outcome earns. A missed code is retryable with a
+// better photo, so it stays on the default warning; a code that is not ours
+// and a file that is not an image are both "you scanned the wrong thing" and
+// read as errors.
+const scanNotice = computed(() => ({
+  success: scanState.value === 'read',
+  error: scanState.value === 'unsupported' || scanState.value === 'unreadable',
+}))
 const invalidCredentials = computed(() => credentials.uid.length !== PAIRING_UID_HEX_LENGTH || credentials.factoryKey.length !== PAIRING_KEY_HEX_LENGTH)
 let pairingTimer: number | undefined
+
+const selected = ref<GatewayNode | null>(null)
+
+// Reload after a rename or removal, then drop the selection: the record the
+// dialog was showing either changed generation or no longer exists.
+async function afterNodeChange() {
+  selected.value = null
+  await load()
+}
+
+type SortKey = 'name' | 'rssi' | 'lastSeen'
+const sortKey = ref<SortKey>('name')
+const sortAscending = ref(true)
+
+const named = (node: GatewayNode) => nodeName(t, node)
+
+const sortedNodes = computed(() => {
+  const direction = sortAscending.value ? 1 : -1
+  return [...nodes.value].sort((left, right) => {
+    if (sortKey.value === 'name') return named(left).localeCompare(named(right), locale.value) * direction
+    const a = sortKey.value === 'rssi' ? left.rssi : left.last_seen_at_ms
+    const b = sortKey.value === 'rssi' ? right.rssi : right.last_seen_at_ms
+    // Nodes that never reported have no value to compare, so they stay at the
+    // bottom whichever direction is chosen instead of flipping to the top.
+    if (a === undefined) return b === undefined ? 0 : 1
+    if (b === undefined) return -1
+    return (a - b) * direction
+  })
+})
+
+function sortBy(key: SortKey) {
+  if (sortKey.value === key) sortAscending.value = !sortAscending.value
+  else { sortKey.value = key; sortAscending.value = key === 'name' }
+}
 
 async function load() {
   loading.value = true
   const [registryResult, healthResult] = await Promise.allSettled([api.nodes(), api.health()])
-  if (registryResult.status === 'fulfilled') nodes.value = registryResult.value.nodes
+  if (registryResult.status === 'fulfilled') { nodes.value = registryResult.value.nodes; registryGeneration.value = registryResult.value.registry_generation }
   else registryUnavailable.value = true
   if (healthResult.status === 'fulfilled') { health.value = healthResult.value; pairingActive.value = healthResult.value.pairing.active; pairingRemaining.value = healthResult.value.pairing.remaining_seconds }
   else failure.value = errorCode(healthResult.reason)
   loading.value = false
 }
 
-function openPairing() {
-  pairingFailure.value = ''
+// Leaves nothing behind: the factory key is a secret, and the picked photo
+// keeps a file handle alive in the input until it is cleared.
+function resetPairingInputs() {
   credentials.uid = ''
   credentials.factoryKey = ''
+  pairingUid.value = ''
+  scanState.value = ''
+  if (scanInput.value) scanInput.value.value = ''
+}
+
+function openPairing() {
+  pairingFailure.value = ''
+  resetPairingInputs()
   showPairing.value = true
   router.replace({ query: { pair: '1' } })
+}
+
+// The scanner (jsQR plus this view's decoding helpers) is a deferred chunk:
+// it only reaches the browser once someone taps "Scan QR".
+async function onScanPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  scanState.value = 'scanning'
+  try {
+    const { scanPairingQr } = await import('../utils/qrScan')
+    const result = await scanPairingQr(file)
+    scanState.value = result.status
+    // Filling the fields is all a scan does -- the user still confirms with
+    // "Add", so a misread code cannot start pairing on its own.
+    if (result.status === 'read') {
+      credentials.uid = result.credentials.uid
+      credentials.factoryKey = result.credentials.key
+    }
+  } catch {
+    scanState.value = 'unreadable'
+  } finally {
+    // Release the photo, and let the same file be picked again after a miss.
+    input.value = ''
+  }
 }
 
 // A full JSON/text paste (from the printed pairing label or QR export) can
@@ -56,13 +147,15 @@ function handleCredentialsPaste(event: ClipboardEvent) {
   if (!parsed.uid && !parsed.key) return
   event.preventDefault()
   event.stopPropagation()
+  scanState.value = ''
   if (parsed.uid) credentials.uid = parsed.uid
   if (parsed.key) credentials.factoryKey = parsed.key
-  if (parsed.uid?.length === PAIRING_UID_HEX_LENGTH && !parsed.key) keyInput.value?.focusFirst()
+  if (parsed.uid?.length === PAIRING_UID_HEX_LENGTH && !parsed.key) keyInput.value?.focus()
 }
 
 async function closePairing() {
   if (pairingActive.value) { try { await api.closePairing() } catch (error) { pairingFailure.value = errorCode(error); return } }
+  resetPairingInputs()
   showPairing.value = false
   pairingActive.value = false
   router.replace({ query: {} })
@@ -71,14 +164,59 @@ async function closePairing() {
 async function beginPairing() {
   pairingBusy.value = true
   pairingFailure.value = ''
-  try { const state = await api.openPairing(credentials.uid, credentials.factoryKey); credentials.factoryKey = ''; pairingActive.value = state.active; pairingRemaining.value = state.remaining_seconds }
+  try {
+    const state = await api.openPairing(credentials.uid, credentials.factoryKey)
+    pairingUid.value = credentials.uid
+    generationAtOpen = registryGeneration.value
+    credentials.factoryKey = ''
+    pairingActive.value = state.active
+    pairingRemaining.value = state.remaining_seconds
+  }
   catch (error) { pairingFailure.value = errorCode(error) }
   finally { pairingBusy.value = false }
 }
 
+// The gateway closes the window on success and on expiry alike, and the API
+// reports no outcome, so the registry is the only witness: our UID has to be
+// present *and* the registry has to have been written since we opened. The
+// generation check matters when re-pairing a node that is already registered,
+// where presence alone would call every timeout a success.
+async function finishPairing() {
+  const uid = pairingUid.value
+  await load()
+  const joined = registryGeneration.value !== generationAtOpen
+    ? nodes.value.find((node) => node.device_uid === uid)
+    : undefined
+
+  resetPairingInputs()
+  if (!joined) {
+    // Timed out. Both fields are cleared -- the factory key was wiped at POST
+    // and cannot be reused -- so the next attempt starts from a fresh scan.
+    pairingFailure.value = 'pairing_timeout'
+    return
+  }
+  showPairing.value = false
+  router.replace({ query: {} })
+  // Straight to the new node: it has no name yet and shows as "Node <id>".
+  selected.value = joined
+}
+
+let pairingPollInFlight = false
+
 async function refreshPairing() {
-  if (!pairingActive.value) return
-  try { const state = await api.health(); pairingActive.value = state.pairing.active; pairingRemaining.value = state.pairing.remaining_seconds; if (!state.pairing.active) await load() } catch { /* Keep the last visible state. */ }
+  // The countdown ticks every second while a health request may take thirty,
+  // so one poll at a time.
+  if (!pairingActive.value || pairingPollInFlight) return
+  pairingPollInFlight = true
+  try {
+    const state = await api.poll.health()
+    pairingRemaining.value = state.pairing.remaining_seconds
+    if (state.pairing.active) return
+    pairingActive.value = false
+    await finishPairing()
+  }
+  catch { /* Keep the last visible state. */ }
+  finally { pairingPollInFlight = false }
 }
 onMounted(() => { load(); pairingTimer = window.setInterval(refreshPairing, 1000) })
 onBeforeUnmount(() => window.clearInterval(pairingTimer))
@@ -99,13 +237,26 @@ onBeforeUnmount(() => window.clearInterval(pairingTimer))
 
       <section v-if="nodes.length" class="panel nodes-panel">
         <header class="panel-heading"><div><h2>{{ $t('nodes.title') }}</h2><p>{{ $t('overview.nodesHint') }}</p></div><span class="panel-count">{{ nodes.length }}</span></header>
-        <div class="node-list">
-          <div v-for="node in nodes" :key="node.node_id" class="node-row">
-            <span class="node-symbol" aria-hidden="true"><Icon name="access-point" /></span>
-            <span class="node-name"><strong>{{ node.name || $t('nodes.unnamed', { id: node.node_id }) }}</strong><small>{{ $t('nodes.profile', { id: node.profile_id }) }} · ID {{ node.node_id }}</small></span>
-            <span class="node-seen"><strong>{{ lastSeen(t, node.last_seen_at_ms) }}</strong><small>{{ signal(node.rssi) }}</small></span>
-            <span class="inline-status" :class="{ warning: node.state !== 'active' }">{{ $t(`nodes.state.${node.state}`) }}</span>
+        <div class="node-list detailed">
+          <div class="node-list-head">
+            <span></span>
+            <button type="button" :class="{ active: sortKey === 'name' }" @click="sortBy('name')">{{ $t('nodes.columnName') }}<span v-if="sortKey === 'name'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
+            <span>{{ $t('nodes.columnFirmware') }}</span>
+            <button type="button" :class="{ active: sortKey === 'rssi' }" @click="sortBy('rssi')">{{ $t('nodes.columnSignal') }}<span v-if="sortKey === 'rssi'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
+            <button type="button" :class="{ active: sortKey === 'lastSeen' }" @click="sortBy('lastSeen')">{{ $t('nodes.columnLastSeen') }}<span v-if="sortKey === 'lastSeen'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
+            <span>{{ $t('nodes.columnState') }}</span>
           </div>
+          <button v-for="node in sortedNodes" :key="node.node_id" class="node-row" type="button" @click="selected = node">
+            <span class="node-symbol" aria-hidden="true"><Icon name="access-point" /></span>
+            <span class="node-name"><strong>{{ named(node) }}</strong><small>{{ $t('nodes.profile', { id: node.profile_id }) }} · ID {{ node.node_id }}</small></span>
+            <span class="node-firmware">{{ node.firmware || '—' }}</span>
+            <span class="node-signal">
+              <template v-if="node.has_telemetry === false"><small>{{ $t('nodes.noTelemetry') }}</small></template>
+              <template v-else><SignalBars :rssi="node.rssi" /><span class="node-rssi">{{ signal(node.rssi) }}</span></template>
+            </span>
+            <span class="node-seen"><strong>{{ lastSeen(t, node.last_seen_at_ms) }}</strong></span>
+            <span class="inline-status" :class="{ warning: node.state !== 'active' }">{{ $t(`nodes.state.${node.state}`) }}</span>
+          </button>
         </div>
       </section>
       <section v-else class="panel panel-message large">
@@ -116,22 +267,29 @@ onBeforeUnmount(() => window.clearInterval(pairingTimer))
       </section>
     </template>
 
-    <Modal v-if="showPairing" :title="$t('pairing.title')" @close="closePairing">
+    <NodeDetail v-if="selected" :node="selected" @close="selected = null" @changed="afterNodeChange" />
+
+    <Modal v-if="showPairing" :title="$t('pairing.title')" :busy="scanning ? $t('pairing.scanState.scanning') : undefined" @close="closePairing">
       <div class="form-stack">
         <template v-if="!pairingActive">
           <div class="field-group" @paste.capture="handleCredentialsPaste">
             <div class="field">
               <span>{{ $t('pairing.uid') }}</span>
-              <HexBlockInput ref="uidInput" v-model="credentials.uid" :length="20" :label="$t('pairing.uid')" @complete="keyInput?.focusFirst()" />
+              <HexInput ref="uidInput" v-model="credentials.uid" :length="PAIRING_UID_HEX_LENGTH" :label="$t('pairing.uid')" @complete="keyInput?.focus()" />
             </div>
             <div class="field">
               <span>{{ $t('pairing.key') }}</span>
-              <HexBlockInput ref="keyInput" v-model="credentials.factoryKey" :length="32" :label="$t('pairing.key')" />
+              <HexInput ref="keyInput" v-model="credentials.factoryKey" :length="PAIRING_KEY_HEX_LENGTH" :label="$t('pairing.key')" />
             </div>
           </div>
+          <div class="pairing-scan">
+            <button class="button secondary compact" :disabled="scanning" type="button" @click="scanInput?.click()"><Icon name="qr-code" /> {{ $t('pairing.scan') }}</button>
+            <input ref="scanInput" class="visually-hidden" type="file" accept="image/*" capture="environment" :aria-label="$t('pairing.scan')" @change="onScanPicked" />
+          </div>
+          <div v-if="scanState && !scanning" class="notice scan-status" :class="scanNotice">{{ $t(`pairing.scanState.${scanState}`) }}</div>
           <p class="pairing-instructions">{{ $t('pairing.instructions') }}</p>
         </template>
-        <div v-if="pairingActive" class="physical-status open"><span class="pulse" aria-hidden="true"></span><p>{{ $t('pairing.active', { seconds: pairingRemaining }) }}</p></div>
+        <div v-if="pairingActive" class="physical-status open"><span class="pulse" aria-hidden="true"></span><div><strong>{{ $t('pairing.waiting') }}</strong><p>{{ $t('pairing.active', { seconds: pairingRemaining }) }}</p></div></div>
         <div v-if="pairingFailure" class="notice error">{{ $t(`error.${pairingFailure}`) }}</div>
         <div class="modal-actions"><button class="button secondary" type="button" @click="closePairing">{{ pairingActive ? $t('pairing.stop') : $t('common.cancel') }}</button><button v-if="!pairingActive" class="button primary" :disabled="pairingBusy || invalidCredentials" type="button" @click="beginPairing">{{ pairingBusy ? $t('pairing.starting') : $t('pairing.start') }}</button></div>
       </div>

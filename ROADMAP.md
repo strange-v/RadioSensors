@@ -10,6 +10,10 @@ This file contains only unfinished milestones. Protocol and storage decisions be
   bearer-authenticated registry/WebSocket access, `/api/v1/nodes`, and
   transaction-only manually entered commissioning credentials are implemented.
 - Add optional QR scanning for the existing pairing credential fields.
+- Consider an optional DIY onboarding mode based on a random commissioning
+  code scoped to one gateway installation. It must be opt-in and provisioned
+  into custom nodes by the builder; it must never become a product-wide key or
+  replace unique factory credentials for pre-provisioned nodes.
 - Implement durable idempotent commands and the telemetry-ACK pending hint.
 - Design encrypted migration backup/restore and production recovery flows.
 - Validate sustained radio traffic, Ethernet recovery, OTA coexistence, PBKDF2 timing, watchdog behavior, flash encryption, and secure boot policy.

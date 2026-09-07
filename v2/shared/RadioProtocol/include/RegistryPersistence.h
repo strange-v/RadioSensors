@@ -8,9 +8,10 @@
 namespace radiosensors {
 namespace registry {
 
-constexpr uint16_t kRegistryStorageVersion = 1;
+constexpr uint16_t kRegistryStorageVersion = 2;
 constexpr size_t kRegistryHeaderSize = 12;
-constexpr size_t kStoredNodeRecordSize = 21;
+constexpr size_t kStoredNodeRecordSize =
+    21 + 1 + kNodeDisplayNameSize;
 constexpr size_t kRegistryCrcSize = 4;
 constexpr size_t kMaxRegistrySnapshotSize =
     kRegistryHeaderSize + kMaxNodes * kStoredNodeRecordSize + kRegistryCrcSize;
@@ -67,6 +68,9 @@ private:
     RegistrySlotStorage& storage_;
     uint32_t generation_;
     int8_t activeSlot_;
+    uint8_t buffer_[kMaxRegistrySnapshotSize];
+    NodeRecord scratchRecords_[kMaxNodes];
+    NodeRegistry scratchRegistry_;
 };
 
 }  // namespace registry
