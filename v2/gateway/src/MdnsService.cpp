@@ -1,6 +1,7 @@
 #include "MdnsService.h"
 
 #include <ESPmDNS.h>
+#include <GatewayStream.h>
 
 #include "ApiVersion.h"
 #include "BoardProfile.h"
@@ -49,6 +50,9 @@ void apply() {
         "radiosensors", "tcp", "gateway_id", identity::gatewayId());
     MDNS.addServiceTxt(
         "radiosensors", "tcp", "boot_id", identity::bootId());
+    MDNS.addServiceTxt(
+        "radiosensors", "tcp", "stream_version",
+        String(radiosensors::stream::kVersion));
     MDNS.addServiceTxt("radiosensors", "tcp", "firmware", firmware::version);
     MDNS.addServiceTxt("radiosensors", "tcp", "board", board::current.name);
     MDNS.addServiceTxt(

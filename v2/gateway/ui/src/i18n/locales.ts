@@ -8,7 +8,7 @@ export const SUPPORTED_LOCALES = [
 
 export type LocaleCode = (typeof SUPPORTED_LOCALES)[number]['code']
 
-const STORAGE_KEY = 'radiosensors.locale'
+const STORAGE_KEY = 'osk-sense.locale'
 
 export function isSupportedLocale(value: unknown): value is LocaleCode {
   return SUPPORTED_LOCALES.some((entry) => entry.code === value)

@@ -51,6 +51,9 @@ const scanNotice = computed(() => ({
 }))
 const invalidCredentials = computed(() => credentials.uid.length !== PAIRING_UID_HEX_LENGTH || credentials.factoryKey.length !== PAIRING_KEY_HEX_LENGTH)
 let pairingTimer: number | undefined
+// Matches the overview, which says "automatically every 10 seconds".
+const LIST_REFRESH_MS = 10_000
+let listTimer: number | undefined
 
 const selected = ref<GatewayNode | null>(null)
 
@@ -86,14 +89,34 @@ function sortBy(key: SortKey) {
   else { sortKey.value = key; sortAscending.value = key === 'name' }
 }
 
-async function load() {
-  loading.value = true
-  const [registryResult, healthResult] = await Promise.allSettled([api.nodes(), api.health()])
+// `quiet` is the periodic refresh: no spinner, the shorter poll timeout, and a
+// failure leaves the last good list on screen instead of replacing it with an
+// error -- a single missed poll is not news.
+async function fetchState(quiet = false) {
+  if (!quiet) loading.value = true
+  const source = quiet ? api.poll : api
+  const [registryResult, healthResult] = await Promise.allSettled([source.nodes(), source.health()])
   if (registryResult.status === 'fulfilled') { nodes.value = registryResult.value.nodes; registryGeneration.value = registryResult.value.registry_generation }
-  else registryUnavailable.value = true
+  else if (!quiet) registryUnavailable.value = true
   if (healthResult.status === 'fulfilled') { health.value = healthResult.value; pairingActive.value = healthResult.value.pairing.active; pairingRemaining.value = healthResult.value.pairing.remaining_seconds }
-  else failure.value = errorCode(healthResult.reason)
-  loading.value = false
+  else if (!quiet) failure.value = errorCode(healthResult.reason)
+  if (!quiet) loading.value = false
+}
+
+const load = () => fetchState()
+
+// "Last seen" is a relative time computed during render, so without a refresh
+// the whole list freezes at whatever it said when the page opened -- both the
+// values and the ages. Polling replaces the array, which recomputes them.
+let listPollInFlight = false
+
+async function refreshList() {
+  // Step aside while a dialog is open: the node card would keep showing the
+  // record it was opened with, and re-sorting the list under an open pairing
+  // window is disruptive. Both dialogs reload on their own when they finish.
+  if (listPollInFlight || selected.value || showPairing.value) return
+  listPollInFlight = true
+  try { await fetchState(true) } finally { listPollInFlight = false }
 }
 
 // Leaves nothing behind: the factory key is a secret, and the picked photo
@@ -218,8 +241,12 @@ async function refreshPairing() {
   catch { /* Keep the last visible state. */ }
   finally { pairingPollInFlight = false }
 }
-onMounted(() => { load(); pairingTimer = window.setInterval(refreshPairing, 1000) })
-onBeforeUnmount(() => window.clearInterval(pairingTimer))
+onMounted(() => {
+  load()
+  pairingTimer = window.setInterval(refreshPairing, 1000)
+  listTimer = window.setInterval(refreshList, LIST_REFRESH_MS)
+})
+onBeforeUnmount(() => { window.clearInterval(pairingTimer); window.clearInterval(listTimer) })
 </script>
 
 <template>

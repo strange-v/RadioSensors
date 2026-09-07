@@ -6,7 +6,7 @@ export const THEME_PREFERENCES = ['auto', 'light', 'dark'] as const
 
 export type ThemePreference = (typeof THEME_PREFERENCES)[number]
 
-const STORAGE_KEY = 'radiosensors.theme'
+const STORAGE_KEY = 'osk-sense.theme'
 const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#f4f6f9', dark: '#141a24' }
 
 export function storedTheme(): ThemePreference {

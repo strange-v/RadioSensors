@@ -38,16 +38,47 @@ const nodes = [
 const routes: Record<string, unknown> = {
   '/health': health,
   '/api/v1/health': health,
-  '/api/v1/info': { firmware_version: '2.1.0', api_version: 1, display_name: 'RadioSensors Gateway', ui: { state: 'ok', version: '0.1.0', required_api_version: 1 }, board: 'esp32-poe', hostname: 'rf-gateway-a085e3' },
+  '/api/v1/info': { firmware_version: '2.1.0', api_version: 1, display_name: 'OSK Sense Hub', ui: { state: 'ok', version: '0.1.0', required_api_version: 1 }, board: 'esp32-poe', hostname: 'rf-gateway-a085e3' },
   '/api/v1/nodes': { registry_generation: 12, nodes },
   '/api/v1/setup': { setup_required: false, physical_window_active: false, remaining_seconds: 0 },
   '/api/v1/session': { user: { id: 1, username: 'admin', role: 'admin' }, csrf_token: 'mock-csrf' },
-  '/api/v1/settings': { generation: 4, display_name: 'RadioSensors Gateway', mdns_enabled: true, ntp_enabled: true, pairing_window_seconds: 120, setup_window_seconds: 300, ntp_servers: ['pool.ntp.org'] },
-  '/api/v1/tokens': { tokens: [{ id: 1, name: 'Home Assistant', enabled: true, created_at_ms: now - 86_400_000, scopes: ['gateway:read', 'telemetry:read'] }] },
+  '/api/v1/settings': { generation: 4, display_name: 'OSK Sense Hub', mdns_enabled: true, ntp_enabled: true, pairing_window_seconds: 120, setup_window_seconds: 300, ntp_servers: ['pool.ntp.org'] },
   '/api/v1/pairing': { active: false, remaining_seconds: 0, indication: 'idle' },
 }
 
 let registryGeneration = 12
+
+// Local accounts, with the same capacity and last-admin rule the gateway
+// enforces, so the UI guardrails can actually be exercised here.
+const users = [
+  { id: 1, username: 'admin', role: 'admin', enabled: true },
+  { id: 2, username: 'olena', role: 'viewer', enabled: true },
+]
+let nextUserId = 3
+
+// API tokens, with the gateway's capacity and one-shot secret. These used to
+// sit in the static `routes` map, which answered every method with the same
+// list -- POST appeared to succeed while returning no `token` at all.
+const tokens = [
+  { id: 1, name: 'Home Assistant', enabled: true, created_at_ms: now - 86_400_000, scopes: ['gateway:read', 'registry:read', 'telemetry:read'] },
+]
+let nextTokenId = 2
+const TOKEN_SCOPES = ['gateway:read', 'registry:read', 'telemetry:read']
+
+function readBody(req: { on: (event: string, handler: (chunk?: unknown) => void) => void }, done: (body: Record<string, unknown>) => void) {
+  let raw = ''
+  req.on('data', (chunk) => { raw += chunk })
+  req.on('end', () => done(JSON.parse(raw || '{}')))
+}
+
+function json(res: { statusCode: number; setHeader: (k: string, v: string) => void; end: (body?: string) => void }, status: number, body?: unknown) {
+  res.statusCode = status
+  if (body === undefined) { res.end(); return }
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+const enabledAdmins = () => users.filter((user) => user.role === 'admin' && user.enabled).length
 let pairingTimer: ReturnType<typeof setTimeout> | undefined
 
 // Stands in for a node joining: the real gateway closes the window as soon as
@@ -88,6 +119,77 @@ function mockApi(): Plugin {
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(health.pairing))
           return
+        }
+        if (path === '/api/v1/users') {
+          if (req.method === 'GET') return json(res, 200, { users })
+          if (req.method === 'POST') {
+            readBody(req, (body) => {
+              if (users.length >= 4) return json(res, 409, { error: 'user_capacity_reached' })
+              if (users.some((user) => user.username === body.username)) return json(res, 409, { error: 'username_already_exists' })
+              const created = { id: nextUserId++, username: String(body.username), role: body.role === 'admin' ? 'admin' : 'viewer', enabled: body.enabled !== false }
+              users.push(created)
+              json(res, 201, created)
+            })
+            return
+          }
+          if (req.method === 'PUT') {
+            readBody(req, (body) => {
+              const user = users.find((entry) => entry.id === body.id)
+              if (!user) return json(res, 404, { error: 'user_not_found' })
+              const losingLastAdmin = user.role === 'admin' && user.enabled && enabledAdmins() === 1
+                && (body.role !== 'admin' || body.enabled === false)
+              if (losingLastAdmin) return json(res, 409, { error: 'last_admin_required' })
+              if (users.some((entry) => entry.username === body.username && entry.id !== user.id)) {
+                return json(res, 409, { error: 'username_already_exists' })
+              }
+              Object.assign(user, { username: String(body.username), role: body.role === 'admin' ? 'admin' : 'viewer', enabled: body.enabled !== false })
+              json(res, 200, user)
+            })
+            return
+          }
+          if (req.method === 'DELETE') {
+            readBody(req, (body) => {
+              const index = users.findIndex((entry) => entry.id === body.id)
+              if (index < 0) return json(res, 404, { error: 'user_not_found' })
+              const user = users[index]
+              if (user.role === 'admin' && user.enabled && enabledAdmins() === 1) {
+                return json(res, 409, { error: 'last_admin_required' })
+              }
+              users.splice(index, 1)
+              json(res, 204)
+            })
+            return
+          }
+        }
+        if (path === '/api/v1/tokens') {
+          if (req.method === 'GET') return json(res, 200, { tokens })
+          if (req.method === 'POST') {
+            readBody(req, (body) => {
+              const name = typeof body.name === 'string' ? body.name : ''
+              const scopes = Array.isArray(body.scopes) ? body.scopes as string[] : []
+              const validScopes = scopes.length > 0 && scopes.every((scope) => TOKEN_SCOPES.includes(scope))
+              if (Buffer.byteLength(name, 'utf8') === 0 || Buffer.byteLength(name, 'utf8') > 32 || !validScopes) {
+                return json(res, 422, { error: 'invalid_token_values' })
+              }
+              if (tokens.length >= 8) return json(res, 409, { error: 'token_capacity_reached' })
+              const created = { id: nextTokenId++, name, enabled: true, created_at_ms: Date.now(), scopes }
+              tokens.push(created)
+              // The secret is returned once and never stored in a readable
+              // form, exactly as the gateway does it.
+              const secret = Array.from({ length: 43 }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'[Math.floor(Math.random() * 64)]).join('')
+              json(res, 201, { id: created.id, name: created.name, created_at_ms: created.created_at_ms, scopes: created.scopes, token: secret })
+            })
+            return
+          }
+          if (req.method === 'DELETE') {
+            readBody(req, (body) => {
+              const index = tokens.findIndex((token) => token.id === body.id)
+              if (index < 0) return json(res, 404, { error: 'token_not_found' })
+              tokens.splice(index, 1)
+              json(res, 204)
+            })
+            return
+          }
         }
         if (path === '/api/v1/nodes' && req.method === 'GET') {
           res.setHeader('Content-Type', 'application/json')

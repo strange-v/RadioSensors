@@ -2,9 +2,19 @@ export interface SetupStatus { setup_required: boolean; physical_window_active: 
 export interface SetupRequest { username: string; password: string; display_name?: string; operational_network_id?: number }
 export interface SessionUser { id: number; username: string; role: 'admin' | 'viewer' }
 export interface Session { user: SessionUser; csrf_token: string }
+
+// A stored local account. The gateway never returns password material, and the
+// list is capped -- see USER_LIMIT.
+export interface GatewayUser { id: number; username: string; role: 'admin' | 'viewer'; enabled: boolean }
+export interface UserList { users: GatewayUser[] }
+// `password` is optional on update: omitted leaves the stored one alone.
+export interface UserWrite { username: string; role: 'admin' | 'viewer'; enabled: boolean; password?: string }
 export type TokenScope = 'gateway:read' | 'registry:read' | 'telemetry:read'
 export interface ApiToken { id: number; name: string; enabled: boolean; created_at_ms: number; scopes: TokenScope[] }
-export interface CreatedApiToken extends ApiToken { token: string }
+// The 201 body carries the generated secret exactly once and, unlike a list
+// entry, has no `enabled` field -- a new token is always enabled
+// (HealthServer.cpp, handleCreateToken).
+export interface CreatedApiToken extends Omit<ApiToken, 'enabled'> { token: string }
 export interface ApiTokenList { tokens: ApiToken[] }
 export interface GatewaySettings { generation: number; display_name: string; mdns_enabled: boolean; ntp_enabled: boolean; pairing_window_seconds: number; setup_window_seconds: number; ntp_servers: string[] }
 export interface PairingStatus { active: boolean; remaining_seconds: number; indication: string }

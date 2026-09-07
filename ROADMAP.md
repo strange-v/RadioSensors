@@ -4,12 +4,6 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 
 ## Gateway
 
-- Complete richer discovery capabilities beyond the implemented stable gateway
-  ID, per-boot ID, and mDNS identity metadata. Browser login/session, user and
-  API-token management, editable runtime settings,
-  bearer-authenticated registry/WebSocket access, `/api/v1/nodes`, and
-  transaction-only manually entered commissioning credentials are implemented.
-- Add optional QR scanning for the existing pairing credential fields.
 - Consider an optional DIY onboarding mode based on a random commissioning
   code scoped to one gateway installation. It must be opt-in and provisioned
   into custom nodes by the builder; it must never become a product-wide key or

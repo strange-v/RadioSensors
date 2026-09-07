@@ -38,13 +38,14 @@ export default defineConfig({
     assetsDir: 'assets',
     sourcemap: false,
     // One CSS file, and one application JS file: every extra file costs an HTTP
-    // round trip to the ESP32 plus a whole 4 KB LittleFS block, and route-level
-    // splitting deferred nothing worth deferring (per-view chunks are under
-    // 4 KB each). Views are therefore imported eagerly in src/router/index.ts.
+    // round trip to the ESP32 plus a whole 4 KB LittleFS block, so a view only
+    // earns a chunk once it is both sizeable and rarely opened. Most views are
+    // neither, and are imported eagerly in src/router/index.ts.
     //
-    // The one dynamic import left is the pairing QR scanner, which is worth a
-    // chunk of its own: jsQR is ~15 KB gzip that only the people who scan a
-    // label ever download. check-build.mjs budgets the two separately.
+    // Two are: the pairing QR scanner, whose jsQR dependency is ~48 KB gzip
+    // that only people who scan a label download, and the administration page
+    // (~4.8 KB gzip of users, API tokens and their dialogs), which a viewer
+    // cannot even reach. check-build.mjs budgets these apart from `app`.
     cssCodeSplit: false,
     rollupOptions: { output: { entryFileNames: 'assets/app-[hash].js', chunkFileNames: 'assets/[name]-[hash].js' } },
   },

@@ -4,6 +4,7 @@ export interface RouteAccessTarget {
   path: string
   fullPath: string
   requiresAuth: boolean
+  requiresAdmin?: boolean
 }
 
 export interface RouteAccessApi {
@@ -34,7 +35,12 @@ export async function resolveRouteAccess(
   if (!target.requiresAuth) return true
 
   try {
-    await gatewayApi.session()
+    const session = await gatewayApi.session()
+    // A viewer reaching an admin URL is signed in, just not entitled: send it
+    // to the overview rather than to login, which would ask it to fix a
+    // problem that signing in again cannot fix. The gateway rejects the
+    // requests too; this only keeps the UI honest about it.
+    if (target.requiresAdmin && session.user.role !== 'admin') return { path: '/status' }
     return true
   } catch {
     try {
