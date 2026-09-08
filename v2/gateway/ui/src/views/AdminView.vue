@@ -24,7 +24,7 @@ async function signedOut() {
 }
 
 onMounted(async () => {
-  try { health.value = await api.health() } catch (error) { failure.value = errorCode(error) }
+  try { health.value = await api.status() } catch (error) { failure.value = errorCode(error) }
 })
 </script>
 

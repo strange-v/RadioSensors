@@ -5,14 +5,20 @@
 
 namespace radiosensors::stream {
 
+// A consumer must ignore an unknown message kind, or every later addition
+// breaks every deployed client.
 constexpr uint8_t kVersion = 1;
 constexpr size_t kControlFrameSize = 6;
+constexpr size_t kRegistryChangedFrameSize = 10;
 constexpr size_t kTelemetryEnvelopeSize = 20;
 
 enum class MessageKind : uint8_t {
     SnapshotBegin = 1,
     Telemetry = 2,
     SnapshotEnd = 3,
+    // Carries the new durable generation; the consumer refetches
+    // /api/nodes. See WEBSOCKET.md for why polling cannot replace it.
+    RegistryChanged = 4,
 };
 
 inline void writeUint16(uint8_t* const output, const uint16_t value) {
@@ -45,6 +51,21 @@ inline size_t encodeControl(
     output[1] = static_cast<uint8_t>(kind);
     writeUint32(output + 2, sequence);
     return kControlFrameSize;
+}
+
+// The sequence is the telemetry watermark, as in the snapshot control frames,
+// so a consumer can order this against telemetry it has already applied.
+inline size_t encodeRegistryChanged(
+    const uint32_t sequence,
+    const uint32_t registryGeneration,
+    uint8_t* const output,
+    const size_t capacity) {
+    if (output == nullptr || capacity < kRegistryChangedFrameSize) return 0;
+    output[0] = kVersion;
+    output[1] = static_cast<uint8_t>(MessageKind::RegistryChanged);
+    writeUint32(output + 2, sequence);
+    writeUint32(output + 6, registryGeneration);
+    return kRegistryChangedFrameSize;
 }
 
 inline size_t encodeTelemetry(

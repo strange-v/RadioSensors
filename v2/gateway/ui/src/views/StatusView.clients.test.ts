@@ -29,7 +29,7 @@ const health = () => ({
 
 const gatewayApi = vi.hoisted(() => ({
   poll: {
-    health: vi.fn(),
+    status: vi.fn(),
     info: vi.fn(async () => ({ firmware_version: '2.1.0', hostname: 'osk-hub', ui: { version: '0.1.0' } })),
     nodes: vi.fn(async () => ({ nodes: [] })),
     clients: vi.fn(async () => ({ clients: [...state.streamClients] })),
@@ -67,7 +67,7 @@ beforeEach(() => {
   state.role = 'admin'
   state.tokensFail = false
   vi.clearAllMocks()
-  gatewayApi.poll.health.mockImplementation(async () => health())
+  gatewayApi.poll.status.mockImplementation(async () => health())
   gatewayApi.tokens.mockImplementation(async () => {
     if (state.tokensFail) throw new Error('admin_required')
     return { tokens: [...state.tokens] }
@@ -150,7 +150,7 @@ describe('StatusView clients card', () => {
   it('shows dropped messages when there are any', async () => {
     state.clients = 1
     state.tokens = [token()]
-    gatewayApi.poll.health.mockImplementation(async () => {
+    gatewayApi.poll.status.mockImplementation(async () => {
       const value = health()
       value.websocket.messages_dropped = 7
       return value
@@ -184,7 +184,7 @@ describe('StatusView clients card', () => {
     await vi.advanceTimersByTimeAsync(30_000)
     await flushPromises()
 
-    expect(gatewayApi.poll.health.mock.calls.length).toBeGreaterThan(1)
+    expect(gatewayApi.poll.status.mock.calls.length).toBeGreaterThan(1)
     expect(gatewayApi.tokens).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })

@@ -22,7 +22,7 @@ public:
         temperature_.readTemperature(temperature);
         supplyMillivolts_ = battery_.readMillivolts();
         return protocol::encodeTemperatureTelemetry(
-                   temperature, supplyMillivolts_, output, capacity) ==
+                   supplyMillivolts_, temperature, output, capacity) ==
                 protocol::TelemetryCodecStatus::Ok
             ? protocol::kTemperatureTelemetrySize
             : 0;

@@ -24,23 +24,14 @@ Hardware environments inherit serial UPDI on COM6 at 115200 baud. Adjust the loc
 
 ## Factory provisioning
 
-Production firmware contains no shared commissioning key. Each ATtiny1614 must
-receive a unique 16-byte factory key in its 32-byte USERROW after the common
-firmware is flashed. Install the QR exporter once and provision a connected
-node through the same SerialUPDI adapter:
+Production firmware contains no shared commissioning key. Each ATtiny1614 must receive a unique 16-byte factory key in its 32-byte USERROW after the common firmware is flashed. Install the QR exporter once and provision a connected node through the same SerialUPDI adapter:
 
 ```powershell
 & "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m pip install -r scripts/requirements-provisioning.txt
 & "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" scripts/provision_node.py --port COM6
 ```
 
-The tool reads the 10-byte SIGROW UID, refuses to replace an existing valid
-record unless `--force` is supplied, generates the key with the operating
-system CSPRNG, writes and verifies USERROW, then exports a text credential, SVG
-QR, and `manifest.csv` under the git-ignored `provisioned_nodes/` directory.
-The QR payload is
-`web+opensmartkit:pair?v=1&family=sense&uid=<20 HEX>&key=<32 HEX>`. Treat every exported file
-as a secret manufacturing artifact and back it up outside the repository.
+The tool reads the 10-byte SIGROW UID, refuses to replace an existing valid record unless `--force` is supplied, generates the key with the operating system CSPRNG, writes and verifies USERROW, then exports a text credential, SVG QR, and `manifest.csv` under the git-ignored `provisioned_nodes/` directory. The QR payload is `web+opensmartkit:pair?v=1&family=sense&uid=<20 HEX>&key=<32 HEX>`. Treat every exported file as a secret manufacturing artifact and back it up outside the repository.
 
 ## Implemented climate runtime
 

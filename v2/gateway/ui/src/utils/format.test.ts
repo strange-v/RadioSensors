@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import SignalBars from '../components/SignalBars.vue'
-import { RSSI_MAX_DBM, RSSI_MIN_DBM, isMeasuredRssi, signal } from './format'
+import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, isMeasuredRssi, isValidHostname, signal } from './format'
 
 // The RFM69 driver returns -RegRssiValue/2 from an 8-bit register, so every
 // genuine reading is a negative whole dBm no lower than -128.
@@ -69,5 +69,32 @@ describe('SignalBars', () => {
   it('labels only a real reading', () => {
     expect(mount(SignalBars, { props: { rssi: -74 } }).attributes('aria-label')).toBe('-74 dBm')
     expect(mount(SignalBars, { props: { rssi: 0 } }).attributes('aria-label')).toBeUndefined()
+  })
+})
+
+// Mirrors validHostname() in GatewayStorage.cpp. The name reaches DNS and DHCP
+// unchanged, so anything the firmware would refuse must be refused here too --
+// otherwise the form accepts a name the save then rejects.
+describe('isValidHostname', () => {
+  it('accepts a DNS label', () => {
+    expect(isValidHostname('osk-hub-floor1')).toBe(true)
+    expect(isValidHostname('a')).toBe(true)
+    expect(isValidHostname('1')).toBe(true)
+    expect(isValidHostname('a'.repeat(HOSTNAME_MAX_BYTES))).toBe(true)
+  })
+
+  it('accepts empty, which keeps the MAC-derived default', () => {
+    expect(isValidHostname('')).toBe(true)
+  })
+
+  it('refuses what DNS cannot carry', () => {
+    expect(isValidHostname('OSK-Hub')).toBe(false)
+    expect(isValidHostname('-hub')).toBe(false)
+    expect(isValidHostname('hub-')).toBe(false)
+    expect(isValidHostname('osk hub')).toBe(false)
+    expect(isValidHostname('hub_1')).toBe(false)
+    expect(isValidHostname('hub.local')).toBe(false)
+    expect(isValidHostname('шлюз')).toBe(false)
+    expect(isValidHostname('a'.repeat(HOSTNAME_MAX_BYTES + 1))).toBe(false)
   })
 })

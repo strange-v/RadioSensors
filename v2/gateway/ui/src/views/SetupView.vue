@@ -4,14 +4,15 @@ import { useI18n } from 'vue-i18n'
 import { api, errorCode } from '../api/client'
 import type { SetupStatus } from '../api/types'
 import Icon from '../components/Icon.vue'
+import { HOSTNAME_MAX_BYTES, isValidHostname } from '../utils/format'
 const { t } = useI18n(), status = ref<SetupStatus | null>(null), loadError = ref(''), submitError = ref(''), saving = ref(false), completed = ref(false), attempted = ref(false)
-const form = reactive({ username: '', password: '', displayName: '', networkId: '' })
+const form = reactive({ username: '', password: '', hostname: '', networkId: '' })
 let timer: number | undefined
 const byteLength = (value: string) => new TextEncoder().encode(value).length
 const errors = computed(() => ({
   username: !form.username ? t('validation.required') : !/^[a-z0-9._-]{1,32}$/.test(form.username) ? t('validation.username') : '',
   password: !form.password ? t('validation.required') : byteLength(form.password) < 8 || byteLength(form.password) > 128 ? t('validation.password') : '',
-  displayName: byteLength(form.displayName) > 48 || /[\u0000-\u001f\u007f]/.test(form.displayName) ? t('validation.displayName') : '',
+  hostname: isValidHostname(form.hostname) ? '' : t('validation.hostname'),
   networkId: form.networkId && (!/^\d+$/.test(form.networkId) || +form.networkId < 1 || +form.networkId > 255) ? t('validation.networkId') : '',
 }))
 const invalid = computed(() => Object.values(errors.value).some(Boolean))
@@ -21,7 +22,7 @@ async function submit() {
   if (invalid.value || !status.value?.physical_window_active) return
   saving.value = true
   try {
-    await api.setup({ username: form.username, password: form.password, ...(form.displayName ? { display_name: form.displayName } : {}), ...(form.networkId ? { operational_network_id: Number(form.networkId) } : {}) })
+    await api.setup({ username: form.username, password: form.password, ...(form.hostname ? { hostname: form.hostname } : {}), ...(form.networkId ? { operational_network_id: Number(form.networkId) } : {}) })
     completed.value = true
   } catch (error) { submitError.value = errorCode(error); await refresh() } finally { saving.value = false }
 }
@@ -37,7 +38,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
       <div class="physical-status" :class="{ open: status?.physical_window_active }"><span class="pulse" aria-hidden="true"></span><div><strong>{{ $t('setup.physicalTitle') }}</strong><p>{{ status?.physical_window_active ? $t('setup.physicalOpen', { seconds: status.remaining_seconds }) : $t('setup.physicalClosed') }}</p></div></div>
       <label><span>{{ $t('setup.username') }}</span><input v-model.trim="form.username" autocomplete="username" maxlength="32" placeholder="admin"><small :class="{ invalid: attempted && errors.username }">{{ attempted && errors.username ? errors.username : $t('setup.usernameHint') }}</small></label>
       <label><span>{{ $t('setup.password') }}</span><input v-model="form.password" type="password" autocomplete="new-password" maxlength="128"><small :class="{ invalid: attempted && errors.password }">{{ attempted && errors.password ? errors.password : $t('setup.passwordHint') }}</small></label>
-      <label><span>{{ $t('setup.displayName') }}</span><input v-model="form.displayName" maxlength="48" :placeholder="$t('setup.displayPlaceholder')"><small v-if="attempted && errors.displayName" class="invalid">{{ errors.displayName }}</small></label>
+      <label><span>{{ $t('setup.hostname') }}</span><input v-model.trim="form.hostname" autocapitalize="none" autocomplete="off" spellcheck="false" :maxlength="HOSTNAME_MAX_BYTES" :placeholder="$t('setup.hostnamePlaceholder')"><small v-if="attempted && errors.hostname" class="invalid">{{ errors.hostname }}</small><small v-else class="availability-note">{{ $t('setup.hostnameHint') }}</small></label>
       <details><summary>{{ $t('setup.advanced') }}</summary><label><span>{{ $t('setup.networkId') }}</span><input v-model.trim="form.networkId" inputmode="numeric" placeholder="Auto"><small :class="{ invalid: attempted && errors.networkId }">{{ attempted && errors.networkId ? errors.networkId : $t('setup.networkHint') }}</small></label></details>
       <div v-if="submitError" class="notice error">{{ $t(`error.${submitError}`) }}</div><button class="button primary full" :disabled="saving || !status?.physical_window_active" type="submit">{{ saving ? $t('setup.saving') : $t('setup.submit') }}</button>
     </form>

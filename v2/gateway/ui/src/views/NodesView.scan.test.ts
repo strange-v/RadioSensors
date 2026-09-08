@@ -14,8 +14,8 @@ vi.mock('../utils/qrScan', () => ({ scanPairingQr }))
 
 const gatewayApi = vi.hoisted(() => ({
   nodes: vi.fn(async () => ({ registry_generation: 1, nodes: [] })),
-  health: vi.fn(async () => ({ registry: { records: 0 }, telemetry: { nodes_seen: 0, updates: 0 }, pairing: { active: false, remaining_seconds: 0 } })),
-  poll: { health: vi.fn() },
+  status: vi.fn(async () => ({ registry: { records: 0 }, telemetry: { nodes_seen: 0, updates: 0 }, pairing: { active: false, remaining_seconds: 0 } })),
+  poll: { status: vi.fn() },
   openPairing: vi.fn(async () => ({ active: true, remaining_seconds: 60 })),
   closePairing: vi.fn(async () => undefined),
 }))

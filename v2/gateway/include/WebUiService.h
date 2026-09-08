@@ -24,7 +24,7 @@ bool handlePageRequest(AsyncWebServerRequest* request);
 State state();
 const char* stateName();
 const char* version();
-uint16_t requiredApiVersion();
+const char* requiredFirmware();
 void sendRecoveryPage(AsyncWebServerRequest* request);
 
 }  // namespace gateway::web_ui

@@ -24,7 +24,7 @@ The gateway uses address 100. IDs 1..99 are allocated persistently; 0 is for com
 
 Commissioning and operational radio profiles have separate AES keys. Initial gateway setup generates an operational network ID in 1..255 and permits an advanced edit before confirmation. Ordinary changes are locked after a node is active; later changes require a staged migration design.
 
-Normal telemetry is `common header + opaque profile payload`; the gateway does not decode measurements. Exact radio bytes are specified only in [v2/protocol/PROTOCOL.md](v2/protocol/PROTOCOL.md).
+Normal telemetry is `common telemetry prefix + opaque profile payload`. The gateway may decode the common supply-voltage field but does not decode profile-specific measurements. Exact radio bytes are specified only in [v2/protocol/PROTOCOL.md](v2/protocol/PROTOCOL.md).
 
 Sleeping-node commands use a pull session. A telemetry ACK may eventually carry a pending-command hint; the node then sends nonce-bound `COMMAND_READY` and receives one durable command or `NO_COMMAND`. Commands and results must be idempotent and durable before acknowledgement.
 

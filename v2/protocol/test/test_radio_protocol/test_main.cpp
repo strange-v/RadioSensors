@@ -58,8 +58,9 @@ void test_initial_profile_ids_are_stable() {
 }
 
 void test_decodes_opaque_telemetry() {
-    const uint8_t bytes[] = {0x40, 0x34, 0x12, 0x05};
+    const uint8_t bytes[] = {0x40, 0xE4, 0x0C, 0x05};
     FrameView frame{};
+    TelemetryView telemetry{};
 
     TEST_ASSERT_EQUAL(
         static_cast<int>(DecodeStatus::Ok),
@@ -69,7 +70,13 @@ void test_decodes_opaque_telemetry() {
         static_cast<int>(frame.kind));
     TEST_ASSERT_EQUAL_UINT32(3, frame.payloadSize);
     TEST_ASSERT_EQUAL_PTR(bytes + 1, frame.payload);
-    TEST_ASSERT_EQUAL_HEX8(0x34, frame.payload[0]);
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::Ok),
+        static_cast<int>(decodeTelemetry(bytes, sizeof(bytes), telemetry)));
+    TEST_ASSERT_EQUAL_UINT16(3300, telemetry.supplyMillivolts);
+    TEST_ASSERT_EQUAL_UINT32(1, telemetry.profilePayloadSize);
+    TEST_ASSERT_EQUAL_PTR(bytes + 3, telemetry.profilePayload);
+    TEST_ASSERT_EQUAL_HEX8(0x05, telemetry.profilePayload[0]);
 }
 
 void test_profile_1_known_vector() {
@@ -83,14 +90,15 @@ void test_profile_1_known_vector() {
 }
 
 void test_profile_2_known_vector() {
-    const uint8_t bytes[] = {0x40, 0x2E, 0x09, 0xE4, 0x0C};
-    FrameView frame{};
+    const uint8_t bytes[] = {0x40, 0xE4, 0x0C, 0x2E, 0x09};
+    TelemetryView telemetry{};
     TEST_ASSERT_EQUAL(
-        static_cast<int>(DecodeStatus::Ok),
-        static_cast<int>(decodeFrame(bytes, sizeof(bytes), frame)));
-    TEST_ASSERT_EQUAL_UINT32(4, frame.payloadSize);
-    TEST_ASSERT_EQUAL_HEX16(0x092E, readUint16Le(frame.payload));
-    TEST_ASSERT_EQUAL_UINT16(3300, readUint16Le(frame.payload + 2));
+        static_cast<int>(TelemetryCodecStatus::Ok),
+        static_cast<int>(decodeTelemetry(bytes, sizeof(bytes), telemetry)));
+    TEST_ASSERT_EQUAL_UINT16(3300, telemetry.supplyMillivolts);
+    TEST_ASSERT_EQUAL_UINT32(2, telemetry.profilePayloadSize);
+    TEST_ASSERT_EQUAL_HEX16(
+        0x092E, readUint16Le(telemetry.profilePayload));
 }
 
 void test_initial_telemetry_encoders() {
@@ -98,32 +106,32 @@ void test_initial_telemetry_encoders() {
 
     TEST_ASSERT_EQUAL(
         static_cast<int>(TelemetryCodecStatus::Ok),
-        static_cast<int>(encodeBinaryTelemetry(1, 3300, frame, sizeof(frame))));
-    const uint8_t binaryExpected[] = {0x40, 0x01, 0xE4, 0x0C};
+        static_cast<int>(encodeBinaryTelemetry(3300, 1, frame, sizeof(frame))));
+    const uint8_t binaryExpected[] = {0x40, 0xE4, 0x0C, 0x01};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(binaryExpected, frame, sizeof(binaryExpected));
 
     TEST_ASSERT_EQUAL(
         static_cast<int>(TelemetryCodecStatus::Ok),
         static_cast<int>(encodeCounterTelemetry(
-            0x12345678UL, 3300, frame, sizeof(frame))));
+            3300, 0x12345678UL, frame, sizeof(frame))));
     const uint8_t counterExpected[] = {
-        0x40, 0x78, 0x56, 0x34, 0x12, 0xE4, 0x0C};
+        0x40, 0xE4, 0x0C, 0x78, 0x56, 0x34, 0x12};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(counterExpected, frame, sizeof(counterExpected));
 
     TEST_ASSERT_EQUAL(
         static_cast<int>(TelemetryCodecStatus::Ok),
         static_cast<int>(encodeBinaryClimateThTelemetry(
-            1, 2350, 4567, 3300, frame, sizeof(frame))));
+            3300, 1, 2350, 4567, frame, sizeof(frame))));
     const uint8_t climateExpected[] = {
-        0x40, 0x01, 0x2E, 0x09, 0xD7, 0x11, 0xE4, 0x0C};
+        0x40, 0xE4, 0x0C, 0x01, 0x2E, 0x09, 0xD7, 0x11};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(climateExpected, frame, sizeof(climateExpected));
 
     TEST_ASSERT_EQUAL(
         static_cast<int>(TelemetryCodecStatus::Ok),
         static_cast<int>(encodeBinaryTemperatureTelemetry(
-            1, 2350, 3300, frame, sizeof(frame))));
+            3300, 1, 2350, frame, sizeof(frame))));
     const uint8_t temperatureExpected[] = {
-        0x40, 0x01, 0x2E, 0x09, 0xE4, 0x0C};
+        0x40, 0xE4, 0x0C, 0x01, 0x2E, 0x09};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(
         temperatureExpected, frame, sizeof(temperatureExpected));
 }
@@ -132,7 +140,63 @@ void test_binary_telemetry_rejects_invalid_state() {
     uint8_t frame[kBinaryTelemetrySize]{};
     TEST_ASSERT_EQUAL(
         static_cast<int>(TelemetryCodecStatus::InvalidState),
-        static_cast<int>(encodeBinaryTelemetry(2, 3300, frame, sizeof(frame))));
+        static_cast<int>(encodeBinaryTelemetry(3300, 2, frame, sizeof(frame))));
+}
+
+void test_climate_profile_known_vectors() {
+    uint8_t th[kClimateThTelemetrySize]{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::Ok),
+        static_cast<int>(encodeClimateThTelemetry(
+            3300, 2350, 4567, th, sizeof(th))));
+    const uint8_t thExpected[] = {
+        0x40, 0xE4, 0x0C, 0x2E, 0x09, 0xD7, 0x11};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(thExpected, th, sizeof(th));
+
+    uint8_t thp[kClimateThpTelemetrySize]{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::Ok),
+        static_cast<int>(encodeClimateThpTelemetry(
+            3300, 2350, 4567, 10132, thp, sizeof(thp))));
+    const uint8_t thpExpected[] = {
+        0x40, 0xE4, 0x0C, 0x2E, 0x09, 0xD7, 0x11, 0x94, 0x27};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(thpExpected, thp, sizeof(thp));
+}
+
+void test_climate_encoders_validate_measurements_and_allow_sentinels() {
+    uint8_t frame[kClimateThpTelemetrySize]{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::InvalidTemperature),
+        static_cast<int>(encodeClimateThTelemetry(
+            3300, -8001, 5000, frame, sizeof(frame))));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::InvalidHumidity),
+        static_cast<int>(encodeClimateThTelemetry(
+            3300, 2000, 10001, frame, sizeof(frame))));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::InvalidPressure),
+        static_cast<int>(encodeClimateThpTelemetry(
+            3300, 2000, 5000, 2999, frame, sizeof(frame))));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::Ok),
+        static_cast<int>(encodeClimateThpTelemetry(
+            kInvalidSupplyVoltage, kInvalidTemperature, kInvalidHumidity,
+            kInvalidPressure, frame, sizeof(frame))));
+}
+
+void test_telemetry_prefix_rejects_wrong_length_and_header() {
+    TelemetryView telemetry{};
+    const uint8_t tooShort[] = {0x40, 0xE4};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::WrongLength),
+        static_cast<int>(decodeTelemetry(
+            tooShort, sizeof(tooShort), telemetry)));
+
+    const uint8_t wrongKind[] = {0x41, 0xE4, 0x0C};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(TelemetryCodecStatus::WrongHeader),
+        static_cast<int>(decodeTelemetry(
+            wrongKind, sizeof(wrongKind), telemetry)));
 }
 
 void test_gateway_stream_known_vectors() {
@@ -167,6 +231,25 @@ void test_gateway_stream_known_vectors() {
         0xC1, 0xFF, 3, 0x40, 0xE7, 0x0C};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(
         expectedTelemetry, telemetry, sizeof(telemetry));
+}
+
+void test_gateway_stream_registry_changed_known_vector() {
+    uint8_t frame[radiosensors::stream::kRegistryChangedFrameSize]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        sizeof(frame),
+        radiosensors::stream::encodeRegistryChanged(
+            0x01020304, 0x0000002A, frame, sizeof(frame)));
+    const uint8_t expected[] = {
+        1, 4, 0x04, 0x03, 0x02, 0x01, 0x2A, 0x00, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, frame, sizeof(frame));
+}
+
+void test_gateway_stream_registry_changed_rejects_small_buffer() {
+    uint8_t frame[radiosensors::stream::kRegistryChangedFrameSize - 1]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        0,
+        radiosensors::stream::encodeRegistryChanged(
+            1, 1, frame, sizeof(frame)));
 }
 
 void test_allows_empty_payload_for_kind_specific_validation() {
@@ -274,7 +357,12 @@ int main(int, char**) {
     RUN_TEST(test_profile_2_known_vector);
     RUN_TEST(test_initial_telemetry_encoders);
     RUN_TEST(test_binary_telemetry_rejects_invalid_state);
+    RUN_TEST(test_climate_profile_known_vectors);
+    RUN_TEST(test_climate_encoders_validate_measurements_and_allow_sentinels);
+    RUN_TEST(test_telemetry_prefix_rejects_wrong_length_and_header);
     RUN_TEST(test_gateway_stream_known_vectors);
+    RUN_TEST(test_gateway_stream_registry_changed_known_vector);
+    RUN_TEST(test_gateway_stream_registry_changed_rejects_small_buffer);
     RUN_TEST(test_allows_empty_payload_for_kind_specific_validation);
     RUN_TEST(test_rejects_empty_frame);
     RUN_TEST(test_rejects_other_protocol_major);

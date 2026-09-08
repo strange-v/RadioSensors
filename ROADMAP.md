@@ -5,6 +5,8 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 ## Gateway
 
 - Consider an optional DIY onboarding mode based on a random commissioning code scoped to one gateway installation. It must be opt-in and provisioned into custom nodes by the builder; it must never become a product-wide key or replace unique factory credentials for pre-provisioned nodes.
+- Freeze the telemetry stream: carry the stable gateway ID, per-boot ID, and sequence space, most likely in a `HELLO` message. Registry synchronization is already settled by `REGISTRY_CHANGED` in stream version 2; design the rest against the Home Assistant integration rather than ahead of it, since a reconnect already covers reboot detection.
+- Review registry locking. A commit holds the registry mutex across the NVS write in `store.save()`, and `activeProfileId()` takes that same mutex with `portMAX_DELAY` on the telemetry ingest path, so a pairing commit or a rename can block telemetry for the duration of a flash write. The radio receive path is already unaffected: it tests the lock-free active-node bitmap. Measure the worst-case NVS write before deciding whether to widen the lock-free view, shorten the critical section, or leave it.
 - Implement durable idempotent commands and the telemetry-ACK pending hint.
 - Design encrypted migration backup/restore and production recovery flows.
 - Validate sustained radio traffic, Ethernet recovery, OTA coexistence, PBKDF2 timing, watchdog behavior, flash encryption, and secure boot policy.

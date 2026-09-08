@@ -109,12 +109,27 @@ CodecStatus validateHeader(const uint8_t* data, const size_t size,
     return CodecStatus::Ok;
 }
 
+// RFC 1123: lowercase letters, digits and hyphens, never leading or trailing.
+// The name reaches DNS and DHCP unchanged, so anything else would resolve
+// differently -- or not at all -- depending on who is asking.
+bool validHostname(const char* const value, const size_t length) {
+    if (length == 0) return true;
+    if (value[0] == '-' || value[length - 1] == '-') return false;
+    for (size_t index = 0; index < length; ++index) {
+        const char character = value[index];
+        const bool allowed = (character >= 'a' && character <= 'z') ||
+            (character >= '0' && character <= '9') || character == '-';
+        if (!allowed) return false;
+    }
+    return true;
+}
+
 CodecStatus validateSettings(const GatewaySettings& value) {
-    if (value.displayNameLength > kDisplayNameSize ||
-        !zeroPadded(reinterpret_cast<const uint8_t*>(value.displayName),
-                    value.displayNameLength, kDisplayNameSize) ||
-        (value.displayNameLength != 0 &&
-         !validUtf8(value.displayName, value.displayNameLength))) return CodecStatus::InvalidString;
+    if (value.hostnameLength > kHostnameSize ||
+        !zeroPadded(reinterpret_cast<const uint8_t*>(value.hostname),
+                    value.hostnameLength, kHostnameSize) ||
+        !validHostname(value.hostname, value.hostnameLength))
+        return CodecStatus::InvalidString;
     if (value.ntpServerCount > kNtpServerCount ||
         (value.ntpEnabled && value.ntpServerCount == 0)) return CodecStatus::InvalidCount;
     if (value.pairingWindowSeconds < 30 || value.pairingWindowSeconds > 900 ||
@@ -248,8 +263,8 @@ bool settingsEqual(const GatewaySettings& left, const GatewaySettings& right) {
     return left.mdnsEnabled == right.mdnsEnabled && left.ntpEnabled == right.ntpEnabled &&
         left.pairingWindowSeconds == right.pairingWindowSeconds &&
         left.setupWindowSeconds == right.setupWindowSeconds &&
-        left.displayNameLength == right.displayNameLength &&
-        bytesEqual(left.displayName, right.displayName, kDisplayNameSize) &&
+        left.hostnameLength == right.hostnameLength &&
+        bytesEqual(left.hostname, right.hostname, kHostnameSize) &&
         left.ntpServerCount == right.ntpServerCount &&
         bytesEqual(left.ntpServerLengths, right.ntpServerLengths, kNtpServerCount) &&
         bytesEqual(left.ntpServers, right.ntpServers, sizeof(left.ntpServers));
@@ -294,17 +309,17 @@ CodecStatus encodeSettings(const GatewaySettings& value, const uint32_t generati
     memset(output, 0, kSettingsSnapshotSize);
     writeHeader(output, kSettingsMagic, generation, kSettingsSnapshotSize);
     output[12] = (value.mdnsEnabled ? 1U : 0U) | (value.ntpEnabled ? 2U : 0U);
-    output[13] = value.displayNameLength;
+    output[13] = value.hostnameLength;
     output[14] = value.ntpServerCount;
     protocol::writeUint16Le(output + 16, value.pairingWindowSeconds);
     protocol::writeUint16Le(output + 18, value.setupWindowSeconds);
-    memcpy(output + 20, value.displayName, kDisplayNameSize);
+    memcpy(output + 20, value.hostname, kHostnameSize);
     for (size_t index = 0; index < kNtpServerCount; ++index) {
-        const size_t offset = 68 + index * 64;
+        const size_t offset = 52 + index * 64;
         output[offset] = value.ntpServerLengths[index];
         memcpy(output + offset + 1, value.ntpServers[index], kNtpServerSize);
     }
-    protocol::writeUint32Le(output + 260, crc32(output, 260));
+    protocol::writeUint32Le(output + 244, crc32(output, 244));
     return CodecStatus::Ok;
 }
 
@@ -318,13 +333,13 @@ CodecStatus decodeSettings(const uint8_t* data, const size_t size,
     GatewaySettings candidate{};
     candidate.mdnsEnabled = (data[12] & 1U) != 0;
     candidate.ntpEnabled = (data[12] & 2U) != 0;
-    candidate.displayNameLength = data[13];
+    candidate.hostnameLength = data[13];
     candidate.ntpServerCount = data[14];
     candidate.pairingWindowSeconds = protocol::readUint16Le(data + 16);
     candidate.setupWindowSeconds = protocol::readUint16Le(data + 18);
-    memcpy(candidate.displayName, data + 20, kDisplayNameSize);
+    memcpy(candidate.hostname, data + 20, kHostnameSize);
     for (size_t index = 0; index < kNtpServerCount; ++index) {
-        const size_t offset = 68 + index * 64;
+        const size_t offset = 52 + index * 64;
         candidate.ntpServerLengths[index] = data[offset];
         memcpy(candidate.ntpServers[index], data + offset + 1, kNtpServerSize);
     }

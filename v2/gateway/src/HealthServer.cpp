@@ -278,14 +278,14 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
         ? object["username"].as<const char*>() : nullptr;
     const char* password = object["password"].is<const char*>()
         ? object["password"].as<const char*>() : nullptr;
-    const char* displayName = object["display_name"].is<const char*>()
-        ? object["display_name"].as<const char*>() : "";
+    const char* hostname = object["hostname"].is<const char*>()
+        ? object["hostname"].as<const char*>() : "";
     const size_t usernameLength = username == nullptr ? 0 : strlen(username);
     const size_t passwordLength = password == nullptr ? 0 : strlen(password);
-    const size_t displayNameLength = strlen(displayName);
+    const size_t hostnameLength = strlen(hostname);
     if (!radiosensors::user_management::validUsername(username, usernameLength) ||
         passwordLength < 8 || passwordLength > 128 ||
-        displayNameLength > radiosensors::gateway_storage::kDisplayNameSize) {
+        hostnameLength > radiosensors::gateway_storage::kHostnameSize) {
         xSemaphoreGive(setupMutex);
         sendError(request, 422, "invalid_setup_values");
         return;
@@ -315,9 +315,9 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
     }
 
     auto settings = configuration_store::settings();
-    memset(settings.displayName, 0, sizeof(settings.displayName));
-    settings.displayNameLength = static_cast<uint8_t>(displayNameLength);
-    memcpy(settings.displayName, displayName, displayNameLength);
+    memset(settings.hostname, 0, sizeof(settings.hostname));
+    settings.hostnameLength = static_cast<uint8_t>(hostnameLength);
+    memcpy(settings.hostname, hostname, hostnameLength);
 
     auto authentication = radiosensors::gateway_storage::defaultAuthentication();
     authentication.userCount = 1;
@@ -978,8 +978,7 @@ void sendSettings(AsyncWebServerRequest* request) {
     const auto settings = configuration_store::settings();
     JsonDocument document;
     document["generation"] = configuration_store::settingsGeneration();
-    document["display_name"] =
-        String(settings.displayName, settings.displayNameLength);
+    document["hostname"] = String(settings.hostname, settings.hostnameLength);
     document["mdns_enabled"] = settings.mdnsEnabled;
     document["ntp_enabled"] = settings.ntpEnabled;
     document["pairing_window_seconds"] = settings.pairingWindowSeconds;
@@ -1015,10 +1014,9 @@ void handleUpdateSettings(AsyncWebServerRequest* request, JsonVariant& json) {
         return;
     }
     const JsonObject object = json.as<JsonObject>();
-    const char* displayName = object["display_name"].is<const char*>()
-        ? object["display_name"].as<const char*>() : nullptr;
-    const size_t displayNameLength =
-        displayName == nullptr ? 0 : strlen(displayName);
+    const char* hostname = object["hostname"].is<const char*>()
+        ? object["hostname"].as<const char*>() : nullptr;
+    const size_t hostnameLength = hostname == nullptr ? 0 : strlen(hostname);
     const bool shapeValid =
         object["mdns_enabled"].is<bool>() &&
         object["ntp_enabled"].is<bool>() &&
@@ -1031,7 +1029,7 @@ void handleUpdateSettings(AsyncWebServerRequest* request, JsonVariant& json) {
         object["setup_window_seconds"] | static_cast<uint16_t>(0);
     const JsonArrayConst servers = object["ntp_servers"].as<JsonArrayConst>();
     if (!shapeValid ||
-        displayNameLength > radiosensors::gateway_storage::kDisplayNameSize ||
+        hostnameLength > radiosensors::gateway_storage::kHostnameSize ||
         pairingSeconds < 30 || pairingSeconds > 900 ||
         setupSeconds < 60 || setupSeconds > 1800 ||
         servers.size() > radiosensors::gateway_storage::kNtpServerCount) {
@@ -1041,9 +1039,9 @@ void handleUpdateSettings(AsyncWebServerRequest* request, JsonVariant& json) {
     }
 
     auto settings = configuration_store::settings();
-    memset(settings.displayName, 0, sizeof(settings.displayName));
-    settings.displayNameLength = static_cast<uint8_t>(displayNameLength);
-    memcpy(settings.displayName, displayName, displayNameLength);
+    memset(settings.hostname, 0, sizeof(settings.hostname));
+    settings.hostnameLength = static_cast<uint8_t>(hostnameLength);
+    memcpy(settings.hostname, hostname, hostnameLength);
     settings.mdnsEnabled = object["mdns_enabled"].as<bool>();
     settings.ntpEnabled = object["ntp_enabled"].as<bool>();
     settings.pairingWindowSeconds = pairingSeconds;
@@ -1284,7 +1282,32 @@ void handleClients(AsyncWebServerRequest* request) {
     request->send(response);
 }
 
+// The public liveness probe, and deliberately almost empty. Everything a
+// person would want to see about the gateway lives behind a session at
+// /ui/status; this exists so something on the network can tell the gateway
+// is up without a credential, and so RadioResetDialog can watch for a reboot
+// after a reset has killed every session.
+//
+// `boot_id` is the one detail worth publishing here: it changes on every boot,
+// which is what makes "it came back" distinguishable from "it never went
+// down", and it is already broadcast in the mDNS TXT record anyway.
 void handleHealth(AsyncWebServerRequest* request) {
+    char body[96]{};
+    snprintf(
+        body, sizeof(body), "{\"status\":\"ok\",\"boot_id\":\"%s\"}",
+        identity::bootId());
+    AsyncWebServerResponse* const response =
+        request->beginResponse(200, "application/json", body);
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+}
+
+// Everything the Web UI shows about the gateway. Session-only: it reports the
+// radio pinout, MAC, counters, free heap and storage generations, which are
+// diagnostics for whoever runs the gateway, not facts for the network.
+void handleStatus(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeSession(request, principal, false)) return;
     const radio::Snapshot radioSnapshot = radio::snapshot();
     const commissioning::Snapshot commissioningSnapshot = commissioning::snapshot();
     const telemetry_store::Snapshot telemetrySnapshot = telemetry_store::snapshot();
@@ -1306,7 +1329,7 @@ void handleHealth(AsyncWebServerRequest* request) {
         "\"ethernet\":{\"state\":\"%s\",\"has_ip\":%s,\"ip\":\"%s\","
         "\"mac\":\"%s\"},\"ota\":{\"enabled\":%s,\"state\":\"%s\",\"progress\":%u},"
         "\"web_ui\":{\"state\":\"%s\",\"version\":\"%s\","
-        "\"required_api_version\":%u},"
+        "\"required_firmware\":\"%s\"},"
         "\"telemetry\":{\"nodes_seen\":%u,\"updates\":%lu,"
         "\"last_node_id\":%u,\"last_received_at_ms\":%llu},"
         "\"time\":{\"state\":\"%s\",\"unix_ms\":%llu,"
@@ -1369,7 +1392,7 @@ void handleHealth(AsyncWebServerRequest* request) {
         ota::progressPercent(),
         web_ui::stateName(),
         web_ui::version(),
-        static_cast<unsigned>(web_ui::requiredApiVersion()),
+        web_ui::requiredFirmware(),
         static_cast<unsigned>(telemetrySnapshot.nodesSeen),
         static_cast<unsigned long>(telemetrySnapshot.updates),
         telemetrySnapshot.hasLast ? telemetrySnapshot.last.nodeId : 0,
@@ -1426,15 +1449,12 @@ void handleHealth(AsyncWebServerRequest* request) {
 }
 
 void handleInfo(AsyncWebServerRequest* request) {
-    const auto settings = configuration_store::settings();
     JsonDocument document;
     document["firmware_version"] = firmware::version;
     document["api_version"] = api::version;
-    document["display_name"] = String(
-        settings.displayName, settings.displayNameLength);
     document["ui"]["state"] = web_ui::stateName();
     document["ui"]["version"] = web_ui::version();
-    document["ui"]["required_api_version"] = web_ui::requiredApiVersion();
+    document["ui"]["required_firmware"] = web_ui::requiredFirmware();
     document["board"] = board::current.name;
     document["hostname"] = identity::hostname();
     document["gateway_id"] = identity::gatewayId();
@@ -1445,7 +1465,13 @@ void handleInfo(AsyncWebServerRequest* request) {
     request->send(response);
 }
 
+// A bench diagnostic that predates the WebSocket: it returns a real decoded
+// telemetry payload, which is exactly what `telemetry:read` exists to protect,
+// so it takes a session. Deliberately not a bearer endpoint -- it is not part
+// of the external client contract, and a client wanting telemetry uses /ws.
 void handleLastTelemetry(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeSession(request, principal, false)) return;
     const telemetry_store::Snapshot telemetrySnapshot = telemetry_store::snapshot();
     if (!telemetrySnapshot.hasLast) {
         request->send(404, "application/json", "{\"error\":\"no_telemetry\"}");
@@ -1471,6 +1497,34 @@ void handleLastTelemetry(AsyncWebServerRequest* request) {
     request->send(response);
 }
 
+// REGISTRY_CHANGED, specified in WEBSOCKET.md. Polled rather than raised from
+// each commit because a commit holds the registry mutex, so a callback from
+// there would broadcast under that lock. The generation read is lock-free.
+void broadcastRegistryChanges() {
+    static uint32_t lastGeneration = 0;
+    static bool primed = false;
+    const uint32_t generation = registry_store::generation();
+    // Boot is not a change, and a client that connects gets the registry anyway.
+    if (!primed) {
+        lastGeneration = generation;
+        primed = true;
+        return;
+    }
+    if (generation == lastGeneration) return;
+    // Recorded before the no-clients check, so reconnecting does not replay it.
+    lastGeneration = generation;
+    if (telemetrySocket.count() == 0) return;
+    uint8_t message[radiosensors::stream::kRegistryChangedFrameSize]{};
+    const size_t size = radiosensors::stream::encodeRegistryChanged(
+        telemetry_store::snapshot().updates, generation, message, sizeof(message));
+    const AsyncWebSocket::SendStatus status = telemetrySocket.binaryAll(message, size);
+    if (status == AsyncWebSocket::DISCARDED ||
+        status == AsyncWebSocket::PARTIALLY_ENQUEUED) {
+        ++websocketMessagesDropped;
+    }
+    if (status != AsyncWebSocket::DISCARDED) ++websocketMessagesSent;
+}
+
 }  // namespace
 
 void begin() {
@@ -1480,55 +1534,59 @@ void begin() {
     telemetrySocket.handleHandshake(authorizeTelemetryStream);
     server.addHandler(&telemetrySocket);
     server.on("/health", HTTP_GET, handleHealth);
-    server.on("/api/v1/info", HTTP_GET, handleInfo);
-    server.on("/api/v1/setup", HTTP_GET, handleSetupStatus);
-    auto& setupHandler = server.on("/api/v1/setup", HTTP_POST, handleInitialSetup);
+    server.on("/ui/status", HTTP_GET, handleStatus);
+    server.on("/api/info", HTTP_GET, handleInfo);
+    server.on("/ui/setup", HTTP_GET, handleSetupStatus);
+    auto& setupHandler = server.on("/ui/setup", HTTP_POST, handleInitialSetup);
     setupHandler.setMaxContentLength(1024);
     auto& loginHandler = server.on(
-        "/api/v1/session", HTTP_POST, handleLogin);
+        "/ui/session", HTTP_POST, handleLogin);
     loginHandler.setMaxContentLength(512);
-    server.on("/api/v1/session", HTTP_GET, handleCurrentSession);
-    server.on("/api/v1/session", HTTP_DELETE, handleLogout);
-    server.on("/api/v1/clients", HTTP_GET, handleClients);
-    server.on("/api/v1/nodes", HTTP_GET, handleNodes);
+    server.on("/ui/session", HTTP_GET, handleCurrentSession);
+    server.on("/ui/session", HTTP_DELETE, handleLogout);
+    server.on("/ui/clients", HTTP_GET, handleClients);
+    server.on("/api/nodes", HTTP_GET, handleNodes);
     auto& renameNodeHandler = server.on(
-        "/api/v1/nodes", HTTP_PATCH, handleRenameNode);
+        "/ui/nodes", HTTP_PATCH, handleRenameNode);
     renameNodeHandler.setMaxContentLength(256);
     auto& deleteNodeHandler = server.on(
-        "/api/v1/nodes", HTTP_DELETE, handleDeleteNode);
+        "/ui/nodes", HTTP_DELETE, handleDeleteNode);
     deleteNodeHandler.setMaxContentLength(128);
-    server.on("/api/v1/settings", HTTP_GET, handleSettings);
+    server.on("/ui/settings", HTTP_GET, handleSettings);
     auto& settingsHandler = server.on(
-        "/api/v1/settings", HTTP_PUT, handleUpdateSettings);
+        "/ui/settings", HTTP_PUT, handleUpdateSettings);
     settingsHandler.setMaxContentLength(1024);
-    server.on("/api/v1/users", HTTP_GET, handleUsers);
+    server.on("/ui/users", HTTP_GET, handleUsers);
     auto& createUserHandler = server.on(
-        "/api/v1/users", HTTP_POST, handleCreateUser);
+        "/ui/users", HTTP_POST, handleCreateUser);
     createUserHandler.setMaxContentLength(512);
     auto& updateUserHandler = server.on(
-        "/api/v1/users", HTTP_PUT, handleUpdateUser);
+        "/ui/users", HTTP_PUT, handleUpdateUser);
     updateUserHandler.setMaxContentLength(512);
     auto& deleteUserHandler = server.on(
-        "/api/v1/users", HTTP_DELETE, handleDeleteUser);
+        "/ui/users", HTTP_DELETE, handleDeleteUser);
     deleteUserHandler.setMaxContentLength(128);
-    server.on("/api/v1/tokens", HTTP_GET, handleTokens);
+    server.on("/ui/tokens", HTTP_GET, handleTokens);
     auto& createTokenHandler = server.on(
-        "/api/v1/tokens", HTTP_POST, handleCreateToken);
+        "/ui/tokens", HTTP_POST, handleCreateToken);
     createTokenHandler.setMaxContentLength(512);
     auto& deleteTokenHandler = server.on(
-        "/api/v1/tokens", HTTP_DELETE, handleDeleteToken);
+        "/ui/tokens", HTTP_DELETE, handleDeleteToken);
     deleteTokenHandler.setMaxContentLength(128);
     auto& resetRadioHandler = server.on(
-        "/api/v1/radio/reset", HTTP_POST, handleResetRadioNetwork);
+        "/ui/radio/reset", HTTP_POST, handleResetRadioNetwork);
     resetRadioHandler.setMaxContentLength(128);
     auto& openPairingHandler = server.on(
-        "/api/v1/pairing/open", HTTP_POST, handleOpenPairing);
+        "/ui/pairing/open", HTTP_POST, handleOpenPairing);
     openPairingHandler.setMaxContentLength(256);
-    server.on("/api/v1/pairing/close", HTTP_POST, handleClosePairing);
-    server.on("/telemetry/last", HTTP_GET, handleLastTelemetry);
+    server.on("/ui/pairing/close", HTTP_POST, handleClosePairing);
+    server.on("/ui/telemetry/last", HTTP_GET, handleLastTelemetry);
     web_ui::addRoutes(server);
+    // A mistyped API path must answer with JSON, not with the single-page
+    // application, or a typo looks like a working request that returned HTML.
     server.onNotFound([](AsyncWebServerRequest* request) {
-        if (!request->url().startsWith("/api/") &&
+        const String url = request->url();
+        if (!url.startsWith("/api/") && !url.startsWith("/ui/") &&
             web_ui::handlePageRequest(request)) return;
         request->send(404, "application/json", "{\"error\":\"not_found\"}");
     });
@@ -1538,6 +1596,7 @@ void begin() {
 
 void loop() {
     telemetrySocket.cleanupClients(kMaximumWebSocketClients);
+    broadcastRegistryChanges();
     if (restartAtMs != 0 && static_cast<int32_t>(millis() - restartAtMs) >= 0) {
         Serial.println("Radio network reset: restarting");
         Serial.flush();

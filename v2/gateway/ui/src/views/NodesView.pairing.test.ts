@@ -23,12 +23,12 @@ const state = vi.hoisted(() => ({
 
 const gatewayApi = vi.hoisted(() => ({
   nodes: vi.fn(async () => ({ registry_generation: state.registry.registry_generation, nodes: [...state.registry.nodes] })),
-  health: vi.fn(async () => ({
+  status: vi.fn(async () => ({
     registry: { records: state.registry.nodes.length },
     telemetry: { nodes_seen: 0, updates: 0 },
     pairing: { ...state.pairing },
   })),
-  poll: { health: vi.fn(async () => ({ pairing: { ...state.pairing } })) },
+  poll: { status: vi.fn(async () => ({ pairing: { ...state.pairing } })) },
   openPairing: vi.fn(async () => { state.pairing = { active: true, remaining_seconds: 60 }; return { ...state.pairing } }),
   closePairing: vi.fn(async () => { state.pairing = { active: false, remaining_seconds: 0 }; return undefined }),
 }))

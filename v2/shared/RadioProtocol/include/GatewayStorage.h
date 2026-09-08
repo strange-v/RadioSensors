@@ -10,10 +10,13 @@ constexpr uint16_t kStorageVersion = 2;
 constexpr size_t kSnapshotHeaderSize = 12;
 constexpr size_t kSnapshotCrcSize = 4;
 
-constexpr size_t kDisplayNameSize = 48;
+// A DNS label: RFC 1123 characters only, and short enough to type. Empty means
+// the gateway derives `osk-hub-<mac>` instead, so a device always has a working
+// name before anyone sets one.
+constexpr size_t kHostnameSize = 32;
 constexpr size_t kNtpServerCount = 3;
 constexpr size_t kNtpServerSize = 63;
-constexpr size_t kSettingsSnapshotSize = 264;
+constexpr size_t kSettingsSnapshotSize = 248;
 
 constexpr size_t kMaximumUsers = 4;
 constexpr size_t kMaximumTokens = 8;
@@ -41,7 +44,7 @@ enum class PasswordHashAlgorithm : uint8_t { Pbkdf2HmacSha256 = 1 };
 // telemetry stream. Splitting those in two protected nothing, because the
 // WebSocket bootstrap in API.md needs the registry to resolve node IDs, so a
 // stream scope without a registry scope is a combination that cannot work.
-// `/health` and `/api/v1/info` stay unauthenticated for mDNS discovery, so no
+// `/health` and `/api/info` stay unauthenticated for mDNS discovery, so no
 // scope guards them either.
 //
 // The field remains a bitfield for the day a token may write something. Today
@@ -56,8 +59,8 @@ struct GatewaySettings {
     bool ntpEnabled;
     uint16_t pairingWindowSeconds;
     uint16_t setupWindowSeconds;
-    uint8_t displayNameLength;
-    char displayName[kDisplayNameSize];
+    uint8_t hostnameLength;
+    char hostname[kHostnameSize];
     uint8_t ntpServerCount;
     uint8_t ntpServerLengths[kNtpServerCount];
     char ntpServers[kNtpServerCount][kNtpServerSize];
