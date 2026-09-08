@@ -74,8 +74,6 @@ async function remove() {
   }
 }
 
-const scopeList = (token: ApiToken) => token.scopes.map((scope) => scope.split(':')[0]).join(' · ')
-
 onMounted(load)
 // Nothing keeps the secret alive past this screen.
 onUnmounted(() => { created.value = null })
@@ -107,7 +105,7 @@ onUnmounted(() => { created.value = null })
           <span class="token-symbol" aria-hidden="true"><Icon name="key" /></span>
           <span class="token-name">
             <strong>{{ token.name }}</strong>
-            <small>{{ scopeList(token) }} · {{ dateTime(locale, token.created_at_ms) }}</small>
+            <small>{{ dateTime(locale, token.created_at_ms) }}</small>
           </span>
           <span class="token-actions">
             <button

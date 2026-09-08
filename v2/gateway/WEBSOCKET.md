@@ -17,7 +17,7 @@ little-endian.
 | 2 | 4 | gateway telemetry sequence |
 
 The same stream version is advertised as the `stream_version` TXT field of the
-gateway's `_radiosensors._tcp` mDNS service.
+gateway's `_osk-sense._tcp` mDNS service.
 
 Message kinds are `1` (`SNAPSHOT_BEGIN`), `2` (`TELEMETRY`), and `3`
 (`SNAPSHOT_END`). Begin and end messages are exactly six bytes. Their sequence
@@ -58,3 +58,9 @@ only and is not part of the telemetry stream.
 The handshake requires either an authenticated browser session cookie or an
 API bearer token with the `telemetry:read` scope. Unauthorized clients receive
 HTTP `401` before the protocol upgrade.
+
+A client should also send an `X-Client` handshake header naming itself, such as
+`home-assistant/0.3.0`, so the gateway can report who is connected. It is
+optional: a client that omits it streams normally and is listed as
+unidentified. See "WebSocket bootstrap" in `API.md`. When the planned `HELLO`
+message lands, this identity moves into it.

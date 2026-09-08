@@ -1,4 +1,4 @@
-# RadioSensors v2 radio protocol
+# OSK Sense Protocol
 
 This document is the canonical byte-level description of the v2 application
 protocol. Multi-byte integer layouts, message payloads, and telemetry profiles

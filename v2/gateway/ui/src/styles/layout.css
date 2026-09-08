@@ -39,6 +39,11 @@
 }
 .primary-nav a:hover { color: var(--ink); background: var(--surface-hover); }
 .primary-nav a.router-link-active { border-left-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+/* Keyboard focus deepens the item's own background rather than drawing a ring
+   around it -- the ring cut across the sidebar's edge. The active item already
+   carries --primary-soft, so it needs a stronger mix to shift at all. */
+.primary-nav a:focus-visible { outline: none; color: var(--ink); background: var(--surface-hover); }
+.primary-nav a.router-link-active:focus-visible { color: var(--primary); background: color-mix(in srgb, var(--primary) 22%, transparent); }
 .nav-icon { width: 20px; flex: none; display: grid; place-items: center; font-size: var(--text-lg); }
 
 

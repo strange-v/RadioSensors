@@ -25,7 +25,11 @@ a { color: var(--primary); }
 button, input, textarea, select { font: inherit; color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 
-/* One focus treatment for everything focusable. */
+/* The default focus treatment, for controls that have no border of their own
+   to speak with -- buttons, links, checkboxes. Anything already drawn as a box
+   (fields, selects, nav items) overrides this below and shifts a colour it
+   already has instead: an outline offset outside a bordered field reads as a
+   second, detached box around the first. */
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 input, textarea {
@@ -37,29 +41,52 @@ input, textarea {
   outline: none;
   color: var(--ink);
   background: var(--bg);
-  transition: border-color var(--transition), box-shadow var(--transition);
+  transition: border-color var(--transition);
 }
 textarea { min-height: 80px; padding-top: var(--space-2); resize: vertical; }
 input::placeholder, textarea::placeholder { color: var(--muted); }
-input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+/* The field's own border is the focus indicator. */
+input:focus, textarea:focus { border-color: var(--primary); }
+input:focus-visible, textarea:focus-visible, .select:focus-visible { outline: none; border-color: var(--primary); }
 input[type="checkbox"] { width: 16px; min-height: 16px; accent-color: var(--primary); }
 
-/* The native dropdown arrow is kept: color-scheme already makes the browser
-   draw it and the popup in the active theme, at no bundle cost. */
+/* The arrow is drawn here rather than by the browser. The native one sits hard
+   against the right border and padding does not move it -- the browser places
+   it outside the padding box -- so the only way to give it room is to switch
+   `appearance` off and place our own. It is a chevron, like the native one:
+   the two-gradient trick costs less but can only fill a solid triangle, which
+   is heavier than what it replaced. The stroke is one neutral grey rather than
+   a theme token, because a colour inside a data URI cannot read a custom
+   property -- this one carries in both themes, as the native arrow did. The
+   popup that opens on click is still the browser's, in the active
+   `color-scheme`. */
 .select {
   width: 100%;
   min-height: 38px;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-7) var(--space-2) var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
+  appearance: none;
+  -webkit-appearance: none;
   color: var(--ink);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.75 6 8l3.25-3.25' fill='none' stroke='%238a97a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
   font-size: var(--text-md);
   cursor: pointer;
   transition: border-color var(--transition);
 }
-.select:hover { border-color: var(--primary); }
-.select.compact { width: auto; min-height: 32px; padding: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+.select:hover, .select:focus { border-color: var(--primary); }
+.select.compact {
+  width: auto;
+  min-height: 32px;
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
+  background-position: right 7px center;
+  background-size: 11px 11px;
+  font-size: var(--text-sm);
+}
 
 details summary { cursor: pointer; }
 

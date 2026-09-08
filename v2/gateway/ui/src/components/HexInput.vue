@@ -118,7 +118,7 @@ defineExpose({ focus: () => field.value?.focus() })
   overflow-wrap: anywhere;
   resize: none;
 }
-.hex-input textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); outline: none; }
+.hex-input textarea:focus { border-color: var(--primary); outline: none; }
 .hex-input small { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .hex-input small.complete { color: var(--success); }
 </style>

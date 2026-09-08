@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { ApiTokenList, CreatedApiToken, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, TokenScope, UserList, UserWrite } from './types'
+import type { ApiTokenList, CreatedApiToken, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
 
 export class ApiError extends Error { constructor(public status: number, public code: string) { super(code) } }
 
@@ -68,6 +68,10 @@ export const api = {
     health: () => request<Health>('/health', undefined, POLL_TIMEOUT_MS),
     info: () => request<GatewayInfo>('/api/v1/info', undefined, POLL_TIMEOUT_MS),
     nodes: () => request<NodeRegistry>('/api/v1/nodes', undefined, POLL_TIMEOUT_MS),
+    // Who is on the telemetry stream right now. Session-only, unlike the
+    // client count in /health: the names say which products this installation
+    // runs, and that is not something an unauthenticated caller gets.
+    clients: () => request<StreamClientList>('/api/v1/clients', undefined, POLL_TIMEOUT_MS),
   },
   renameNode: (nodeId: number, displayName: string) => request<RenamedNode>('/api/v1/nodes', { method: 'PATCH', body: JSON.stringify({ node_id: nodeId, display_name: displayName }) }),
   deleteNode: (nodeId: number) => request<void>('/api/v1/nodes', { method: 'DELETE', body: JSON.stringify({ node_id: nodeId }) }),
@@ -85,7 +89,10 @@ export const api = {
   updateUser: (id: number, user: UserWrite) => request<GatewayUser>('/api/v1/users', { method: 'PUT', body: JSON.stringify({ id, ...user }) }),
   deleteUser: (id: number) => request<void>('/api/v1/users', { method: 'DELETE', body: JSON.stringify({ id }) }),
   tokens: () => request<ApiTokenList>('/api/v1/tokens'),
-  createToken: (name: string, scopes: TokenScope[]) => request<CreatedApiToken>('/api/v1/tokens', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
+  // `scopes` is omitted deliberately: the gateway grants its only scope when
+  // the field is absent, and sending it would make this the second place that
+  // has to be edited when the set of scopes changes.
+  createToken: (name: string) => request<CreatedApiToken>('/api/v1/tokens', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteToken: (id: number) => request<void>('/api/v1/tokens', { method: 'DELETE', body: JSON.stringify({ id }) }),
 }
 

@@ -5,14 +5,14 @@
 // card, which shows it in the page until it is explicitly dismissed.
 import { computed, reactive, ref } from 'vue'
 import { api, errorCode } from '../api/client'
-import type { ApiToken, CreatedApiToken, TokenScope } from '../api/types'
+import type { ApiToken, CreatedApiToken } from '../api/types'
 import Modal from './Modal.vue'
-import { TOKEN_NAME_MAX_BYTES, TOKEN_SCOPES, findTokenNamed, tokenDraftError } from '../utils/tokens'
+import { TOKEN_NAME_MAX_BYTES, findTokenNamed, tokenDraftError } from '../utils/tokens'
 
 const props = defineProps<{ tokens: ApiToken[] }>()
 const emit = defineEmits<{ close: []; created: [token: CreatedApiToken] }>()
 
-const draft = reactive<{ name: string; scopes: TokenScope[] }>({ name: '', scopes: [...TOKEN_SCOPES] })
+const draft = reactive<{ name: string }>({ name: '' })
 const busy = ref(false)
 const failure = ref('')
 
@@ -26,7 +26,7 @@ async function create() {
   busy.value = true
   failure.value = ''
   try {
-    emit('created', await api.createToken(draft.name, draft.scopes))
+    emit('created', await api.createToken(draft.name))
   } catch (error) {
     failure.value = errorCode(error)
   } finally {
@@ -44,13 +44,7 @@ async function create() {
         <small>{{ $t('tokens.nameHint') }}</small>
       </label>
 
-      <fieldset class="scope-set">
-        <legend>{{ $t('tokens.scopes') }}</legend>
-        <label v-for="scope in TOKEN_SCOPES" :key="scope" class="scope-row">
-          <input v-model="draft.scopes" type="checkbox" :value="scope">
-          <span>{{ $t(`tokens.scope.${scope.replace(':', '_')}`) }}</span>
-        </label>
-      </fieldset>
+      <p class="scope-note">{{ $t('tokens.grantNote') }}</p>
 
       <div v-if="problem" class="notice">{{ $t(`tokens.problem.${problem}`) }}</div>
       <div v-else-if="duplicate" class="notice">{{ $t('tokens.duplicateName') }}</div>
@@ -67,8 +61,5 @@ async function create() {
 </template>
 
 <style scoped>
-.scope-set { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
-.scope-set legend { padding: 0; color: var(--ink-soft); font-size: var(--text-sm); font-weight: 500; }
-.scope-row { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-soft); font-size: var(--text-sm); }
-.scope-row input { margin: 0; }
+.scope-note { margin: 0; color: var(--ink-soft); font-size: var(--text-sm); }
 </style>

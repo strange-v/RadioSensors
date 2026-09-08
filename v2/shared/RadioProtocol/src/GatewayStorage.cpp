@@ -8,7 +8,7 @@ namespace {
 constexpr uint8_t kSettingsMagic[4] = {'R', 'S', 'G', 'C'};
 constexpr uint8_t kAuthMagic[4] = {'R', 'S', 'A', 'U'};
 constexpr uint8_t kSecretsMagic[4] = {'R', 'S', 'G', 'S'};
-constexpr uint16_t kKnownTokenScopes = GatewayRead | RegistryRead | TelemetryRead;
+constexpr uint16_t kKnownTokenScopes = TelemetryRead;
 
 uint32_t crc32(const uint8_t* data, const size_t size) {
     uint32_t crc = 0xFFFFFFFFUL;

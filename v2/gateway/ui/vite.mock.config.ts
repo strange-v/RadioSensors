@@ -7,7 +7,7 @@ import packageJson from './package.json'
 const now = Date.now()
 
 const health = {
-  status: 'ok', firmware: '2.1.0', api_version: 1, board: 'esp32-poe', hostname: 'rf-gateway-a085e3',
+  status: 'ok', firmware: '2.1.0', api_version: 1, board: 'esp32-poe', hostname: 'osk-hub-a085e3',
   gateway_id: 'a1b2c3d4e5f60718', boot_id: '0011223344556677',
   reset_reason: 'power_on', uptime_ms: 191_400_000, free_heap: 184_320,
   registry: { records: 6, generation: 12 },
@@ -19,7 +19,7 @@ const health = {
   web_ui: { state: 'ok', version: '0.1.0', required_api_version: 1 },
   telemetry: { nodes_seen: 5, updates: 14_207, last_node_id: 3, last_received_at_ms: now - 40_000 },
   time: { state: 'synchronized', unix_ms: now, last_sync_ms: now - 1_800_000 },
-  websocket: { clients: 1, connections: 9, messages_sent: 2_140, messages_dropped: 0 },
+  websocket: { clients: 2, connections: 9, messages_sent: 2_140, messages_dropped: 0 },
   radio: {
     state: 'ready', present: true, version: 36, frequency_band_mhz: '868', frequency_hz: 868_000_000,
     bit_rate: 55_555, node_id: 1, network_id: 172, variant: 'RFM69HCW', configured_power_dbm: 14,
@@ -38,8 +38,12 @@ const nodes = [
 const routes: Record<string, unknown> = {
   '/health': health,
   '/api/v1/health': health,
-  '/api/v1/info': { firmware_version: '2.1.0', api_version: 1, display_name: 'OSK Sense Hub', ui: { state: 'ok', version: '0.1.0', required_api_version: 1 }, board: 'esp32-poe', hostname: 'rf-gateway-a085e3' },
+  '/api/v1/info': { firmware_version: '2.1.0', api_version: 1, display_name: 'OSK Sense Hub', ui: { state: 'ok', version: '0.1.0', required_api_version: 1 }, board: 'esp32-poe', hostname: 'osk-hub-a085e3' },
   '/api/v1/nodes': { registry_generation: 12, nodes },
+  // One client that identified itself at the handshake, and one that did not,
+  // so the card is exercised in both halves. The count in `health.websocket`
+  // is what says how many there are; these only supply the names.
+  '/api/v1/clients': { clients: [{ id: 3, name: 'home-assistant/0.3.0' }, { id: 4, name: '' }] },
   '/api/v1/setup': { setup_required: false, physical_window_active: false, remaining_seconds: 0 },
   '/api/v1/session': { user: { id: 1, username: 'admin', role: 'admin' }, csrf_token: 'mock-csrf' },
   '/api/v1/settings': { generation: 4, display_name: 'OSK Sense Hub', mdns_enabled: true, ntp_enabled: true, pairing_window_seconds: 120, setup_window_seconds: 300, ntp_servers: ['pool.ntp.org'] },
@@ -60,10 +64,10 @@ let nextUserId = 3
 // sit in the static `routes` map, which answered every method with the same
 // list -- POST appeared to succeed while returning no `token` at all.
 const tokens = [
-  { id: 1, name: 'Home Assistant', enabled: true, created_at_ms: now - 86_400_000, scopes: ['gateway:read', 'registry:read', 'telemetry:read'] },
+  { id: 1, name: 'Home Assistant', enabled: true, created_at_ms: now - 86_400_000, scopes: ['telemetry:read'] },
 ]
 let nextTokenId = 2
-const TOKEN_SCOPES = ['gateway:read', 'registry:read', 'telemetry:read']
+const TOKEN_SCOPES = ['telemetry:read']
 
 function readBody(req: { on: (event: string, handler: (chunk?: unknown) => void) => void }, done: (body: Record<string, unknown>) => void) {
   let raw = ''
@@ -166,8 +170,11 @@ function mockApi(): Plugin {
           if (req.method === 'POST') {
             readBody(req, (body) => {
               const name = typeof body.name === 'string' ? body.name : ''
-              const scopes = Array.isArray(body.scopes) ? body.scopes as string[] : []
-              const validScopes = scopes.length > 0 && scopes.every((scope) => TOKEN_SCOPES.includes(scope))
+              // `scopes` is optional and the gateway grants its only scope when
+              // it is absent; a value that is present is still validated.
+              const scopes = body.scopes === undefined ? [...TOKEN_SCOPES] : body.scopes as string[]
+              const validScopes = Array.isArray(scopes) && scopes.length > 0 &&
+                scopes.every((scope) => TOKEN_SCOPES.includes(scope))
               if (Buffer.byteLength(name, 'utf8') === 0 || Buffer.byteLength(name, 'utf8') > 32 || !validScopes) {
                 return json(res, 422, { error: 'invalid_token_values' })
               }

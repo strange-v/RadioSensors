@@ -42,6 +42,24 @@ AsyncWebSocket telemetrySocket("/ws");
 constexpr uint16_t kWebSocketKeepAliveSeconds = 30;
 constexpr uint16_t kMaximumWebSocketClients = 4;
 
+// A stream client names itself with the `X-Client` handshake header. That is
+// the only honest source for the name: an API key's name is free text that
+// somebody typed and the gateway accepts duplicates of it, so it says nothing
+// about who is on the socket. A client that sends no header stays unnamed
+// rather than being guessed at.
+//
+// Slot id 0 means free; AsyncWebSocket hands out ids from 1. Slots are keyed by
+// client id and confirmed against the socket when read, so a missed disconnect
+// leaks a slot but never a wrong name.
+constexpr size_t kStreamClientNameSize = 32;
+
+struct StreamClientIdentity {
+    uint32_t id;
+    char name[kStreamClientNameSize + 1];
+};
+
+StreamClientIdentity streamClients[kMaximumWebSocketClients]{};
+
 std::atomic<uint32_t> websocketConnections{0};
 std::atomic<uint32_t> websocketMessagesSent{0};
 std::atomic<uint32_t> websocketMessagesDropped{0};
@@ -170,6 +188,9 @@ bool authorizeAdmin(
     return true;
 }
 
+// The registry and the stream share one scope: a consumer needs both to be of
+// any use, so gating them separately only produced tokens that authenticate
+// here and fail at /ws, or the reverse.
 bool authorizeRegistryRead(AsyncWebServerRequest* request) {
     char sessionToken[authentication::kSessionTokenCharacters + 1]{};
     authentication::Principal principal{};
@@ -182,7 +203,7 @@ bool authorizeRegistryRead(AsyncWebServerRequest* request) {
         if (header.startsWith("Bearer ") &&
             authentication::authorizeBearer(
                 header.c_str() + 7,
-                radiosensors::gateway_storage::TokenScope::RegistryRead)) {
+                radiosensors::gateway_storage::TokenScope::TelemetryRead)) {
             return true;
         }
     }
@@ -588,30 +609,25 @@ void handleResetRadioNetwork(AsyncWebServerRequest* request, JsonVariant& json) 
     restartAtMs = millis() + kRestartDelayMs;
 }
 
+// `scopes` is optional. Omitting it grants the only scope there is, which is
+// what every caller wants and what the Web UI now sends. A field that is
+// present is still validated: a client asking for a scope this firmware does
+// not have is told so rather than quietly handed the one it does have.
 bool parseTokenScopes(const JsonVariantConst& json, uint16_t& scopes) {
+    scopes = radiosensors::gateway_storage::TokenScope::TelemetryRead;
+    if (json.isNull()) return true;
     scopes = 0;
     if (!json.is<JsonArrayConst>()) return false;
     for (const JsonVariantConst item : json.as<JsonArrayConst>()) {
         if (!item.is<const char*>()) return false;
         const char* value = item.as<const char*>();
-        if (strcmp(value, "gateway:read") == 0) {
-            scopes |= radiosensors::gateway_storage::TokenScope::GatewayRead;
-        } else if (strcmp(value, "registry:read") == 0) {
-            scopes |= radiosensors::gateway_storage::TokenScope::RegistryRead;
-        } else if (strcmp(value, "telemetry:read") == 0) {
-            scopes |= radiosensors::gateway_storage::TokenScope::TelemetryRead;
-        } else {
-            return false;
-        }
+        if (strcmp(value, "telemetry:read") != 0) return false;
+        scopes |= radiosensors::gateway_storage::TokenScope::TelemetryRead;
     }
     return scopes != 0;
 }
 
 void addTokenScopes(JsonArray output, const uint16_t scopes) {
-    if ((scopes & radiosensors::gateway_storage::TokenScope::GatewayRead) != 0)
-        output.add("gateway:read");
-    if ((scopes & radiosensors::gateway_storage::TokenScope::RegistryRead) != 0)
-        output.add("registry:read");
     if ((scopes & radiosensors::gateway_storage::TokenScope::TelemetryRead) != 0)
         output.add("telemetry:read");
 }
@@ -1187,19 +1203,85 @@ void sendSnapshot(AsyncWebSocketClient* const client) {
     sendControl(client, radiosensors::stream::MessageKind::SnapshotEnd, final.updates);
 }
 
+// The name is written by whoever connects and is echoed into JSON and into the
+// Web UI, so only printable ASCII survives, and the two characters that would
+// break out of a JSON string never do.
+void rememberStreamClient(const uint32_t id, const char* name) {
+    for (StreamClientIdentity& slot : streamClients) {
+        if (slot.id != 0 && slot.id != id) continue;
+        slot.id = id;
+        size_t written = 0;
+        for (size_t index = 0;
+             name != nullptr && name[index] != '\0' &&
+             written < kStreamClientNameSize;
+             ++index) {
+            const char value = name[index];
+            if (value < 0x20 || value >= 0x7F || value == '"' || value == '\\')
+                continue;
+            slot.name[written++] = value;
+        }
+        slot.name[written] = '\0';
+        return;
+    }
+}
+
+void forgetStreamClient(const uint32_t id) {
+    for (StreamClientIdentity& slot : streamClients) {
+        if (slot.id != id) continue;
+        slot.id = 0;
+        slot.name[0] = '\0';
+        return;
+    }
+}
+
 void handleWebSocketEvent(
     AsyncWebSocket*,
     AsyncWebSocketClient* client,
     const AwsEventType type,
-    void*,
+    void* argument,
     uint8_t*,
     size_t) {
     if (type == WS_EVT_CONNECT) {
         ++websocketConnections;
+        // The library holds the handshake request alive for this callback and
+        // passes it here, so the identity is read where the client is known
+        // and no state has to be carried over from handleHandshake.
+        const auto* request = static_cast<AsyncWebServerRequest*>(argument);
+        const char* name = nullptr;
+        String header;
+        if (request != nullptr && request->hasHeader("X-Client")) {
+            header = request->getHeader("X-Client")->value();
+            name = header.c_str();
+        }
+        rememberStreamClient(client->id(), name);
         client->setCloseClientOnQueueFull(true);
         client->keepAlivePeriod(kWebSocketKeepAliveSeconds);
         sendSnapshot(client);
+    } else if (type == WS_EVT_DISCONNECT) {
+        forgetStreamClient(client->id());
     }
+}
+
+// Session-only, unlike the client count in `/health`: the count says something
+// is reading, which mDNS discovery already implies, while the names say which
+// products this installation runs. That belongs behind a login.
+void handleClients(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeSession(request, principal, false)) return;
+    JsonDocument document;
+    JsonArray clients = document["clients"].to<JsonArray>();
+    for (const StreamClientIdentity& slot : streamClients) {
+        // Confirmed against the socket, so a slot left behind by a missed
+        // disconnect is skipped rather than reported as a live client.
+        if (slot.id == 0 || !telemetrySocket.hasClient(slot.id)) continue;
+        JsonObject entry = clients.add<JsonObject>();
+        entry["id"] = slot.id;
+        entry["name"] = slot.name;
+    }
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    serializeJson(document, *response);
+    request->send(response);
 }
 
 void handleHealth(AsyncWebServerRequest* request) {
@@ -1407,6 +1489,7 @@ void begin() {
     loginHandler.setMaxContentLength(512);
     server.on("/api/v1/session", HTTP_GET, handleCurrentSession);
     server.on("/api/v1/session", HTTP_DELETE, handleLogout);
+    server.on("/api/v1/clients", HTTP_GET, handleClients);
     server.on("/api/v1/nodes", HTTP_GET, handleNodes);
     auto& renameNodeHandler = server.on(
         "/api/v1/nodes", HTTP_PATCH, handleRenameNode);

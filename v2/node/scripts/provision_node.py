@@ -131,7 +131,7 @@ def export_credentials(uid: bytes, key: bytes, output: Path, no_qr: bool) -> str
     output.mkdir(parents=True, exist_ok=True)
     credential_path = output / f"{uid_hex}.txt"
     credential_path.write_text(
-        f"RadioSensors\nUID: {uid_hex}\nFactory key: {key_hex}\nURI: {uri}\n",
+        f"OSK Sense Node\nUID: {uid_hex}\nFactory key: {key_hex}\nURI: {uri}\n",
         encoding="utf-8",
     )
     manifest_path = output / "manifest.csv"

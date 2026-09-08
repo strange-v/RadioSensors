@@ -9,13 +9,23 @@ export interface GatewayUser { id: number; username: string; role: 'admin' | 'vi
 export interface UserList { users: GatewayUser[] }
 // `password` is optional on update: omitted leaves the stored one alone.
 export interface UserWrite { username: string; role: 'admin' | 'viewer'; enabled: boolean; password?: string }
-export type TokenScope = 'gateway:read' | 'registry:read' | 'telemetry:read'
+// The gateway has exactly one scope (TokenScope in GatewayStorage.h), so the
+// UI never asks which to grant and never sends the field. The type stays a
+// union so that adding a second one -- a write scope, if a token is ever
+// allowed to change anything -- surfaces as a compile error rather than as a
+// silent widening.
+export type TokenScope = 'telemetry:read'
 export interface ApiToken { id: number; name: string; enabled: boolean; created_at_ms: number; scopes: TokenScope[] }
 // The 201 body carries the generated secret exactly once and, unlike a list
 // entry, has no `enabled` field -- a new token is always enabled
 // (HealthServer.cpp, handleCreateToken).
 export interface CreatedApiToken extends Omit<ApiToken, 'enabled'> { token: string }
 export interface ApiTokenList { tokens: ApiToken[] }
+// One live WebSocket client. `name` is what the client sent as `X-Client` at
+// the handshake, so it identifies itself; an empty name is a client that sent
+// nothing, and must be shown as unknown rather than guessed at from the keys.
+export interface StreamClient { id: number; name: string }
+export interface StreamClientList { clients: StreamClient[] }
 export interface GatewaySettings { generation: number; display_name: string; mdns_enabled: boolean; ntp_enabled: boolean; pairing_window_seconds: number; setup_window_seconds: number; ntp_servers: string[] }
 export interface PairingStatus { active: boolean; remaining_seconds: number; indication: string }
 export interface GatewayInfo { firmware_version: string; api_version: number; display_name: string; ui: { state: string; version: string; required_api_version: number }; board: string; hostname: string }

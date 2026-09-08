@@ -41,7 +41,7 @@ void setup() {
     delay(kSerialStartupDelayMs);
 
     Serial.println();
-    Serial.println("RadioSensors gateway");
+    Serial.println("OSK Sense Hub");
     Serial.printf("Firmware: %s\n", gateway::firmware::version);
     Serial.printf("Board: %s\n", gateway::board::current.name);
     Serial.printf(

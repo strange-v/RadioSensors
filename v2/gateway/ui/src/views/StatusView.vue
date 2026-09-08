@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, errorCode, sessionUser } from '../api/client'
-import type { ApiToken, GatewayInfo, GatewayNode, Health } from '../api/types'
+import type { ApiToken, GatewayInfo, GatewayNode, Health, StreamClient } from '../api/types'
 import Icon from '../components/Icon.vue'
 import SignalBars from '../components/SignalBars.vue'
 import { dateTime, lastSeen, megahertz, nodeName, signal, timeOfDay } from '../utils/format'
@@ -21,6 +21,10 @@ const uiVersion = __UI_VERSION__
 // say less rather than guess. Keys change far too rarely to poll, so this is
 // read once.
 const tokens = ref<ApiToken[] | null>(null)
+// Who is on the stream, as each client named itself at the handshake. Polled
+// with the rest, because unlike the keys this changes whenever a client comes
+// and goes.
+const streamClients = ref<StreamClient[]>([])
 let timer: number | undefined
 
 // TimeService reports waiting_for_network | disabled | synchronizing |
@@ -47,13 +51,22 @@ const fmt = (value: unknown) => value === undefined || value === null || value =
 
 const clients = computed(() => clientState(health.value, tokens.value))
 const stream = computed(() => health.value?.websocket)
+// The count comes from /health and the names from /api/v1/clients, and the two
+// are read separately, so they can disagree for one tick. The count is what
+// the card's state is built on; a row is only ever drawn for a client that
+// actually named itself, and the rest are covered by the count.
+const namedClients = computed(() => streamClients.value.filter((client) => client.name !== ''))
+const unnamedClients = computed(() => Math.max(0, (stream.value?.clients ?? 0) - namedClients.value.length))
+// The connection page creates a key, so it is admin-only. A viewer is not sent
+// somewhere the router would only bounce it back from.
+const canSetUpClients = computed(() => sessionUser.value?.role === 'admin')
 
 async function load() {
   // A request may now take far longer than the polling interval, so skip a
   // tick rather than stacking calls on a gateway that is already struggling.
   if (refreshing.value) return
   refreshing.value = true
-  const results = await Promise.allSettled([api.poll.health(), api.poll.info(), api.poll.nodes()])
+  const results = await Promise.allSettled([api.poll.health(), api.poll.info(), api.poll.nodes(), api.poll.clients()])
   if (results[0].status === 'fulfilled') {
     health.value = results[0].value
     failure.value = ''
@@ -66,6 +79,9 @@ async function load() {
     nodes.value = results[2].value.nodes
     nodesAvailable.value = true
   }
+  // A failure leaves the card with the count and no names, which is the same
+  // thing it shows for clients that sent no identity at all.
+  streamClients.value = results[3].status === 'fulfilled' ? results[3].value.clients : []
   refreshing.value = false
 }
 
@@ -147,7 +163,20 @@ onBeforeUnmount(() => window.clearInterval(timer))
               <div><h2>{{ $t('clients.title') }}</h2><p>{{ $t('clients.hint') }}</p></div>
               <span class="inline-status" :class="{ warning: clients === 'unconfigured' }">{{ $t(`clients.state.${clients}`) }}</span>
             </header>
-            <div class="integration-row">
+            <!-- A row per client that named itself at the handshake. Anything
+                 that did not is counted, not guessed at: the keys cannot say
+                 who is on the socket. -->
+            <div v-if="clients === 'connected' && namedClients.length" class="client-list">
+              <div v-for="client in namedClients" :key="client.id" class="integration-row">
+                <span class="integration-symbol" aria-hidden="true"><Icon name="lan" /></span>
+                <div><strong>{{ client.name }}</strong><p>{{ $t('clients.streaming') }}</p></div>
+              </div>
+              <div v-if="unnamedClients" class="integration-row">
+                <span class="integration-symbol" aria-hidden="true"><Icon name="key" /></span>
+                <div><strong>{{ $t('clients.unidentified', { count: unnamedClients }) }}</strong><p>{{ $t('clients.unidentifiedHint') }}</p></div>
+              </div>
+            </div>
+            <div v-else class="integration-row">
               <span class="integration-symbol" aria-hidden="true"><Icon name="key" /></span>
               <div><strong>{{ $t(`clients.stateTitle.${clients}`) }}</strong><p>{{ $t(`clients.stateHint.${clients}`) }}</p></div>
             </div>
@@ -156,7 +185,11 @@ onBeforeUnmount(() => window.clearInterval(timer))
               <div><dt>{{ $t('clients.messagesSent') }}</dt><dd>{{ stream.messages_sent }}</dd></div>
               <div v-if="stream.messages_dropped > 0"><dt>{{ $t('clients.messagesDropped') }}</dt><dd>{{ stream.messages_dropped }}</dd></div>
             </dl>
-            <RouterLink v-if="offersSetup(clients)" class="button primary full" to="/admin">{{ $t('clients.createKey') }}</RouterLink>
+            <!-- The loud call to action appears only where nothing is set up.
+                 The same page stays reachable from the quiet link below, which
+                 is the version that has to survive a setup that went wrong. -->
+            <RouterLink v-if="offersSetup(clients)" class="button primary full" to="/home-assistant">{{ $t('clients.createKey') }}</RouterLink>
+            <RouterLink v-else-if="canSetUpClients" class="text-action" to="/home-assistant">{{ $t('clients.instructions') }} →</RouterLink>
           </section>
           <!-- Read-only build facts. They lived in Settings, where nothing
                about them could be set, and the Save button appeared to own

@@ -1,4 +1,4 @@
-# RadioSensors v2 architecture
+# OSK Sense architecture
 
 ## System overview
 

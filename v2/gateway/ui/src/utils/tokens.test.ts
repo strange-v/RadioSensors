@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ApiToken } from '../api/types'
-import { TOKEN_LIMIT, TOKEN_SCOPES, canAddToken, findTokenNamed, isValidTokenName, tokenDraftError } from './tokens'
+import { TOKEN_LIMIT, canAddToken, findTokenNamed, isValidTokenName, tokenDraftError } from './tokens'
 
 const token = (over: Partial<ApiToken> & { id: number }): ApiToken =>
-  ({ name: `t${over.id}`, enabled: true, created_at_ms: 1_700_000_000_000, scopes: [...TOKEN_SCOPES], ...over })
+  ({ name: `t${over.id}`, enabled: true, created_at_ms: 1_700_000_000_000, scopes: ['telemetry:read'], ...over })
 
 const fill = (count: number) => Array.from({ length: count }, (_, index) => token({ id: index + 1 }))
 
@@ -43,17 +43,18 @@ describe('findTokenNamed', () => {
 
 describe('tokenDraftError', () => {
   it('accepts a valid draft', () => {
-    expect(tokenDraftError({ name: 'Grafana', scopes: ['telemetry:read'] }, [])).toBe('')
+    expect(tokenDraftError({ name: 'Grafana' }, [])).toBe('')
   })
 
-  it('reports the name, the scopes, and the capacity', () => {
-    expect(tokenDraftError({ name: '', scopes: [...TOKEN_SCOPES] }, [])).toBe('invalid_name')
-    expect(tokenDraftError({ name: 'ok', scopes: [] }, [])).toBe('no_scopes')
-    expect(tokenDraftError({ name: 'ok', scopes: ['gateway:read'] }, fill(TOKEN_LIMIT))).toBe('capacity_reached')
+  // A name is the whole draft: the gateway has one scope and grants it when
+  // the field is absent, so there is nothing else the dialog can get wrong.
+  it('reports the name and the capacity', () => {
+    expect(tokenDraftError({ name: '' }, [])).toBe('invalid_name')
+    expect(tokenDraftError({ name: 'ok' }, fill(TOKEN_LIMIT))).toBe('capacity_reached')
   })
 
   it('allows a duplicate name, because the gateway does', () => {
     const list = [token({ id: 1, name: 'Home Assistant' })]
-    expect(tokenDraftError({ name: 'Home Assistant', scopes: ['gateway:read'] }, list)).toBe('')
+    expect(tokenDraftError({ name: 'Home Assistant' }, list)).toBe('')
   })
 })

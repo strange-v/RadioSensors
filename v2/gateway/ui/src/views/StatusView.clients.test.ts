@@ -12,6 +12,7 @@ import type { ApiToken } from '../api/types'
 
 const state = vi.hoisted(() => ({
   clients: 0,
+  streamClients: [] as { id: number; name: string }[],
   tokens: [] as ApiToken[],
   role: 'admin' as 'admin' | 'viewer',
   tokensFail: false,
@@ -29,8 +30,9 @@ const health = () => ({
 const gatewayApi = vi.hoisted(() => ({
   poll: {
     health: vi.fn(),
-    info: vi.fn(async () => ({ firmware_version: '2.1.0', hostname: 'rf-gateway', ui: { version: '0.1.0' } })),
+    info: vi.fn(async () => ({ firmware_version: '2.1.0', hostname: 'osk-hub', ui: { version: '0.1.0' } })),
     nodes: vi.fn(async () => ({ nodes: [] })),
+    clients: vi.fn(async () => ({ clients: [...state.streamClients] })),
   },
   tokens: vi.fn(),
 }))
@@ -43,7 +45,7 @@ vi.mock('../api/client', () => ({
 import StatusView from './StatusView.vue'
 
 const token = (over: Partial<ApiToken> = {}): ApiToken =>
-  ({ id: 1, name: 'Home Assistant', enabled: true, created_at_ms: 1_700_000_000_000, scopes: ['gateway:read', 'registry:read', 'telemetry:read'], ...over })
+  ({ id: 1, name: 'Home Assistant', enabled: true, created_at_ms: 1_700_000_000_000, scopes: ['telemetry:read'], ...over })
 
 async function mountView() {
   const router = createRouter({ history: createWebHistory(), routes: [{ path: '/:rest(.*)*', component: { template: '<div />' } }] })
@@ -60,6 +62,7 @@ const card = (wrapper: Awaited<ReturnType<typeof mountView>>) => wrapper.get('.c
 beforeEach(() => {
   vi.useFakeTimers()
   state.clients = 0
+  state.streamClients = []
   state.tokens = []
   state.role = 'admin'
   state.tokensFail = false
@@ -80,15 +83,60 @@ describe('StatusView clients card', () => {
     expect(card(wrapper).get('a').text()).toBe(en.clients.createKey)
   })
 
-  it('stops inviting setup once a key that can stream exists', async () => {
+  // The instructions do not disappear with the prompt: a key can exist and the
+  // setup still have failed, and that is exactly when they are wanted.
+  it('drops the loud prompt for a quiet link once a key that can stream exists', async () => {
     state.tokens = [token()]
     const wrapper = await mountView()
     expect(card(wrapper).get('.inline-status').text()).toBe(en.clients.state.idle)
-    expect(card(wrapper).find('a').exists()).toBe(false)
+    expect(card(wrapper).get('a').text()).toContain(en.clients.instructions)
+    expect(card(wrapper).find('a.button').exists()).toBe(false)
+  })
+
+  // The stream also accepts a browser session, so a socket on a gateway with
+  // no keys is somebody's browser rather than a client anyone set up.
+  it('still reports nothing set up while a session streams', async () => {
+    state.clients = 1
+    const wrapper = await mountView()
+    expect(card(wrapper).get('.inline-status').text()).toBe(en.clients.state.unconfigured)
+    expect(card(wrapper).get('a').text()).toBe(en.clients.createKey)
+  })
+
+  it('names a client that identified itself at the handshake', async () => {
+    state.clients = 1
+    state.tokens = [token()]
+    state.streamClients = [{ id: 3, name: 'home-assistant/0.3.0' }]
+    const wrapper = await mountView()
+    expect(card(wrapper).text()).toContain('home-assistant/0.3.0')
+    expect(card(wrapper).text()).not.toContain(en.clients.unidentifiedHint)
+  })
+
+  // A key's name is free text somebody typed, so a client that sends no
+  // identity is counted rather than attributed to whatever key exists.
+  it('counts a client that sent no identity instead of guessing one', async () => {
+    state.clients = 2
+    state.tokens = [token({ name: 'Home Assistant' })]
+    state.streamClients = [{ id: 3, name: 'home-assistant/0.3.0' }, { id: 4, name: '' }]
+    const wrapper = await mountView()
+
+    const rows = card(wrapper).findAll('.client-list .integration-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('home-assistant/0.3.0')
+    expect(rows[1].text()).toContain(en.clients.unidentifiedHint)
+    expect(rows[1].text()).not.toContain('Home Assistant')
+  })
+
+  it('falls back to the plain state when no client named itself', async () => {
+    state.clients = 1
+    state.tokens = [token()]
+    const wrapper = await mountView()
+    expect(card(wrapper).find('.client-list').exists()).toBe(false)
+    expect(card(wrapper).text()).toContain(en.clients.stateTitle.connected)
   })
 
   it('reports a live stream and its counters', async () => {
     state.clients = 1
+    state.tokens = [token()]
     const wrapper = await mountView()
     expect(card(wrapper).get('.inline-status').text()).toBe(en.clients.state.connected)
     expect(card(wrapper).get('.inline-status').classes()).not.toContain('warning')
@@ -101,6 +149,7 @@ describe('StatusView clients card', () => {
 
   it('shows dropped messages when there are any', async () => {
     state.clients = 1
+    state.tokens = [token()]
     gatewayApi.poll.health.mockImplementation(async () => {
       const value = health()
       value.websocket.messages_dropped = 7
@@ -124,7 +173,10 @@ describe('StatusView clients card', () => {
     state.tokensFail = true
     const wrapper = await mountView()
     expect(card(wrapper).get('.inline-status').text()).toBe(en.clients.state.unknown)
-    expect(card(wrapper).find('a').exists()).toBe(false)
+    // Nothing is claimed about setup, but an admin can still reach the page:
+    // the failure was reading the keys, not the right to make one.
+    expect(card(wrapper).find('a.button').exists()).toBe(false)
+    expect(card(wrapper).get('a').text()).toContain(en.clients.instructions)
   })
 
   it('reads the keys once, not on every poll', async () => {

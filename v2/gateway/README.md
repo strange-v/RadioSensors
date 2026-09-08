@@ -1,4 +1,4 @@
-# RadioSensors gateway v2
+# OSK Sense Hub firmware
 
 Shared ESP32 firmware for:
 
@@ -60,7 +60,7 @@ npm test
 npm run build
 ```
 
-The development server proxies API requests to `http://rf-gateway.local`. Set
+The development server proxies API requests to `http://osk-hub.local`. Set
 `GATEWAY_URL` before `npm run dev` to use another hostname. The production build
 replaces the generated contents of `data/`, writes the manifest from the package
 version, API version, and Git SHA, precompresses JavaScript and CSS as deterministic

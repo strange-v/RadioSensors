@@ -10,7 +10,7 @@
 namespace gateway::identity {
 namespace {
 
-char gatewayHostname[32] = "rf-gateway-uninitialized";
+char gatewayHostname[32] = "osk-hub-uninitialized";
 char stableGatewayId[kIdentityCharacters + 1]{};
 char currentBootId[kIdentityCharacters + 1]{};
 
@@ -51,13 +51,13 @@ void createGatewayId(const uint8_t mac[6]) {
 void begin() {
     uint8_t mac[6]{};
     if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
-        snprintf(gatewayHostname, sizeof(gatewayHostname), "rf-gateway-unknown");
+        snprintf(gatewayHostname, sizeof(gatewayHostname), "osk-hub-unknown");
         memset(mac, 0, sizeof(mac));
     } else {
         snprintf(
             gatewayHostname,
             sizeof(gatewayHostname),
-            "rf-gateway-%02x%02x%02x%02x%02x%02x",
+            "osk-hub-%02x%02x%02x%02x%02x%02x",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
     createGatewayId(mac);
