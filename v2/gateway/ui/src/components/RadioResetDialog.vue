@@ -30,8 +30,8 @@ async function waitForGateway(previousBootId: string) {
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 2_000))
     try {
-      const health = await api.poll.health()
-      if (health.boot_id !== previousBootId) return
+      const probe = await api.probe()
+      if (probe.boot_id !== previousBootId) return
     } catch {
       // Expected while the gateway is down; keep waiting.
     }
@@ -44,7 +44,7 @@ async function reset() {
   failure.value = ''
   let previousBootId = ''
   try {
-    previousBootId = (await api.poll.health()).boot_id
+    previousBootId = (await api.probe()).boot_id
   } catch {
     // Without a boot id the wait falls back to "answers again at all".
   }

@@ -48,6 +48,15 @@ export function byteLength(value: string): number {
   return new TextEncoder().encode(value).length
 }
 
+// A DNS label, mirroring validHostname() in GatewayStorage.cpp. Empty is valid
+// and means the gateway keeps its `osk-hub-<mac>` default.
+export const HOSTNAME_MAX_BYTES = 32
+
+export function isValidHostname(value: string): boolean {
+  return value === '' ||
+    (value.length <= HOSTNAME_MAX_BYTES && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(value))
+}
+
 // Dates follow the language chosen in the UI rather than the browser default.
 // Passing undefined as the locale, as this used to, resolves to whatever the
 // browser is set to -- commonly en-US, which prints 12-hour times with AM/PM no

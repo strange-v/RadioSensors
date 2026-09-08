@@ -49,8 +49,8 @@ private:
 
 GatewaySettings namedSettings(const char* name) {
     GatewaySettings value = defaultSettings();
-    value.displayNameLength = static_cast<uint8_t>(strlen(name));
-    memcpy(value.displayName, name, value.displayNameLength);
+    value.hostnameLength = static_cast<uint8_t>(strlen(name));
+    memcpy(value.hostname, name, value.hostnameLength);
     return value;
 }
 
@@ -135,14 +135,32 @@ void test_settings_known_layout_and_round_trip() {
     TEST_ASSERT_EQUAL_UINT8(3, bytes[12]);
     TEST_ASSERT_EQUAL_UINT8(12, bytes[13]);
     TEST_ASSERT_EQUAL_MEMORY("main-gateway", bytes + 20, 12);
-    TEST_ASSERT_EQUAL_UINT8(12, bytes[68]);
-    TEST_ASSERT_EQUAL_MEMORY("pool.ntp.org", bytes + 69, 12);
+    TEST_ASSERT_EQUAL_UINT8(12, bytes[52]);
+    TEST_ASSERT_EQUAL_MEMORY("pool.ntp.org", bytes + 53, 12);
 
     GatewaySettings decoded{};
     uint32_t generation = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(decodeSettings(bytes, sizeof(bytes), decoded, generation)));
     TEST_ASSERT_EQUAL_HEX32(0x12345678, generation);
     TEST_ASSERT_TRUE(settingsEqual(source, decoded));
+}
+
+// The hostname reaches DNS and DHCP unchanged, so the codec is the last place
+// that can stop a name those two would resolve differently.
+void test_settings_reject_names_dns_cannot_carry() {
+    uint8_t bytes[kSettingsSnapshotSize]{};
+    const char* rejected[] = {"Main-Gateway", "-hub", "hub-", "osk hub", "hub_1", "hub.local"};
+    for (const char* name : rejected) {
+        TEST_ASSERT_EQUAL_INT(
+            static_cast<int>(CodecStatus::InvalidString),
+            static_cast<int>(encodeSettings(namedSettings(name), 1, bytes, sizeof(bytes))));
+    }
+    const char* accepted[] = {"", "osk-hub-floor1", "a", "1"};
+    for (const char* name : accepted) {
+        TEST_ASSERT_EQUAL_INT(
+            static_cast<int>(CodecStatus::Ok),
+            static_cast<int>(encodeSettings(namedSettings(name), 1, bytes, sizeof(bytes))));
+    }
 }
 
 void test_authentication_and_secrets_round_trip() {
@@ -316,6 +334,7 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_empty_stores_return_documented_defaults);
     RUN_TEST(test_settings_known_layout_and_round_trip);
+    RUN_TEST(test_settings_reject_names_dns_cannot_carry);
     RUN_TEST(test_authentication_and_secrets_round_trip);
     RUN_TEST(test_validation_rejects_invalid_relationships);
     RUN_TEST(test_crc_corruption_is_rejected);

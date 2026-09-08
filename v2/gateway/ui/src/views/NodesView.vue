@@ -95,7 +95,7 @@ function sortBy(key: SortKey) {
 async function fetchState(quiet = false) {
   if (!quiet) loading.value = true
   const source = quiet ? api.poll : api
-  const [registryResult, healthResult] = await Promise.allSettled([source.nodes(), source.health()])
+  const [registryResult, healthResult] = await Promise.allSettled([source.nodes(), source.status()])
   if (registryResult.status === 'fulfilled') { nodes.value = registryResult.value.nodes; registryGeneration.value = registryResult.value.registry_generation }
   else if (!quiet) registryUnavailable.value = true
   if (healthResult.status === 'fulfilled') { health.value = healthResult.value; pairingActive.value = healthResult.value.pairing.active; pairingRemaining.value = healthResult.value.pairing.remaining_seconds }
@@ -232,7 +232,7 @@ async function refreshPairing() {
   if (!pairingActive.value || pairingPollInFlight) return
   pairingPollInFlight = true
   try {
-    const state = await api.poll.health()
+    const state = await api.poll.status()
     pairingRemaining.value = state.pairing.remaining_seconds
     if (state.pairing.active) return
     pairingActive.value = false

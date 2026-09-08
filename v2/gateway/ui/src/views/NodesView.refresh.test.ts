@@ -20,8 +20,8 @@ const health = () => ({ registry: { records: state.nodes.length }, telemetry: { 
 
 const gatewayApi = vi.hoisted(() => ({
   nodes: vi.fn(),
-  health: vi.fn(),
-  poll: { nodes: vi.fn(), health: vi.fn() },
+  status: vi.fn(),
+  poll: { nodes: vi.fn(), status: vi.fn() },
   openPairing: vi.fn(),
   closePairing: vi.fn(async () => undefined),
 }))
@@ -55,9 +55,9 @@ beforeEach(() => {
   state.pairing = { active: false, remaining_seconds: 0 }
   vi.clearAllMocks()
   gatewayApi.nodes.mockImplementation(async () => registry())
-  gatewayApi.health.mockImplementation(async () => health())
+  gatewayApi.status.mockImplementation(async () => health())
   gatewayApi.poll.nodes.mockImplementation(async () => registry())
-  gatewayApi.poll.health.mockImplementation(async () => health())
+  gatewayApi.poll.status.mockImplementation(async () => health())
 })
 afterEach(() => vi.useRealTimers())
 
@@ -97,7 +97,7 @@ describe('node list refresh', () => {
   it('keeps the last good list when a single poll fails', async () => {
     const wrapper = await mountView()
     gatewayApi.poll.nodes.mockRejectedValueOnce(new Error('timeout'))
-    gatewayApi.poll.health.mockRejectedValueOnce(new Error('timeout'))
+    gatewayApi.poll.status.mockRejectedValueOnce(new Error('timeout'))
     await tick()
 
     expect(wrapper.find('.node-row').exists()).toBe(true)

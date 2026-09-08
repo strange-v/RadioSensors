@@ -5,7 +5,6 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
-#include "ApiVersion.h"
 #include "FirmwareVersion.h"
 
 namespace gateway::web_ui {
@@ -26,17 +25,36 @@ constexpr size_t kMaximumVersionLength = 31;
 
 State currentState = State::Unavailable;
 char currentVersion[kMaximumVersionLength + 1]{};
-uint16_t currentRequiredApiVersion = 0;
+char currentRequiredFirmware[kMaximumVersionLength + 1]{};
 bool mounted = false;
 
 constexpr char kRecoveryPage[] PROGMEM = R"html(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OSK Sense Hub</title><style>body{margin:0;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}main{max-width:42rem;margin:12vh auto;padding:2rem}section{background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem}h1{margin-top:0;font-size:1.5rem}p{line-height:1.6;color:#cbd5e1}code{color:#7dd3fc}</style></head>
-<body><main><section><h1>Web UI unavailable</h1><p>The installed Web UI is missing, damaged, or incompatible with this gateway firmware.</p><p>Install a compatible LittleFS image, then reload this page.</p><p>Firmware: <code>%FIRMWARE%</code> &middot; API: <code>%API%</code> &middot; UI state: <code>%STATE%</code></p></section></main></body></html>)html";
+<body><main><section><h1>Web UI unavailable</h1><p>The installed Web UI is missing, damaged, or incompatible with this gateway firmware.</p><p>Install a compatible LittleFS image, then reload this page.</p><p>Firmware: <code>%FIRMWARE%</code> &middot; UI state: <code>%STATE%</code></p></section></main></body></html>)html";
 
 void clearManifest() {
     currentVersion[0] = '\0';
-    currentRequiredApiVersion = 0;
+    currentRequiredFirmware[0] = '\0';
+}
+
+// The Web UI is flashed as its own LittleFS image, so it can be older or newer
+// than the firmware beneath it. It depends on /ui/*, which moves with the
+// firmware, so the gate is the firmware series rather than `api_version` --
+// that number describes the client contract the UI barely touches.
+//
+// The patch level is ignored: it does not reshape /ui/*, and rejecting a good
+// UI over one would only tempt someone to skip the check.
+bool firmwareSeriesMatches(const char* const required) {
+    const char* const minorDot = strchr(required, '.');
+    if (minorDot == nullptr) return false;
+    const char* const patchDot = strchr(minorDot + 1, '.');
+    const size_t length = patchDot == nullptr
+        ? strlen(required)
+        : static_cast<size_t>(patchDot - required);
+    return length != 0 &&
+        strncmp(required, firmware::version, length) == 0 &&
+        (firmware::version[length] == '\0' || firmware::version[length] == '.');
 }
 
 void inspectManifest() {
@@ -59,17 +77,21 @@ void inspectManifest() {
     }
 
     const char* uiVersion = document["ui_version"].as<const char*>();
+    const char* requiredFirmware = document["required_firmware"].as<const char*>();
     if (uiVersion == nullptr || uiVersion[0] == '\0' ||
         strlen(uiVersion) > kMaximumVersionLength ||
-        !document["api_version"].is<uint16_t>() ||
+        requiredFirmware == nullptr || requiredFirmware[0] == '\0' ||
+        strlen(requiredFirmware) > kMaximumVersionLength ||
         !indexPresent()) {
         currentState = State::InvalidManifest;
         return;
     }
 
     strlcpy(currentVersion, uiVersion, sizeof(currentVersion));
-    currentRequiredApiVersion = document["api_version"].as<uint16_t>();
-    currentState = currentRequiredApiVersion == api::version
+    strlcpy(
+        currentRequiredFirmware, requiredFirmware,
+        sizeof(currentRequiredFirmware));
+    currentState = firmwareSeriesMatches(requiredFirmware)
         ? State::Ready
         : State::Incompatible;
 }
@@ -150,12 +172,11 @@ const char* stateName() {
 }
 
 const char* version() { return currentVersion; }
-uint16_t requiredApiVersion() { return currentRequiredApiVersion; }
+const char* requiredFirmware() { return currentRequiredFirmware; }
 
 void sendRecoveryPage(AsyncWebServerRequest* request) {
     String page{kRecoveryPage};
     page.replace("%FIRMWARE%", firmware::version);
-    page.replace("%API%", String(api::version));
     page.replace("%STATE%", stateName());
     AsyncWebServerResponse* response = request->beginResponse(503, "text/html", page);
     response->addHeader("Cache-Control", "no-store");

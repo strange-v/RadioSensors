@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { ApiTokenList, CreatedApiToken, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
+import type { ApiTokenList, CreatedApiToken, GatewayProbe, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
 
 export class ApiError extends Error { constructor(public status: number, public code: string) { super(code) } }
 
@@ -55,45 +55,47 @@ export function forgetSession() {
 }
 
 export const api = {
-  setupStatus: () => request<SetupStatus>('/api/v1/setup'),
-  setup: async (payload: SetupRequest) => rememberSession(await request<Session>('/api/v1/setup', { method: 'POST', body: JSON.stringify(payload) })),
-  login: async (username: string, password: string) => rememberSession(await request<Session>('/api/v1/session', { method: 'POST', body: JSON.stringify({ username, password }) })),
-  session: async () => rememberSession(await request<Session>('/api/v1/session')),
-  logout: async () => { await request<void>('/api/v1/session', { method: 'DELETE' }); csrfToken = ''; sessionUser.value = null },
-  info: () => request<GatewayInfo>('/api/v1/info'),
-  health: () => request<Health>('/health'),
-  nodes: () => request<NodeRegistry>('/api/v1/nodes'),
+  setupStatus: () => request<SetupStatus>('/ui/setup'),
+  setup: async (payload: SetupRequest) => rememberSession(await request<Session>('/ui/setup', { method: 'POST', body: JSON.stringify(payload) })),
+  login: async (username: string, password: string) => rememberSession(await request<Session>('/ui/session', { method: 'POST', body: JSON.stringify({ username, password }) })),
+  session: async () => rememberSession(await request<Session>('/ui/session')),
+  logout: async () => { await request<void>('/ui/session', { method: 'DELETE' }); csrfToken = ''; sessionUser.value = null },
+  info: () => request<GatewayInfo>('/api/info'),
+  nodes: () => request<NodeRegistry>('/api/nodes'),
+  status: () => request<Health>('/ui/status'),
+  // The public liveness probe carries only `status` and `boot_id`, and it is
+  // the one read that still works when no session does. That is the whole
+  // reason it exists: a radio reset reboots the gateway and takes every
+  // session with it. Everything else uses status().
+  probe: () => request<GatewayProbe>('/health', undefined, POLL_TIMEOUT_MS),
   // Same reads, used from the refresh timers.
   poll: {
-    health: () => request<Health>('/health', undefined, POLL_TIMEOUT_MS),
-    info: () => request<GatewayInfo>('/api/v1/info', undefined, POLL_TIMEOUT_MS),
-    nodes: () => request<NodeRegistry>('/api/v1/nodes', undefined, POLL_TIMEOUT_MS),
-    // Who is on the telemetry stream right now. Session-only, unlike the
-    // client count in /health: the names say which products this installation
-    // runs, and that is not something an unauthenticated caller gets.
-    clients: () => request<StreamClientList>('/api/v1/clients', undefined, POLL_TIMEOUT_MS),
+    status: () => request<Health>('/ui/status', undefined, POLL_TIMEOUT_MS),
+    info: () => request<GatewayInfo>('/api/info', undefined, POLL_TIMEOUT_MS),
+    nodes: () => request<NodeRegistry>('/api/nodes', undefined, POLL_TIMEOUT_MS),
+    clients: () => request<StreamClientList>('/ui/clients', undefined, POLL_TIMEOUT_MS),
   },
-  renameNode: (nodeId: number, displayName: string) => request<RenamedNode>('/api/v1/nodes', { method: 'PATCH', body: JSON.stringify({ node_id: nodeId, display_name: displayName }) }),
-  deleteNode: (nodeId: number) => request<void>('/api/v1/nodes', { method: 'DELETE', body: JSON.stringify({ node_id: nodeId }) }),
-  settings: () => request<GatewaySettings>('/api/v1/settings'),
-  updateSettings: (settings: Omit<GatewaySettings, 'generation'>) => request<GatewaySettings>('/api/v1/settings', { method: 'PUT', body: JSON.stringify(settings) }),
-  openPairing: (deviceUid: string, factoryKey: string) => request<PairingStatus>('/api/v1/pairing/open', { method: 'POST', body: JSON.stringify({ device_uid: deviceUid, factory_key: factoryKey }) }),
-  closePairing: () => request<PairingStatus>('/api/v1/pairing/close', { method: 'POST' }),
+  renameNode: (nodeId: number, displayName: string) => request<RenamedNode>('/ui/nodes', { method: 'PATCH', body: JSON.stringify({ node_id: nodeId, display_name: displayName }) }),
+  deleteNode: (nodeId: number) => request<void>('/ui/nodes', { method: 'DELETE', body: JSON.stringify({ node_id: nodeId }) }),
+  settings: () => request<GatewaySettings>('/ui/settings'),
+  updateSettings: (settings: Omit<GatewaySettings, 'generation'>) => request<GatewaySettings>('/ui/settings', { method: 'PUT', body: JSON.stringify(settings) }),
+  openPairing: (deviceUid: string, factoryKey: string) => request<PairingStatus>('/ui/pairing/open', { method: 'POST', body: JSON.stringify({ device_uid: deviceUid, factory_key: factoryKey }) }),
+  closePairing: () => request<PairingStatus>('/ui/pairing/close', { method: 'POST' }),
   // Omitting the id lets the gateway generate one. The gateway restarts right
   // after answering, so this call is the last one the session can make.
-  resetRadioNetwork: (networkId?: number) => request<RadioNetworkReset>('/api/v1/radio/reset', { method: 'POST', body: JSON.stringify(networkId ? { operational_network_id: networkId } : {}) }),
-  users: () => request<UserList>('/api/v1/users'),
-  createUser: (user: UserWrite & { password: string }) => request<GatewayUser>('/api/v1/users', { method: 'POST', body: JSON.stringify(user) }),
+  resetRadioNetwork: (networkId?: number) => request<RadioNetworkReset>('/ui/radio/reset', { method: 'POST', body: JSON.stringify(networkId ? { operational_network_id: networkId } : {}) }),
+  users: () => request<UserList>('/ui/users'),
+  createUser: (user: UserWrite & { password: string }) => request<GatewayUser>('/ui/users', { method: 'POST', body: JSON.stringify(user) }),
   // Replaces username, role and enabled; a password is only sent when set.
   // Every session of that user is revoked, including this one when it is you.
-  updateUser: (id: number, user: UserWrite) => request<GatewayUser>('/api/v1/users', { method: 'PUT', body: JSON.stringify({ id, ...user }) }),
-  deleteUser: (id: number) => request<void>('/api/v1/users', { method: 'DELETE', body: JSON.stringify({ id }) }),
-  tokens: () => request<ApiTokenList>('/api/v1/tokens'),
+  updateUser: (id: number, user: UserWrite) => request<GatewayUser>('/ui/users', { method: 'PUT', body: JSON.stringify({ id, ...user }) }),
+  deleteUser: (id: number) => request<void>('/ui/users', { method: 'DELETE', body: JSON.stringify({ id }) }),
+  tokens: () => request<ApiTokenList>('/ui/tokens'),
   // `scopes` is omitted deliberately: the gateway grants its only scope when
   // the field is absent, and sending it would make this the second place that
   // has to be edited when the set of scopes changes.
-  createToken: (name: string) => request<CreatedApiToken>('/api/v1/tokens', { method: 'POST', body: JSON.stringify({ name }) }),
-  deleteToken: (id: number) => request<void>('/api/v1/tokens', { method: 'DELETE', body: JSON.stringify({ id }) }),
+  createToken: (name: string) => request<CreatedApiToken>('/ui/tokens', { method: 'POST', body: JSON.stringify({ name }) }),
+  deleteToken: (id: number) => request<void>('/ui/tokens', { method: 'DELETE', body: JSON.stringify({ id }) }),
 }
 
 export function errorCode(error: unknown): string {

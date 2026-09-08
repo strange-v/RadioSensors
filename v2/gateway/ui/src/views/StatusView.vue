@@ -51,7 +51,7 @@ const fmt = (value: unknown) => value === undefined || value === null || value =
 
 const clients = computed(() => clientState(health.value, tokens.value))
 const stream = computed(() => health.value?.websocket)
-// The count comes from /health and the names from /api/v1/clients, and the two
+// The count comes from /health and the names from /ui/clients, and the two
 // are read separately, so they can disagree for one tick. The count is what
 // the card's state is built on; a row is only ever drawn for a client that
 // actually named itself, and the rest are covered by the count.
@@ -66,7 +66,7 @@ async function load() {
   // tick rather than stacking calls on a gateway that is already struggling.
   if (refreshing.value) return
   refreshing.value = true
-  const results = await Promise.allSettled([api.poll.health(), api.poll.info(), api.poll.nodes(), api.poll.clients()])
+  const results = await Promise.allSettled([api.poll.status(), api.poll.info(), api.poll.nodes(), api.poll.clients()])
   if (results[0].status === 'fulfilled') {
     health.value = results[0].value
     failure.value = ''
@@ -113,7 +113,6 @@ onBeforeUnmount(() => window.clearInterval(timer))
     </div>
 
     <template v-else-if="health">
-      <div v-if="health.api_version !== 1" class="notice error">{{ $t('status.apiMismatch', { version: health.api_version }) }}</div>
       <div v-if="needsAttention" class="attention-banner">
         <div><span class="attention-icon" aria-hidden="true"><Icon name="alert" /></span><span><strong>{{ $t('overview.attentionTitle') }}</strong><small>{{ nodeProblem ? $t('overview.nodeAttention', { name: nodeName(t, nodeProblem) }) : $t('overview.gatewayAttention') }}</small></span></div>
         <RouterLink class="text-action" :to="nodeProblem ? '/nodes' : '/settings'">{{ $t('common.view') }} →</RouterLink>

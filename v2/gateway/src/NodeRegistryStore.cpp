@@ -60,8 +60,13 @@ radiosensors::registry::DualSlotRegistryStore store(storage);
 bool initialized = false;
 SemaphoreHandle_t mutex = nullptr;
 std::atomic<uint32_t> activeNodeIds[4]{};
+std::atomic<uint32_t> publishedGeneration{0};
 
-void publishActiveNodes() {
+// The registry state readers may see without the mutex: the active-node bitmap
+// the radio receive path tests per frame, and the durable generation. Call
+// after every successful commit -- one function, so a later commit cannot
+// republish half of it.
+void publishLockFreeView() {
     uint32_t words[4]{};
     for (size_t index = 0; index < nodes.size(); ++index) {
         const radiosensors::registry::NodeRecord& record = nodes.records()[index];
@@ -73,6 +78,7 @@ void publishActiveNodes() {
     for (size_t index = 0; index < 4; ++index) {
         activeNodeIds[index].store(words[index], std::memory_order_release);
     }
+    publishedGeneration.store(store.generation(), std::memory_order_release);
 }
 
 }  // namespace
@@ -89,7 +95,7 @@ bool begin() {
     }
 
     const radiosensors::registry::LoadStatus status = store.load(nodes);
-    publishActiveNodes();
+    publishLockFreeView();
     initialized = true;
     Serial.printf(
         "Node registry ready: records=%u generation=%lu source=%s\n",
@@ -99,11 +105,11 @@ bool begin() {
     return true;
 }
 
+// Lock-free: a commit holds the mutex across an NVS write, and nothing should
+// wait on that to read a counter. Use snapshot() when the generation and the
+// records have to agree.
 uint32_t generation() {
-    if (mutex == nullptr || xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return 0;
-    const uint32_t value = store.generation();
-    xSemaphoreGive(mutex);
-    return value;
+    return publishedGeneration.load(std::memory_order_acquire);
 }
 
 size_t recordCount() {
@@ -182,7 +188,7 @@ RegistryCommitStatus reserveAndSave(
         return RegistryCommitStatus::StorageError;
     }
     nodes = *candidate;
-    publishActiveNodes();
+    publishLockFreeView();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }
@@ -210,7 +216,7 @@ RegistryCommitStatus confirmAndSave(
         return RegistryCommitStatus::StorageError;
     }
     nodes = *candidate;
-    publishActiveNodes();
+    publishLockFreeView();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }
@@ -236,6 +242,7 @@ RegistryCommitStatus renameAndSave(
         return RegistryCommitStatus::StorageError;
     }
     nodes = *candidate;
+    publishLockFreeView();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }
@@ -261,7 +268,7 @@ RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
         return RegistryCommitStatus::StorageError;
     }
     nodes = *candidate;
-    publishActiveNodes();
+    publishLockFreeView();
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;
 }
@@ -286,7 +293,7 @@ RegistryCommitStatus clearAndSave(size_t& removed) {
         return RegistryCommitStatus::StorageError;
     }
     nodes = *empty;
-    publishActiveNodes();
+    publishLockFreeView();
     removed = previous;
     xSemaphoreGive(mutex);
     return RegistryCommitStatus::Ok;

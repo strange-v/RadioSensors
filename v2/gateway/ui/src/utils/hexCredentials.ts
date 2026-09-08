@@ -1,6 +1,6 @@
 // Cleanup and parsing helpers for manually entered pairing credentials
 // (device UID and factory key). Both are fixed-length hex strings; see
-// POST /api/v1/pairing/open in API.md.
+// POST /ui/pairing/open in API.md.
 export const PAIRING_UID_HEX_LENGTH = 20 // 10-byte device UID
 export const PAIRING_KEY_HEX_LENGTH = 32 // 16-byte factory key
 

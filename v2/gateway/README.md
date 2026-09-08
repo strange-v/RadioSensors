@@ -45,13 +45,12 @@ The separately versioned Web UI is stored in a LittleFS partition named `web`. I
 Every UI image must contain `/index.html` and `/ui-manifest.json`:
 
 ```json
-{"ui_version":"0.1.0","api_version":1,"build":"git-sha"}
+{"ui_version":"0.1.0","required_firmware":"0.8","build":"git-sha"}
 ```
 
-`ui_version` identifies independently released UI fixes. `api_version` is the gateway client-contract version and changes only for an incompatible REST/WebSocket contract change. `build` is diagnostic metadata and is not used for compatibility. The firmware serves the UI only when the manifest API version exactly equals its own API version.
+`ui_version` identifies independently released UI fixes. `required_firmware` names the firmware series this image was built for, and the gateway serves it only when the `major.minor` matches its own; the patch level is ignored. `build` is diagnostic metadata and is not used for compatibility. The UI does not gate on `api_version`: that number describes the external client contract under `/api`, which the UI barely uses, while the UI depends on `/ui` and so moves with the firmware.
 
-The Vue 3 frontend source lives in `ui/`. The generated `data/` directory is
-git-ignored and must not be committed. From `ui/`:
+The Vue 3 frontend source lives in `ui/`. The generated `data/` directory is git-ignored and must not be committed. From `ui/`:
 
 ```powershell
 npm ci
@@ -60,15 +59,9 @@ npm test
 npm run build
 ```
 
-The development server proxies API requests to `http://osk-hub.local`. Set
-`GATEWAY_URL` before `npm run dev` to use another hostname. The production build
-replaces the generated contents of `data/`, writes the manifest from the package
-version, API version, and Git SHA, precompresses JavaScript and CSS as deterministic
-gzip files, and enforces compressed and total-size budgets. `index.html` and
-`ui-manifest.json` remain uncompressed because firmware reads them directly.
+The development server proxies API requests to `http://osk-hub.local`. Set `GATEWAY_URL` before `npm run dev` to use another hostname. The production build replaces the generated contents of `data/`, writes the manifest from the package version, API version, and Git SHA, precompresses JavaScript and CSS as deterministic gzip files, and enforces compressed and total-size budgets. `index.html` and `ui-manifest.json` remain uncompressed because firmware reads them directly.
 
-Run `npm run build` first, then build or upload the generated contents of
-`data/` over a local cable:
+Run `npm run build` first, then build or upload the generated contents of `data/` over a local cable:
 
 ```powershell
 pio run -e gateway_wt32_eth01 -t buildfs
@@ -91,9 +84,9 @@ Changing a partition table is not part of an application OTA. Existing gateways 
 
 One priority-11 task owns RFM69 and all FIFO/SPI operations. Active telemetry enters bounded queues and is acknowledged only after acceptance. Commissioning and NVS writes execute outside the radio task. The main loop keeps the latest opaque telemetry frame for each node and publishes it through the binary WebSocket.
 
-The gateway exposes `/health`, `/api/v1/info`, the setup REST endpoints, `/telemetry/last` for development diagnostics, and `/ws`. Persistent settings, authentication, registry, and secrets use independent dual-slot stores. SNTP uses configured NTP servers and reapplies changes without reboot.
+The gateway serves two API surfaces: `/api` is the external client contract (`info`, the node registry read) and moves only with `api_version`, while `/ui` is everything the Web UI needs and moves with the firmware. Outside both sit `/health`, an unauthenticated liveness probe carrying only `status` and `boot_id`, and `/ws`. See `API.md`. Persistent settings, authentication, registry, and secrets use independent dual-slot stores. SNTP uses configured NTP servers and reapplies changes without reboot.
 
-Before the first user exists, the Waveshare status LED blinks green and a short BOOT press opens the physical setup window. `POST /api/v1/setup` creates the first admin and can set the display name and operational network ID. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
+Before the first user exists, the Waveshare status LED blinks green and a short BOOT press opens the physical setup window. `POST /ui/setup` creates the first admin and can set the hostname and operational network ID. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
 
 References:
 

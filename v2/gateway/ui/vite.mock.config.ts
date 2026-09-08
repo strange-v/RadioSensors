@@ -1,5 +1,5 @@
 // Throwaway dev config used only to preview styling without a real gateway.
-// Serves canned /api and /health responses. Not part of the build.
+// Serves canned /api, /ui and /health responses. Not part of the build.
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 import packageJson from './package.json'
@@ -16,7 +16,7 @@ const health = {
   storage: { ready: true, settings_generation: 4, auth_generation: 2, secrets_generation: 1 },
   ethernet: { state: 'connected', has_ip: true, ip: '192.168.1.42', mac: '50:ff:20:2e:fd:fe' },
   ota: { enabled: true, state: 'idle', progress: 0 },
-  web_ui: { state: 'ok', version: '0.1.0', required_api_version: 1 },
+  web_ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' },
   telemetry: { nodes_seen: 5, updates: 14_207, last_node_id: 3, last_received_at_ms: now - 40_000 },
   time: { state: 'synchronized', unix_ms: now, last_sync_ms: now - 1_800_000 },
   websocket: { clients: 2, connections: 9, messages_sent: 2_140, messages_dropped: 0 },
@@ -36,18 +36,20 @@ const nodes = [
 ]
 
 const routes: Record<string, unknown> = {
-  '/health': health,
-  '/api/v1/health': health,
-  '/api/v1/info': { firmware_version: '2.1.0', api_version: 1, display_name: 'OSK Sense Hub', ui: { state: 'ok', version: '0.1.0', required_api_version: 1 }, board: 'esp32-poe', hostname: 'osk-hub-a085e3' },
-  '/api/v1/nodes': { registry_generation: 12, nodes },
+  // The public probe is tiny now; everything else the UI shows is behind a
+  // session at /ui/status.
+  '/health': { status: 'ok', boot_id: health.boot_id },
+  '/ui/status': health,
+  '/api/info': { firmware_version: '2.1.0', api_version: 1, ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' }, board: 'esp32-poe', hostname: 'osk-hub-a085e3' },
+  '/api/nodes': { registry_generation: 12, nodes },
   // One client that identified itself at the handshake, and one that did not,
   // so the card is exercised in both halves. The count in `health.websocket`
   // is what says how many there are; these only supply the names.
-  '/api/v1/clients': { clients: [{ id: 3, name: 'home-assistant/0.3.0' }, { id: 4, name: '' }] },
-  '/api/v1/setup': { setup_required: false, physical_window_active: false, remaining_seconds: 0 },
-  '/api/v1/session': { user: { id: 1, username: 'admin', role: 'admin' }, csrf_token: 'mock-csrf' },
-  '/api/v1/settings': { generation: 4, display_name: 'OSK Sense Hub', mdns_enabled: true, ntp_enabled: true, pairing_window_seconds: 120, setup_window_seconds: 300, ntp_servers: ['pool.ntp.org'] },
-  '/api/v1/pairing': { active: false, remaining_seconds: 0, indication: 'idle' },
+  '/ui/clients': { clients: [{ id: 3, name: 'home-assistant/0.3.0' }, { id: 4, name: '' }] },
+  '/ui/setup': { setup_required: false, physical_window_active: false, remaining_seconds: 0 },
+  '/ui/session': { user: { id: 1, username: 'admin', role: 'admin' }, csrf_token: 'mock-csrf' },
+  '/ui/settings': { generation: 4, hostname: 'osk-hub-a085e3', mdns_enabled: true, ntp_enabled: true, pairing_window_seconds: 120, setup_window_seconds: 300, ntp_servers: ['pool.ntp.org'] },
+  '/ui/pairing': { active: false, remaining_seconds: 0, indication: 'idle' },
 }
 
 let registryGeneration = 12
@@ -106,8 +108,8 @@ function mockApi(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const path = (req.url ?? '').split('?')[0]
-        if (!path.startsWith('/api') && path !== '/health') return next()
-        if (path === '/api/v1/pairing/open' && req.method === 'POST') {
+        if (!path.startsWith('/api') && !path.startsWith('/ui') && path !== '/health') return next()
+        if (path === '/ui/pairing/open' && req.method === 'POST') {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })
           req.on('end', () => {
@@ -117,14 +119,14 @@ function mockApi(): Plugin {
           })
           return
         }
-        if (path === '/api/v1/pairing/close' && req.method === 'POST') {
+        if (path === '/ui/pairing/close' && req.method === 'POST') {
           clearTimeout(pairingTimer)
           health.pairing = { active: false, remaining_seconds: 0, indication: 'idle' }
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(health.pairing))
           return
         }
-        if (path === '/api/v1/users') {
+        if (path === '/ui/users') {
           if (req.method === 'GET') return json(res, 200, { users })
           if (req.method === 'POST') {
             readBody(req, (body) => {
@@ -165,7 +167,7 @@ function mockApi(): Plugin {
             return
           }
         }
-        if (path === '/api/v1/tokens') {
+        if (path === '/ui/tokens') {
           if (req.method === 'GET') return json(res, 200, { tokens })
           if (req.method === 'POST') {
             readBody(req, (body) => {
@@ -198,12 +200,12 @@ function mockApi(): Plugin {
             return
           }
         }
-        if (path === '/api/v1/nodes' && req.method === 'GET') {
+        if (path === '/api/nodes' && req.method === 'GET') {
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ registry_generation: registryGeneration, nodes }))
           return
         }
-        if (path === '/api/v1/radio/reset' && req.method === 'POST') {
+        if (path === '/ui/radio/reset' && req.method === 'POST') {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })
           req.on('end', () => {
@@ -220,7 +222,7 @@ function mockApi(): Plugin {
           })
           return
         }
-        if (path === '/api/v1/nodes' && req.method === 'PATCH') {
+        if (path === '/ui/nodes' && req.method === 'PATCH') {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })
           req.on('end', () => {
@@ -233,7 +235,7 @@ function mockApi(): Plugin {
           })
           return
         }
-        if (path === '/api/v1/nodes' && req.method === 'DELETE') {
+        if (path === '/ui/nodes' && req.method === 'DELETE') {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })
           req.on('end', () => {
