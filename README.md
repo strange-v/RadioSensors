@@ -1,6 +1,6 @@
-# RadioSensors
+# OSK Sense
 
-RadioSensors is a local, low-power sensor system built around ATtiny1614 nodes, RFM69 radio, an Ethernet ESP32 gateway, and a Home Assistant integration. The current development line is v2; legacy firmware remains under `v1/` only as a migration reference.
+OSK Sense is a local, low-power sensor system built around ATtiny1614 nodes, RFM69 radio, an Ethernet ESP32 gateway, and a Home Assistant integration. The current development line is v2; legacy firmware remains under `v1/` only as a migration reference.
 
 ## Repository map
 

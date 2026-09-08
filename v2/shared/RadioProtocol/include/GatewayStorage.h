@@ -36,10 +36,19 @@ constexpr uint32_t kMaximumPbkdf2Iterations = 2000000;
 enum class UserRole : uint8_t { Admin = 1, Viewer = 2 };
 enum class PasswordHashAlgorithm : uint8_t { Pbkdf2HmacSha256 = 1 };
 
+// One scope, because there is only one thing a bearer token can do: read the
+// data a consumer needs to mirror this gateway -- the node registry and the
+// telemetry stream. Splitting those in two protected nothing, because the
+// WebSocket bootstrap in API.md needs the registry to resolve node IDs, so a
+// stream scope without a registry scope is a combination that cannot work.
+// `/health` and `/api/v1/info` stay unauthenticated for mDNS discovery, so no
+// scope guards them either.
+//
+// The field remains a bitfield for the day a token may write something. Today
+// every mutation requires an admin session plus CSRF, so bearer tokens are
+// read-only by construction and a write scope would guard nothing.
 enum TokenScope : uint16_t {
-    GatewayRead = 1U << 0,
-    RegistryRead = 1U << 1,
-    TelemetryRead = 1U << 2,
+    TelemetryRead = 1U << 0,
 };
 
 struct GatewaySettings {

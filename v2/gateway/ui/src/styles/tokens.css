@@ -54,7 +54,6 @@
   --primary-soft: #162e49;
   --primary-strong: #2272c0;
   --primary-strong-hover: #2678c8;
-  --focus-ring: #4c9fe066;
   --success: #4caf72;
   --success-soft: #17301f;
   --warning: #e0a33e;
@@ -87,7 +86,6 @@
     --primary-soft: #f2f8fe;
     --primary-strong: #1a72c0;
     --primary-strong-hover: #145d9e;
-    --focus-ring: #1a72c040;
     --success: #1f7a45;
     --success-soft: #eaf7ef;
     --warning: #8a5600;
@@ -117,7 +115,6 @@
   --primary-soft: #f2f8fe;
   --primary-strong: #1a72c0;
   --primary-strong-hover: #145d9e;
-  --focus-ring: #1a72c040;
   --success: #1f7a45;
   --success-soft: #eaf7ef;
   --warning: #8a5600;

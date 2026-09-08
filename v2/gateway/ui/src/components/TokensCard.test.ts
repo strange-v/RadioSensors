@@ -15,7 +15,7 @@ const gatewayApi = vi.hoisted(() => ({
   // Like the gateway: the key joins the list, and the secret is in the 201
   // body only.
   createToken: vi.fn(async (name: string) => {
-    const created = { id: 9, name, created_at_ms: 1_700_000_000_000, scopes: ['gateway:read' as const] }
+    const created = { id: 9, name, created_at_ms: 1_700_000_000_000, scopes: ['telemetry:read' as const] }
     state.tokens = [...state.tokens, { ...created, enabled: true }]
     return { ...created, token: 'secret-value-shown-once' }
   }),
@@ -26,7 +26,7 @@ vi.mock('../api/client', () => ({ api: gatewayApi, errorCode: () => 'generic' })
 import TokensCard from './TokensCard.vue'
 
 const token = (over: Partial<ApiToken> & { id: number }): ApiToken =>
-  ({ name: `t${over.id}`, enabled: true, created_at_ms: 1_700_000_000_000, scopes: ['gateway:read', 'registry:read', 'telemetry:read'], ...over })
+  ({ name: `t${over.id}`, enabled: true, created_at_ms: 1_700_000_000_000, scopes: ['telemetry:read'], ...over })
 
 const mountCard = async () => {
   const wrapper = mount(TokensCard, { global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })] } })
@@ -75,7 +75,7 @@ describe('TokensCard', () => {
     const wrapper = await mountCard()
     await createThroughDialog(wrapper)
 
-    expect(gatewayApi.createToken).toHaveBeenCalledWith('Grafana', ['gateway:read', 'registry:read', 'telemetry:read'])
+    expect(gatewayApi.createToken).toHaveBeenCalledWith('Grafana')
     // The dialog is gone, so no backdrop click can take the secret with it.
     expect(wrapper.find('.modal-backdrop').exists()).toBe(false)
     const revealed = wrapper.get('.revealed-token')

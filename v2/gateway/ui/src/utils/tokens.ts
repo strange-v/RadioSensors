@@ -2,7 +2,7 @@
 // and tokens" in API.md). As with users.ts, validating here is about telling
 // someone why a button is disabled -- the gateway checks all of it again and a
 // race still comes back as token_capacity_reached or mutation_busy.
-import type { ApiToken, TokenScope } from '../api/types'
+import type { ApiToken } from '../api/types'
 import { byteLength } from './format'
 
 export const TOKEN_LIMIT = 8
@@ -12,8 +12,6 @@ export const TOKEN_LIMIT = 8
 // name runs out of room at half the length someone would expect. Anything
 // longer is refused with 422 invalid_token_values.
 export const TOKEN_NAME_MAX_BYTES = 32
-
-export const TOKEN_SCOPES: TokenScope[] = ['gateway:read', 'registry:read', 'telemetry:read']
 
 export function isValidTokenName(name: string): boolean {
   const bytes = byteLength(name)
@@ -28,14 +26,16 @@ export function findTokenNamed(tokens: ApiToken[], name: string): ApiToken | und
   return tokens.find((token) => token.name === name)
 }
 
-export type TokenDraft = { name: string; scopes: TokenScope[] }
+// A name is the whole draft. The gateway has one scope and grants it when the
+// field is absent, so there is nothing else to choose and nothing else to get
+// wrong.
+export type TokenDraft = { name: string }
 
 // `duplicate_name` is deliberately not an error: the gateway accepts two keys
 // with the same name, and refusing here would invent a rule the API does not
 // have. The card warns about it instead.
-export function tokenDraftError(draft: TokenDraft, tokens: ApiToken[]): 'invalid_name' | 'no_scopes' | 'capacity_reached' | '' {
+export function tokenDraftError(draft: TokenDraft, tokens: ApiToken[]): 'invalid_name' | 'capacity_reached' | '' {
   if (!isValidTokenName(draft.name)) return 'invalid_name'
-  if (draft.scopes.length === 0) return 'no_scopes'
   if (!canAddToken(tokens)) return 'capacity_reached'
   return ''
 }

@@ -10,8 +10,12 @@ import SettingsView from '../views/SettingsView.vue'
 // Views are imported eagerly: the production build ships a single application
 // bundle (see vite.config.ts), so a lazy route deferred nothing and only cost
 // a chunk boundary. Two exceptions earn their chunk -- the pairing QR scanner
-// (jsQR), and administration below: users, API tokens and their dialogs grew
-// to ~4.8 KB gzip that only an admin who opens the page ever needs.
+// (jsQR), and administration below: users, API tokens, their dialogs and the
+// Home Assistant connection page, ~6 KB gzip that only an admin ever needs.
+//
+// Both admin routes import the same module so they share one chunk. Importing
+// each view directly gave them a file each plus a third for what they share;
+// see src/views/admin.ts.
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -21,7 +25,9 @@ export const router = createRouter({
     { path: '/status', component: StatusView, meta: { requiresAuth: true } },
     { path: '/nodes', component: NodesView, meta: { requiresAuth: true } },
     { path: '/settings', component: SettingsView, meta: { requiresAuth: true } },
-    { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
+    { path: '/admin', component: () => import('../views/admin').then((views) => views.AdminView), meta: { requiresAuth: true, requiresAdmin: true } },
+    // Admin-only because its one action is creating a key.
+    { path: '/home-assistant', component: () => import('../views/admin').then((views) => views.HomeAssistantView), meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

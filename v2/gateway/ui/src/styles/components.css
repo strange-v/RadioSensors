@@ -320,6 +320,10 @@ button.node-row:hover { background: var(--surface-hover); }
 .integration-symbol { width: 36px; height: 36px; border-radius: var(--radius-md); font-size: var(--text-xl); }
 .integration-row strong { font-size: var(--text-md); font-weight: 500; }
 .integration-row p { margin-top: 2px; color: var(--muted); font-size: var(--text-xs); }
+/* Several rows read as a list rather than as repeated single statements, so
+   they sit closer together and the block keeps the single row's spacing. */
+.client-list { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.client-list .integration-row { margin-bottom: 0; }
 .updated-note { margin-top: var(--space-3); color: var(--muted); font-size: var(--text-xs); text-align: right; }
 .coming-soon { color: var(--muted); font-size: var(--text-sm); }
 
@@ -342,7 +346,13 @@ button.node-row:hover { background: var(--surface-hover); }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
 .settings-card { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: var(--space-3); padding: var(--space-5); }
 .settings-card p { margin: var(--space-1) 0 var(--space-4); color: var(--muted); font-size: var(--text-sm); }
-.settings-card.editable > div { display: grid; gap: var(--space-3); }
+/* `start` stops the rows sharing out the height this card inherits from its
+   taller neighbour: stretched rows put the title's text at the top of a much
+   taller box, which is what pulled it off the icon's centre. */
+.settings-card.editable > div { display: grid; align-content: start; gap: var(--space-3); }
+/* The title occupies exactly the icon's box, so the two centre on each other
+   no matter how long the title wraps. */
+.settings-card h2 { min-height: 34px; display: flex; align-items: center; }
 .settings-card.editable p { margin-bottom: 2px; }
 .settings-card label { display: grid; gap: var(--space-2); color: var(--ink-soft); font-size: var(--text-sm); font-weight: 500; }
 .settings-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--radius-md); color: var(--primary); background: var(--primary-soft); font-size: var(--text-lg); }

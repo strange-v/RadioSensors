@@ -76,7 +76,7 @@ AuthenticationData populatedAuthentication() {
     memcpy(token.name, "home-assistant", 14);
     token.nameLength = 14;
     token.enabled = true;
-    token.scopes = GatewayRead | RegistryRead | TelemetryRead;
+    token.scopes = TelemetryRead;
     token.createdAtUnixMs = 0x0102030405060708ULL;
     for (size_t index = 0; index < kTokenHashSize; ++index) token.tokenHash[index] = index + 3;
     return value;

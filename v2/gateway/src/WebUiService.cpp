@@ -31,7 +31,7 @@ bool mounted = false;
 
 constexpr char kRecoveryPage[] PROGMEM = R"html(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RadioSensors gateway</title><style>body{margin:0;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}main{max-width:42rem;margin:12vh auto;padding:2rem}section{background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem}h1{margin-top:0;font-size:1.5rem}p{line-height:1.6;color:#cbd5e1}code{color:#7dd3fc}</style></head>
+<title>OSK Sense Hub</title><style>body{margin:0;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}main{max-width:42rem;margin:12vh auto;padding:2rem}section{background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem}h1{margin-top:0;font-size:1.5rem}p{line-height:1.6;color:#cbd5e1}code{color:#7dd3fc}</style></head>
 <body><main><section><h1>Web UI unavailable</h1><p>The installed Web UI is missing, damaged, or incompatible with this gateway firmware.</p><p>Install a compatible LittleFS image, then reload this page.</p><p>Firmware: <code>%FIRMWARE%</code> &middot; API: <code>%API%</code> &middot; UI state: <code>%STATE%</code></p></section></main></body></html>)html";
 
 void clearManifest() {

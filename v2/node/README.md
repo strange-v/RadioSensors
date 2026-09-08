@@ -1,4 +1,4 @@
-# RadioSensors v2 node firmware
+# OSK Sense Node firmware
 
 This PlatformIO project produces one statically composed ATtiny1614 image per stable telemetry profile. Shared code owns commissioning, radio, EEPROM, scheduling, power, and command sessions; profiles own sensor acquisition and payload encoding. `node_test` remains separate bench firmware.
 

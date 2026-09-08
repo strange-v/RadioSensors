@@ -23,13 +23,13 @@ describe('gateway API client', () => {
     await api.logout()
     expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/session', expect.objectContaining({ method: 'DELETE', credentials: 'same-origin', headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-value' }) }))
   })
-  it('uses CSRF and read-only scopes when creating a Home Assistant token', async () => {
+  it('sends CSRF and only a name when creating a Home Assistant token', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ user: { id: 1, username: 'admin', role: 'admin' }, csrf_token: 'csrf-value' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 1, name: 'Home Assistant', enabled: true, created_at_ms: 1, scopes: ['gateway:read', 'registry:read', 'telemetry:read'], token: 'secret' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 1, name: 'Home Assistant', enabled: true, created_at_ms: 1, scopes: ['telemetry:read'], token: 'secret' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
     await api.login('admin', 'password')
-    await api.createToken('Home Assistant', ['gateway:read', 'registry:read', 'telemetry:read'])
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tokens', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-value' }), body: JSON.stringify({ name: 'Home Assistant', scopes: ['gateway:read', 'registry:read', 'telemetry:read'] }) }))
+    await api.createToken('Home Assistant')
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tokens', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-value' }), body: JSON.stringify({ name: 'Home Assistant' }) }))
   })
 })

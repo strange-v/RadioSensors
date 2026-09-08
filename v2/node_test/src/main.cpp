@@ -361,7 +361,7 @@ void setup()
 {
   Serial.begin(9600);
   delay(50);
-  Serial.println(F("RadioSensors v2 TMP112 node"));
+  Serial.println(F("OSK Sense Node v2 TMP112"));
   readChipUid();
   factoryCredentialsReady = factoryStore.load(factoryCredentials);
   if (!factoryCredentialsReady)

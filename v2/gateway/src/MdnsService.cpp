@@ -42,21 +42,21 @@ void apply() {
         retryAt = millis() + 5000;
         return;
     }
-    MDNS.addService("radiosensors", "tcp", 80);
-    MDNS.addServiceTxt("radiosensors", "tcp", "api", String(api::version));
+    MDNS.addService("osk-sense", "tcp", 80);
+    MDNS.addServiceTxt("osk-sense", "tcp", "api", String(api::version));
     MDNS.addServiceTxt(
-        "radiosensors", "tcp", "api_version", String(api::version));
+        "osk-sense", "tcp", "api_version", String(api::version));
     MDNS.addServiceTxt(
-        "radiosensors", "tcp", "gateway_id", identity::gatewayId());
+        "osk-sense", "tcp", "gateway_id", identity::gatewayId());
     MDNS.addServiceTxt(
-        "radiosensors", "tcp", "boot_id", identity::bootId());
+        "osk-sense", "tcp", "boot_id", identity::bootId());
     MDNS.addServiceTxt(
-        "radiosensors", "tcp", "stream_version",
+        "osk-sense", "tcp", "stream_version",
         String(radiosensors::stream::kVersion));
-    MDNS.addServiceTxt("radiosensors", "tcp", "firmware", firmware::version);
-    MDNS.addServiceTxt("radiosensors", "tcp", "board", board::current.name);
+    MDNS.addServiceTxt("osk-sense", "tcp", "firmware", firmware::version);
+    MDNS.addServiceTxt("osk-sense", "tcp", "board", board::current.name);
     MDNS.addServiceTxt(
-        "radiosensors", "tcp", "hostname", identity::hostname());
+        "osk-sense", "tcp", "hostname", identity::hostname());
     active = true;
     appliedGeneration = generation;
     retryAt = 0;

@@ -34,7 +34,8 @@ Common error body:
 | POST | `/api/v1/setup` | physical setup window | implemented |
 | GET | `/api/v1/info` | none | implemented |
 | POST, GET, DELETE | `/api/v1/session` | credentials/session | implemented |
-| GET | `/api/v1/nodes` | session or bearer `registry:read` | implemented |
+| GET | `/api/v1/nodes` | session or bearer `telemetry:read` | implemented |
+| GET | `/api/v1/clients` | session | implemented |
 | PATCH, DELETE | `/api/v1/nodes` | admin session + CSRF | implemented |
 | GET, PUT | `/api/v1/settings` | session; admin for PUT | implemented |
 | GET, POST, PUT, DELETE | `/api/v1/users` | admin | implemented |
@@ -121,7 +122,7 @@ identity, current boot identity, firmware and client-contract versions,
 configured display name, Web UI state and version, board, and hostname:
 
 ```json
-{"firmware_version":"0.8.0","api_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","display_name":"Main gateway","ui":{"state":"ready","version":"0.1.0","required_api_version":1},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"rf-gateway-a085e3e6cc20"}
+{"firmware_version":"0.8.0","api_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","display_name":"Main gateway","ui":{"state":"ready","version":"0.1.0","required_api_version":1},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"osk-hub-a085e3e6cc20"}
 ```
 
 `gateway_id` is 128 bits encoded as 32 lowercase hexadecimal characters. It is
@@ -134,7 +135,7 @@ changed `boot_id` to detect lost in-memory state and resynchronize.
 `display_name` is the current value of the settings field of the same name and may be empty. Web UI and Home Assistant integration releases have their own SemVer versions because they are installed independently. Both declare the integer `api_version` they support. This contract number changes only for an incompatible external REST or WebSocket change; it is separate from the radio protocol version. The gateway serves the LittleFS UI only when its required API version exactly matches.
 
 The info endpoint never returns radio keys, node UIDs, credentials, or tokens.
-`_radiosensors._tcp` mDNS discovery advertises port 80 and TXT keys `api`
+`_osk-sense._tcp` mDNS discovery advertises port 80 and TXT keys `api`
 (legacy alias), `api_version`, `stream_version`, `gateway_id`, `boot_id`,
 `firmware`, `board`, and `hostname`. `stream_version` matches the first byte of
 every binary WebSocket message.
@@ -241,15 +242,28 @@ user_not_found`, `409 mutation_busy`, `409 username_already_exists`, `409
 user_capacity_reached`, `409 last_admin_required`, `422 invalid_user_values`,
 or `500` for hashing/storage failure.
 
-At most eight long-lived API tokens are stored. A new token contains 32 random bytes, is returned once as unpadded base64url, and is stored only as SHA-256. Initial scopes are `gateway:read`, `registry:read`, and `telemetry:read`. Runtime `last_used_at` is not persisted.
+At most eight long-lived API tokens are stored. A new token contains 32 random bytes, is returned once as unpadded base64url, and is stored only as SHA-256. Runtime `last_used_at` is not persisted.
+
+There is exactly one scope, `telemetry:read`, and it covers both `GET
+/api/v1/nodes` and `/ws`. The two are not separable in practice: the WebSocket
+bootstrap below needs the registry to resolve node IDs, so a token holding one
+without the other could authenticate for half of a job it cannot finish.
+`/health` and `/api/v1/info` are unauthenticated for mDNS discovery and are
+covered by no scope. Bearer tokens cannot write: every mutation requires an
+admin session plus CSRF, so a write scope would guard nothing today. The stored
+field stays a bitfield for the day that changes.
 
 `GET /api/v1/tokens` lists token metadata but never returns token hashes or the
-original token. `POST /api/v1/tokens` requires CSRF and accepts a name plus a
-non-empty array containing only the three scopes above:
+original token. `POST /api/v1/tokens` requires CSRF and accepts a name:
 
 ```json
-{"name":"Home Assistant","scopes":["gateway:read","registry:read","telemetry:read"]}
+{"name":"Home Assistant"}
 ```
+
+`scopes` is optional. Omitting it grants `telemetry:read`, which is what the
+Web UI sends. A supplied value must be a non-empty array containing only
+`telemetry:read`; anything else returns `422 invalid_token_values` rather than
+silently granting the scope that does exist.
 
 Names are at most 32 UTF-8 bytes and need not be unique. The `201` response
 contains the generated `token` exactly once and omits `enabled`; a new token is
@@ -264,6 +278,23 @@ Home Assistant reads `/api/v1/info`, authenticates, reads `/api/v1/nodes`, then 
 The WebSocket handshake accepts either the browser session cookie or a bearer
 token carrying `telemetry:read`; otherwise it returns HTTP `401` before the
 protocol upgrade.
+
+A client should identify itself with an `X-Client` handshake header naming the
+product and version, for example `home-assistant/0.3.0`. This is the only
+source the gateway has for who is on a socket: an API key's name is free text
+someone typed and need not be unique, so it says nothing about the client
+holding it. The gateway keeps at most 32 printable ASCII characters per client
+and reports them at `GET /api/v1/clients`:
+
+```json
+{"clients":[{"id":3,"name":"home-assistant/0.3.0"},{"id":4,"name":""}]}
+```
+
+An empty name is a client that sent no header; it is reported as unidentified
+rather than attributed to a key. The endpoint requires a browser session of any
+role and is not available to a bearer token. The client count in `/health`
+stays unauthenticated, because it says only that something is reading, while
+these names say which products the installation runs.
 
 ## Security and backup
 

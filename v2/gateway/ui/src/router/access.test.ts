@@ -65,6 +65,16 @@ describe('gateway route access', () => {
     )).resolves.toEqual({ path: '/login', query: { redirect: '/admin' } })
   })
 
+  // The connection page is admin-only for the same reason as /admin: its one
+  // action is creating a key.
+  it('guards the Home Assistant connection page like the admin page', async () => {
+    const target = { path: '/home-assistant', fullPath: '/home-assistant', requiresAuth: true, requiresAdmin: true }
+    await expect(resolveRouteAccess(target, gatewayApi(false, 'admin'))).resolves.toBe(true)
+    await expect(resolveRouteAccess(target, gatewayApi(false, 'viewer'))).resolves.toEqual({ path: '/status' })
+    await expect(resolveRouteAccess(target, gatewayApi(false)))
+      .resolves.toEqual({ path: '/login', query: { redirect: '/home-assistant' } })
+  })
+
   it('leaves a viewer alone on a normal protected URL', async () => {
     await expect(resolveRouteAccess(
       { path: '/nodes', fullPath: '/nodes', requiresAuth: true },

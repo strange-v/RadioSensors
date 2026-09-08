@@ -1,13 +1,10 @@
-# RadioSensors v2 roadmap
+# OSK Sense roadmap
 
 This file contains only unfinished milestones. Protocol and storage decisions belong in their reference documents.
 
 ## Gateway
 
-- Consider an optional DIY onboarding mode based on a random commissioning
-  code scoped to one gateway installation. It must be opt-in and provisioned
-  into custom nodes by the builder; it must never become a product-wide key or
-  replace unique factory credentials for pre-provisioned nodes.
+- Consider an optional DIY onboarding mode based on a random commissioning code scoped to one gateway installation. It must be opt-in and provisioned into custom nodes by the builder; it must never become a product-wide key or replace unique factory credentials for pre-provisioned nodes.
 - Implement durable idempotent commands and the telemetry-ACK pending hint.
 - Design encrypted migration backup/restore and production recovery flows.
 - Validate sustained radio traffic, Ethernet recovery, OTA coexistence, PBKDF2 timing, watchdog behavior, flash encryption, and secure boot policy.
