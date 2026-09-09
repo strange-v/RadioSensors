@@ -18,7 +18,7 @@ export type TokenScope = 'telemetry:read'
 export interface ApiToken { id: number; name: string; enabled: boolean; created_at_ms: number; scopes: TokenScope[] }
 // The 201 body carries the generated secret exactly once and, unlike a list
 // entry, has no `enabled` field -- a new token is always enabled
-// (HealthServer.cpp, handleCreateToken).
+// (WebServer.cpp, handleCreateToken).
 export interface CreatedApiToken extends Omit<ApiToken, 'enabled'> { token: string }
 export interface ApiTokenList { tokens: ApiToken[] }
 // One live WebSocket client. `name` is what the client sent as `X-Client` at
@@ -28,7 +28,7 @@ export interface StreamClient { id: number; name: string }
 export interface StreamClientList { clients: StreamClient[] }
 export interface GatewaySettings { generation: number; hostname: string; mdns_enabled: boolean; ntp_enabled: boolean; pairing_window_seconds: number; setup_window_seconds: number; ntp_servers: string[] }
 export interface PairingStatus { active: boolean; remaining_seconds: number; indication: string }
-export interface GatewayInfo { firmware_version: string; api_version: number; ui: { state: string; version: string; required_firmware: string }; board: string; hostname: string }
+export interface GatewayInfo { firmware_version: string; api_version: number; stream_version: number; ui: { state: string; version: string; required_firmware: string }; board: string; hostname: string; gateway_id: string; boot_id: string }
 export interface GatewayNode {
   node_id: number
   // Immutable uppercase factory UID. With gateway_id this is the stable Home

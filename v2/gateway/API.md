@@ -158,11 +158,13 @@ Requires the session cookie and matching `X-CSRF-Token`, removes the RAM session
 
 ## Discovery, identity, and compatibility
 
-`GET /api/info` is unauthenticated. It returns the stable installation identity, current boot identity, firmware and client-contract versions, configured display name, Web UI state and version, board, and hostname:
+`GET /api/info` is unauthenticated. It returns the stable installation identity, current boot identity, firmware and client-contract versions, Web UI state and version, board, and hostname:
 
 ```json
-{"firmware_version":"0.8.0","api_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","ui":{"state":"ready","version":"0.1.0","required_firmware":"0.8"},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"osk-hub-a085e3e6cc20"}
+{"firmware_version":"0.8.0","api_version":1,"stream_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","ui":{"state":"ready","version":"0.1.0","required_firmware":"0.8"},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"osk-hub-a085e3e6cc20"}
 ```
+
+All fields shown above are required. `api_version` and `stream_version` are unsigned integers. `firmware_version` and the non-empty UI version are SemVer; `ui.version` and `ui.required_firmware` are empty when no compatible UI image is available. A consumer ignores additional fields it does not recognize.
 
 `gateway_id` is 128 bits encoded as 32 lowercase hexadecimal characters. It is derived from the persistent installation device secret with domain-separated SHA-256, remains stable across ordinary firmware updates and reboots, and changes after the installation secrets are erased or replaced. `boot_id` has the same encoding but is generated randomly on every boot. Consumers use a changed `boot_id` to detect lost in-memory state and resynchronize.
 
@@ -175,6 +177,38 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
 ## Nodes
 
 `GET /api/nodes` returns `registry_generation` and all relevant records, including nodes without telemetry since boot. Each node contains node ID, the immutable uppercase factory `device_uid`, UTF-8 `display_name`, profile ID, firmware, registry state and telemetry presence. When telemetry is available it also includes last-seen UTC and RSSI. The UID is used with `gateway_id` as the stable Home Assistant identity; the reusable radio `node_id` is not.
+
+```json
+{
+  "registry_generation": 12,
+  "nodes": [
+    {
+      "node_id": 7,
+      "device_uid": "102132435465768798A9",
+      "display_name": "Датчик у спальні",
+      "profile_id": 2,
+      "firmware": "1.3.0",
+      "state": "active",
+      "has_telemetry": true,
+      "last_seen_at_ms": 1770000000000,
+      "rssi": -74
+    },
+    {
+      "node_id": 8,
+      "device_uid": "AABBCCDDEEFF00112233",
+      "display_name": "",
+      "profile_id": 5,
+      "firmware": "1.3.0",
+      "state": "pending",
+      "has_telemetry": false
+    }
+  ]
+}
+```
+
+`registry_generation` is an unsigned wrapping 32-bit value changed by every durable registry mutation. Consumers compare it for equality. `node_id` is `1..99`, `device_uid` is exactly 20 uppercase hexadecimal characters, `profile_id` is a nonzero unsigned 16-bit value, and `firmware` is SemVer. `state` is `pending`, `active`, or `disabled`; adding a state is additive, so an unknown value must not make the complete response unreadable.
+
+`has_telemetry` is always present. `last_seen_at_ms` and `rssi` are present exactly when it is true. A zero last-seen timestamp means the frame arrived before gateway time synchronization. The registry response never contains radio payload bytes.
 
 `PATCH /ui/nodes` renames a node and requires an admin session plus CSRF:
 
@@ -252,12 +286,14 @@ Names are at most 32 UTF-8 bytes and need not be unique. The `201` response cont
 
 ## WebSocket bootstrap
 
-A client reads `/api/info`, checks `api_version` and `stream_version`, authenticates, reads `/api/nodes`, then connects to `/ws` and waits for a complete snapshot. Binary frames are specified in [WEBSOCKET.md](WEBSOCKET.md).
+A client reads `/api/info`, checks `api_version` and `stream_version`, authenticates, reads `/api/nodes`, then connects to `/ws`. It requires `HELLO` as the first binary message, verifies its gateway and boot IDs against `/api/info`, reconciles its registry generation, and waits for a complete snapshot. Binary frames are specified in [WEBSOCKET.md](WEBSOCKET.md).
 
 Keeping the registry fresh needs two rules and no polling:
 
 - Refetch `/api/nodes` on a `REGISTRY_CHANGED` message, which carries the new `registry_generation`. This covers renames, deletions, completed pairings, and radio network resets that happen while the socket is up.
-- Refetch `/api/info` and `/api/nodes` after every reconnect. A dropped socket is also how a client learns the gateway rebooted, so no separate reboot signal is needed; `boot_id` confirms it rather than carrying it.
+- Refetch `/api/info` and `/api/nodes` after every reconnect. A dropped socket is also how a client learns the gateway rebooted; `HELLO` confirms both identities and the new sequence space before telemetry is trusted.
+
+If snapshot begin and end carry different registry generations, the consumer discards the snapshot and reconnects after refetching `/api/nodes`. If a `REGISTRY_CHANGED` message arrives during normal streaming, it pauses node-ID attribution until `/api/nodes` returns the announced generation.
 
 `REGISTRY_CHANGED` is what makes radio `node_id` reuse safe: IDs are recycled, so without it telemetry for a reissued ID would be attributed to the previous `device_uid` until the consumer next polled. A slow poll remains a reasonable safety net, but it is not the mechanism.
 

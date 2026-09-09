@@ -8,7 +8,7 @@ const now = Date.now()
 
 const health = {
   status: 'ok', firmware: '2.1.0', api_version: 1, board: 'esp32-poe', hostname: 'osk-hub-a085e3',
-  gateway_id: 'a1b2c3d4e5f60718', boot_id: '0011223344556677',
+  gateway_id: 'a1b2c3d4e5f60718293a4b5c6d7e8f90', boot_id: '00112233445566778899aabbccddeeff',
   reset_reason: 'power_on', uptime_ms: 191_400_000, free_heap: 184_320,
   registry: { records: 6, generation: 12 },
   setup: { required: false, active: false, remaining_seconds: 0 },
@@ -40,7 +40,12 @@ const routes: Record<string, unknown> = {
   // session at /ui/status.
   '/health': { status: 'ok', boot_id: health.boot_id },
   '/ui/status': health,
-  '/api/info': { firmware_version: '2.1.0', api_version: 1, ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' }, board: 'esp32-poe', hostname: 'osk-hub-a085e3' },
+  '/api/info': {
+    firmware_version: '2.1.0', api_version: 1, stream_version: 1,
+    gateway_id: health.gateway_id, boot_id: health.boot_id,
+    ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' },
+    board: 'esp32-poe', hostname: 'osk-hub-a085e3',
+  },
   '/api/nodes': { registry_generation: 12, nodes },
   // One client that identified itself at the handshake, and one that did not,
   // so the card is exercised in both halves. The count in `health.websocket`
@@ -215,7 +220,7 @@ function mockApi(): Plugin {
             registryGeneration += 1
             health.radio.network_id = requested || 137
             // Stand in for the reboot so the dialog's wait actually resolves.
-            setTimeout(() => { health.boot_id = 'ffeeddccbbaa9988' }, 4_000)
+            setTimeout(() => { health.boot_id = 'ffeeddccbbaa99887766554433221100' }, 4_000)
             res.statusCode = 202
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({ operational_network_id: health.radio.network_id, removed_nodes: removed, restarting: true }))

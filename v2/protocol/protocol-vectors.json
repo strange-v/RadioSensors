@@ -1,0 +1,206 @@
+{
+  "$schema": "./protocol-manifest.schema.json",
+  "schema_version": 1,
+  "scope": "gateway_client_telemetry_vectors",
+  "telemetry": [
+    {
+      "name": "profile_1_nominal",
+      "profile_id": 1,
+      "hex": "40E40C",
+      "raw": { "supply_voltage": 3300 },
+      "values": { "supply_voltage": 3.3 }
+    },
+    {
+      "name": "profile_2_nominal",
+      "profile_id": 2,
+      "hex": "40E40C2E09",
+      "raw": { "supply_voltage": 3300, "temperature": 2350 },
+      "values": { "supply_voltage": 3.3, "temperature": 23.5 }
+    },
+    {
+      "name": "profile_3_nominal",
+      "profile_id": 3,
+      "hex": "40E40C2E09D711",
+      "raw": {
+        "supply_voltage": 3300,
+        "temperature": 2350,
+        "humidity": 4567
+      },
+      "values": {
+        "supply_voltage": 3.3,
+        "temperature": 23.5,
+        "humidity": 45.67
+      }
+    },
+    {
+      "name": "profile_4_nominal",
+      "profile_id": 4,
+      "hex": "40E40C2E09D7119427",
+      "raw": {
+        "supply_voltage": 3300,
+        "temperature": 2350,
+        "humidity": 4567,
+        "pressure": 10132
+      },
+      "values": {
+        "supply_voltage": 3.3,
+        "temperature": 23.5,
+        "humidity": 45.67,
+        "pressure": 1013.2
+      }
+    },
+    {
+      "name": "profile_4_no_values",
+      "profile_id": 4,
+      "hex": "40FFFF0080FFFFFFFF",
+      "raw": {
+        "supply_voltage": 65535,
+        "temperature": -32768,
+        "humidity": 65535,
+        "pressure": 65535
+      },
+      "values": {
+        "supply_voltage": null,
+        "temperature": null,
+        "humidity": null,
+        "pressure": null
+      }
+    },
+    {
+      "name": "profile_5_nominal",
+      "profile_id": 5,
+      "hex": "40E40C01",
+      "raw": { "supply_voltage": 3300, "state": 1 },
+      "values": { "supply_voltage": 3.3, "state": 1 }
+    },
+    {
+      "name": "profile_6_nominal",
+      "profile_id": 6,
+      "hex": "40E40C78563412",
+      "raw": { "supply_voltage": 3300, "count": 305419896 },
+      "values": { "supply_voltage": 3.3, "count": 305419896 }
+    },
+    {
+      "name": "profile_7_nominal",
+      "profile_id": 7,
+      "hex": "40E40C012E09D711",
+      "raw": {
+        "supply_voltage": 3300,
+        "state": 1,
+        "temperature": 2350,
+        "humidity": 4567
+      },
+      "values": {
+        "supply_voltage": 3.3,
+        "state": 1,
+        "temperature": 23.5,
+        "humidity": 45.67
+      }
+    },
+    {
+      "name": "profile_8_nominal",
+      "profile_id": 8,
+      "hex": "40E40C012E09",
+      "raw": {
+        "supply_voltage": 3300,
+        "state": 1,
+        "temperature": 2350
+      },
+      "values": {
+        "supply_voltage": 3.3,
+        "state": 1,
+        "temperature": 23.5
+      }
+    }
+  ],
+  "invalid_telemetry": [
+    {
+      "name": "wrong_telemetry_header",
+      "profile_id": 1,
+      "hex": "41E40C",
+      "error": "wrong_header"
+    },
+    {
+      "name": "wrong_profile_length",
+      "profile_id": 4,
+      "hex": "40E40C2E09D711",
+      "error": "wrong_length"
+    },
+    {
+      "name": "invalid_binary_state",
+      "profile_id": 5,
+      "hex": "40E40C02",
+      "error": "invalid_value"
+    },
+    {
+      "name": "temperature_below_range",
+      "profile_id": 2,
+      "hex": "40E40CBFE0",
+      "error": "invalid_value"
+    }
+  ],
+  "gateway_stream": [
+    {
+      "name": "hello",
+      "message": "hello",
+      "hex": "010104030201000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2A000000",
+      "decoded": {
+        "stream_version": 1,
+        "message_kind": 1,
+        "sequence": 16909060,
+        "gateway_id": "000102030405060708090a0b0c0d0e0f",
+        "boot_id": "101112131415161718191a1b1c1d1e1f",
+        "registry_generation": 42
+      }
+    },
+    {
+      "name": "snapshot_begin",
+      "message": "snapshot_begin",
+      "hex": "01021234567804030201",
+      "decoded": {
+        "stream_version": 1,
+        "message_kind": 2,
+        "sequence": 2018915346,
+        "registry_generation": 16909060
+      }
+    },
+    {
+      "name": "telemetry_envelope",
+      "message": "telemetry",
+      "hex": "0103040302010734124433221104030201C1FF0340E70C",
+      "decoded": {
+        "stream_version": 1,
+        "message_kind": 3,
+        "sequence": 16909060,
+        "node_id": 7,
+        "profile_id": 4660,
+        "received_at_unix_ms": "72623859993555780",
+        "rssi": -63,
+        "payload_size": 3,
+        "payload": "40E70C"
+      }
+    },
+    {
+      "name": "snapshot_end",
+      "message": "snapshot_end",
+      "hex": "01041234567804030201",
+      "decoded": {
+        "stream_version": 1,
+        "message_kind": 4,
+        "sequence": 2018915346,
+        "registry_generation": 16909060
+      }
+    },
+    {
+      "name": "registry_changed",
+      "message": "registry_changed",
+      "hex": "0105040302012A000000",
+      "decoded": {
+        "stream_version": 1,
+        "message_kind": 5,
+        "sequence": 16909060,
+        "registry_generation": 42
+      }
+    }
+  ]
+}

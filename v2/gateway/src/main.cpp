@@ -8,7 +8,7 @@
 #include "DeviceIdentity.h"
 #include "EthernetService.h"
 #include "FirmwareVersion.h"
-#include "HealthServer.h"
+#include "WebServer.h"
 #include "MdnsService.h"
 #include "GatewayStatus.h"
 #include "NodeRegistryStore.h"
@@ -74,7 +74,7 @@ void setup() {
     } else {
         Serial.println("Commissioning disabled because RFM69 is unavailable");
     }
-    gateway::health::begin();
+    gateway::web_server::begin();
     gateway::ota::begin();
 }
 
@@ -89,7 +89,7 @@ void loop() {
             gateway::telemetry_store::Record record{};
             if (gateway::telemetry_store::find(
                     static_cast<uint8_t>(telemetry.senderId), record)) {
-                gateway::health::publishTelemetry(record);
+                gateway::web_server::publishTelemetry(record);
             }
             Serial.printf(
                 "Telemetry stored: sender=%u bytes=%u rssi=%d\n",
@@ -104,7 +104,7 @@ void loop() {
         }
     }
     gateway::status::loop();
-    gateway::health::loop();
+    gateway::web_server::loop();
     gateway::authentication::loop();
     gateway::ota::loop();
     gateway::diagnostics::feedWatchdog();

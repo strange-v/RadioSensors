@@ -1,6 +1,6 @@
 # OSK Sense Protocol
 
-This document is the canonical byte-level description of the v2 application protocol. Multi-byte integer layouts, message payloads, and telemetry profiles must be added here before their codec implementation is merged.
+[`protocol-manifest.json`](protocol-manifest.json) is the canonical machine-readable source for client-visible numeric IDs, byte layouts, encodings, ranges, scales, and no-value sentinels. This document defines the surrounding behaviour and security semantics. [`protocol-vectors.json`](protocol-vectors.json) provides cross-language known answers. All three must change together before a wire-format change is merged.
 
 ## Protocol layers
 
@@ -164,7 +164,7 @@ The node must not consider commissioning complete until it receives this frame. 
 
 ## Telemetry profile template
 
-Each schema added below must define all of the following:
+Each profile added to the manifest and described below must define all of the following:
 
 | Item | Required definition |
 | --- | --- |
@@ -178,43 +178,19 @@ Each schema added below must define all of the following:
 
 V2 profile IDs are stable opaque keys allocated sequentially. Their numeric values do not encode a capability family, hardware type, or Home Assistant presentation. IDs are never reused after release. Profile 0 remains invalid.
 
-| Profile ID | Meaning | Telemetry fields |
-| ---: | --- | --- |
-| 1 | Supply voltage | VCC |
-| 2 | Temperature | VCC, temperature |
-| 3 | Temperature and humidity | VCC, temperature, humidity |
-| 4 | Temperature, humidity, and pressure | VCC, temperature, humidity, pressure |
-| 5 | Binary input | VCC, state |
-| 6 | Pulse counter | VCC, counter |
-| 7 | Binary input with climate sensor | VCC, state, temperature, humidity |
-| 8 | Binary input with temperature sensor | VCC, state, temperature |
-
-All eight initial profiles are frozen below: each has a byte layout and a hexadecimal example mirrored by a native known-answer test.
+All eight initial profiles are frozen below. The generated map is the compact byte-layout reference; each profile section adds its meaning, constraints, and a hexadecimal example mirrored by a native known-answer test.
 
 Gas/water and door/window are installation presentation, not different wire profiles. A profile ID says how to decode the bytes; it never says what the device is called or what a pulse is worth.
 
+![Telemetry profile byte map](generated/telemetry-profiles.svg)
+
 ### Profile 1: supply voltage
 
-Profile ID `1` carries only the node supply voltage. Its telemetry payload is exactly two bytes (three bytes including the common header):
-
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-
-Example for 3300 mV: `40 E4 0C`.
+Profile ID `1` carries only the node supply voltage. Its telemetry payload is exactly two bytes (three bytes including the common header). Supply voltage is unsigned little-endian millivolts; `UINT16_MAX` means unavailable. Example for 3300 mV: `40 E4 0C`.
 
 ### Profile 2: temperature test node
 
-Profile ID `2` is used by the ATtiny1614/TMP112 commissioning test node. Its telemetry payload is exactly four bytes (five bytes including the common header):
-
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 2 | Temperature | signed little-endian, degrees C x 100; valid range `-8000..12500`; `INT16_MIN` means unavailable |
-
-Example for 3300 mV and 23.50 degrees C: `40 E4 0C 2E 09`.
+Profile ID `2` is used by the ATtiny1614/TMP112 commissioning test node. Its telemetry payload is exactly four bytes (five bytes including the common header). Temperature is signed little-endian, degrees C x 100, valid from `-8000` through `12500`; `INT16_MIN` means unavailable. Example for 3300 mV and 23.50 degrees C: `40 E4 0C 2E 09`.
 
 The legacy type byte in v1 payload structs is not copied into v2 telemetry.
 
@@ -222,26 +198,11 @@ The legacy type byte in v1 payload structs is not copied into v2 telemetry.
 
 The application frame is exactly seven bytes: the common telemetry prefix, signed little-endian temperature in degrees C x 100, and unsigned little-endian humidity in percent RH x 100. Temperature is valid from `-8000` through `12500`, with `INT16_MIN` meaning unavailable. Humidity is valid from `0` through `10000`, with `UINT16_MAX` meaning unavailable.
 
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 2 | Temperature | signed little-endian, degrees C x 100 |
-| 5 | 2 | Humidity | unsigned little-endian, percent RH x 100 |
-
 Example for 3300 mV, 23.50 degrees C, and 45.67% RH: `40 E4 0C 2E 09 D7 11`.
 
 ### Profile 4: temperature, humidity, and pressure
 
 The application frame is exactly nine bytes: the profile 3 fields followed by unsigned little-endian atmospheric pressure in tenths of a hectopascal. Pressure is valid from `3000` through `11000` (300.0 through 1100.0 hPa); `UINT16_MAX` means unavailable.
-
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 2 | Temperature | signed little-endian, degrees C x 100 |
-| 5 | 2 | Humidity | unsigned little-endian, percent RH x 100 |
-| 7 | 2 | Pressure | unsigned little-endian, hPa x 10 |
 
 Example for 3300 mV, 23.50 degrees C, 45.67% RH, and 1013.2 hPa: `40 E4 0C 2E 09 D7 11 94 27`.
 
@@ -249,21 +210,9 @@ Example for 3300 mV, 23.50 degrees C, 45.67% RH, and 1013.2 hPa: `40 E4 0C 2E 09
 
 The application frame is exactly four bytes: the common telemetry prefix followed by one-byte state (`0` or `1`). Example for 3300 mV and state `1`: `40 E4 0C 01`.
 
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 1 | State | `0` or `1` |
-
 ### Profile 6: pulse counter
 
 The application frame is exactly seven bytes: the common telemetry prefix followed by an unsigned 32-bit little-endian cumulative pulse count. Example for 3300 mV and count `0x12345678`: `40 E4 0C 78 56 34 12`.
-
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 4 | Count | unsigned little-endian cumulative pulse count |
 
 Gas/water meaning, units per pulse, and display unit are installation metadata. They are not part of this telemetry frame. The `SET_COUNT` command is part of this profile, but its command envelope remains unfrozen.
 
@@ -271,24 +220,9 @@ Gas/water meaning, units per pulse, and display unit are installation metadata. 
 
 The application frame is exactly eight bytes: the common telemetry prefix, state (`0` or `1`), signed little-endian temperature in degrees C x 100, and unsigned little-endian humidity in percent RH x 100. The profile 3 ranges and sentinels apply. Example for 3300 mV, state `1`, 23.50 degrees C, and 45.67% RH: `40 E4 0C 01 2E 09 D7 11`.
 
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 1 | State | `0` or `1` |
-| 4 | 2 | Temperature | signed little-endian, degrees C x 100 |
-| 6 | 2 | Humidity | unsigned little-endian, percent RH x 100 |
-
 ### Profile 8: binary input with TMP112 temperature
 
 The application frame is exactly six bytes: the common telemetry prefix, state (`0` or `1`), and signed little-endian temperature in degrees C x 100. The profile 2 range and sentinel apply. Example for 3300 mV, state `1`, and 23.50 degrees C: `40 E4 0C 01 2E 09`.
-
-| DATA offset | Bytes | Field | Encoding |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Common header | `0x40` |
-| 1 | 2 | Supply voltage | unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
-| 3 | 1 | State | `0` or `1` |
-| 4 | 2 | Temperature | signed little-endian, degrees C x 100 |
 
 ## Codec invariants
 
@@ -296,4 +230,4 @@ The application frame is exactly six bytes: the common telemetry prefix, state (
 - Every multi-byte value has explicit byte order and fixed width.
 - Encoding and decoding do not allocate memory.
 - The common frame codec does not interpret profile-specific telemetry bytes.
-- Documented hexadecimal examples are mirrored by native unit tests.
+- Documented hexadecimal examples are mirrored by native unit tests and `protocol-vectors.json`.

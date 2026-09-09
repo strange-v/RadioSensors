@@ -29,7 +29,7 @@ export function canStreamTelemetry(token: ApiToken): boolean {
 // a client is still reconnecting.
 //
 // The stream can carry a browser session as well as a key (see
-// authorizeTelemetryStream in HealthServer.cpp), so a gateway with no keys and
+// authorizeTelemetryStream in WebServer.cpp), so a gateway with no keys and
 // a live socket is someone's browser, not a configured client. Reporting
 // 'unconfigured' there is right: there is still nothing set up.
 //
