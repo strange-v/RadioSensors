@@ -1,0 +1,218 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1750" height="540" viewBox="0 0 1750 540" role="img" aria-labelledby="title description">
+  <title id="title">Gateway stream message layouts</title>
+  <desc id="description">The five version-one WebSocket messages are shown as proportional byte fields. The telemetry payload is variable length.</desc>
+  <defs>
+    <pattern id="unused" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" class="unused-line" />
+    </pattern>
+  </defs>
+  <style>
+    :root { color-scheme: light dark; }
+    text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #172033; }
+    .title { font-size: 22px; font-weight: 600; }
+    .axis, .secondary { font-size: 12px; fill: #596579; }
+    .row-name { font-size: 14px; font-weight: 600; }
+    .field-name { font-size: 13px; font-weight: 600; }
+    .field-type { font-size: 11px; fill: #3f4b5e; }
+    .cell { stroke: #ffffff; stroke-width: 2; }
+    .constant { fill: #d8dee8; }
+    .uint8 { fill: #fde0a6; }
+    .uint16_le { fill: #bfe7fa; }
+    .int16_le { fill: #bfead8; }
+    .uint32_le { fill: #ddcdf9; }
+    .uint64_le { fill: #ffd0b5; }
+    .bytes { fill: #f7c9df; }
+    .unused { fill: url(#unused); stroke: #d8dee8; stroke-width: 1; }
+    .unused-line { stroke: #c5cedb; stroke-width: 1; }
+    .legend-label { font-size: 12px; fill: #596579; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #eef2f7; }
+      .axis, .secondary, .field-type, .legend-label { fill: #b8c2d1; }
+      .cell { stroke: #111827; }
+      .constant { fill: #465268; }
+      .uint8 { fill: #75571c; }
+      .uint16_le { fill: #185b78; }
+      .int16_le { fill: #23664e; }
+      .uint32_le { fill: #59418b; }
+      .uint64_le { fill: #844429; }
+      .bytes { fill: #7a3459; }
+      .unused { stroke: #465268; }
+      .unused-line { stroke: #465268; }
+    }
+  </style>
+  <text class="title" x="24" y="30">Gateway stream v1</text>
+  <text class="row-name" x="24" y="82">1 · hello</text>
+  <text class="secondary" x="24" y="101">42 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="58" width="36" height="62" />
+    <text class="field-name" x="232" y="83" text-anchor="middle">ver</text>
+    <text class="field-type" x="232" y="111" text-anchor="middle">0</text>
+  </g>
+  <g>
+    <rect class="cell constant" x="250" y="58" width="36" height="62" />
+    <text class="field-name" x="268" y="83" text-anchor="middle">kind</text>
+    <text class="field-type" x="268" y="111" text-anchor="middle">1</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="286" y="58" width="144" height="62" />
+    <text class="field-name" x="358" y="78" text-anchor="middle">sequence</text>
+    <text class="field-type" x="358" y="95" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="358" y="112" text-anchor="middle">byte 2–5</text>
+  </g>
+  <g>
+    <rect class="cell bytes" x="430" y="58" width="576" height="62" />
+    <text class="field-name" x="718" y="78" text-anchor="middle">gateway ID</text>
+    <text class="field-type" x="718" y="95" text-anchor="middle">bytes</text>
+    <text class="field-type" x="718" y="112" text-anchor="middle">byte 6–21</text>
+  </g>
+  <g>
+    <rect class="cell bytes" x="1006" y="58" width="576" height="62" />
+    <text class="field-name" x="1294" y="78" text-anchor="middle">boot ID</text>
+    <text class="field-type" x="1294" y="95" text-anchor="middle">bytes</text>
+    <text class="field-type" x="1294" y="112" text-anchor="middle">byte 22–37</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="1582" y="58" width="144" height="62" />
+    <text class="field-name" x="1654" y="78" text-anchor="middle">registry gen</text>
+    <text class="field-type" x="1654" y="95" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="1654" y="112" text-anchor="middle">byte 38–41</text>
+  </g>
+  <text class="row-name" x="24" y="166">2 · snapshot_begin</text>
+  <text class="secondary" x="24" y="185">10 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="142" width="36" height="62" />
+    <text class="field-name" x="232" y="167" text-anchor="middle">ver</text>
+    <text class="field-type" x="232" y="195" text-anchor="middle">0</text>
+  </g>
+  <g>
+    <rect class="cell constant" x="250" y="142" width="36" height="62" />
+    <text class="field-name" x="268" y="167" text-anchor="middle">kind</text>
+    <text class="field-type" x="268" y="195" text-anchor="middle">1</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="286" y="142" width="144" height="62" />
+    <text class="field-name" x="358" y="162" text-anchor="middle">sequence</text>
+    <text class="field-type" x="358" y="179" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="358" y="196" text-anchor="middle">byte 2–5</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="430" y="142" width="144" height="62" />
+    <text class="field-name" x="502" y="162" text-anchor="middle">registry gen</text>
+    <text class="field-type" x="502" y="179" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="502" y="196" text-anchor="middle">byte 6–9</text>
+  </g>
+  <text class="row-name" x="24" y="250">3 · telemetry</text>
+  <text class="secondary" x="24" y="269">20 + payload bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="226" width="36" height="62" />
+    <text class="field-name" x="232" y="251" text-anchor="middle">ver</text>
+    <text class="field-type" x="232" y="279" text-anchor="middle">0</text>
+  </g>
+  <g>
+    <rect class="cell constant" x="250" y="226" width="36" height="62" />
+    <text class="field-name" x="268" y="251" text-anchor="middle">kind</text>
+    <text class="field-type" x="268" y="279" text-anchor="middle">1</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="286" y="226" width="144" height="62" />
+    <text class="field-name" x="358" y="246" text-anchor="middle">sequence</text>
+    <text class="field-type" x="358" y="263" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="358" y="280" text-anchor="middle">byte 2–5</text>
+  </g>
+  <g>
+    <rect class="cell uint8" x="430" y="226" width="36" height="62" />
+    <text class="field-name" x="448" y="251" text-anchor="middle">node</text>
+    <text class="field-type" x="448" y="279" text-anchor="middle">6</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="466" y="226" width="72" height="62" />
+    <text class="field-name" x="502" y="246" text-anchor="middle">profile</text>
+    <text class="field-type" x="502" y="263" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="502" y="280" text-anchor="middle">byte 7–8</text>
+  </g>
+  <g>
+    <rect class="cell uint64_le" x="538" y="226" width="288" height="62" />
+    <text class="field-name" x="682" y="246" text-anchor="middle">received at</text>
+    <text class="field-type" x="682" y="263" text-anchor="middle">uint64 LE</text>
+    <text class="field-type" x="682" y="280" text-anchor="middle">byte 9–16</text>
+  </g>
+  <g>
+    <rect class="cell int16_le" x="826" y="226" width="72" height="62" />
+    <text class="field-name" x="862" y="246" text-anchor="middle">rssi</text>
+    <text class="field-type" x="862" y="263" text-anchor="middle">int16 LE</text>
+    <text class="field-type" x="862" y="280" text-anchor="middle">byte 17–18</text>
+  </g>
+  <g>
+    <rect class="cell uint8" x="898" y="226" width="36" height="62" />
+    <text class="field-name" x="916" y="251" text-anchor="middle">size</text>
+    <text class="field-type" x="916" y="279" text-anchor="middle">19</text>
+  </g>
+  <g>
+    <rect class="cell bytes" x="934" y="226" width="180" height="62" />
+    <text class="field-name" x="1024" y="246" text-anchor="middle">payload</text>
+    <text class="field-type" x="1024" y="263" text-anchor="middle">bytes</text>
+    <text class="field-type" x="1024" y="280" text-anchor="middle">byte 20…</text>
+  </g>
+  <text class="row-name" x="24" y="334">4 · snapshot_end</text>
+  <text class="secondary" x="24" y="353">10 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="310" width="36" height="62" />
+    <text class="field-name" x="232" y="335" text-anchor="middle">ver</text>
+    <text class="field-type" x="232" y="363" text-anchor="middle">0</text>
+  </g>
+  <g>
+    <rect class="cell constant" x="250" y="310" width="36" height="62" />
+    <text class="field-name" x="268" y="335" text-anchor="middle">kind</text>
+    <text class="field-type" x="268" y="363" text-anchor="middle">1</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="286" y="310" width="144" height="62" />
+    <text class="field-name" x="358" y="330" text-anchor="middle">sequence</text>
+    <text class="field-type" x="358" y="347" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="358" y="364" text-anchor="middle">byte 2–5</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="430" y="310" width="144" height="62" />
+    <text class="field-name" x="502" y="330" text-anchor="middle">registry gen</text>
+    <text class="field-type" x="502" y="347" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="502" y="364" text-anchor="middle">byte 6–9</text>
+  </g>
+  <text class="row-name" x="24" y="418">5 · registry_changed</text>
+  <text class="secondary" x="24" y="437">10 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="394" width="36" height="62" />
+    <text class="field-name" x="232" y="419" text-anchor="middle">ver</text>
+    <text class="field-type" x="232" y="447" text-anchor="middle">0</text>
+  </g>
+  <g>
+    <rect class="cell constant" x="250" y="394" width="36" height="62" />
+    <text class="field-name" x="268" y="419" text-anchor="middle">kind</text>
+    <text class="field-type" x="268" y="447" text-anchor="middle">1</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="286" y="394" width="144" height="62" />
+    <text class="field-name" x="358" y="414" text-anchor="middle">sequence</text>
+    <text class="field-type" x="358" y="431" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="358" y="448" text-anchor="middle">byte 2–5</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="430" y="394" width="144" height="62" />
+    <text class="field-name" x="502" y="414" text-anchor="middle">registry gen</text>
+    <text class="field-type" x="502" y="431" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="502" y="448" text-anchor="middle">byte 6–9</text>
+  </g>
+  <rect class="constant" x="24" y="508" width="18" height="12" />
+  <text class="legend-label" x="49" y="519">constant</text>
+  <rect class="uint8" x="122" y="508" width="18" height="12" />
+  <text class="legend-label" x="147" y="519">uint8</text>
+  <rect class="uint16_le" x="199" y="508" width="18" height="12" />
+  <text class="legend-label" x="224" y="519">uint16 LE</text>
+  <rect class="int16_le" x="304" y="508" width="18" height="12" />
+  <text class="legend-label" x="329" y="519">int16 LE</text>
+  <rect class="uint32_le" x="402" y="508" width="18" height="12" />
+  <text class="legend-label" x="427" y="519">uint32 LE</text>
+  <rect class="uint64_le" x="507" y="508" width="18" height="12" />
+  <text class="legend-label" x="532" y="519">uint64 LE</text>
+  <rect class="bytes" x="612" y="508" width="18" height="12" />
+  <text class="legend-label" x="637" y="519">bytes</text>
+</svg>

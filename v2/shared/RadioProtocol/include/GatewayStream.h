@@ -8,17 +8,22 @@ namespace radiosensors::stream {
 // A consumer must ignore an unknown message kind, or every later addition
 // breaks every deployed client.
 constexpr uint8_t kVersion = 1;
-constexpr size_t kControlFrameSize = 6;
+constexpr size_t kCommonPrefixSize = 6;
+constexpr size_t kIdentitySize = 16;
+constexpr size_t kSnapshotControlFrameSize = 10;
 constexpr size_t kRegistryChangedFrameSize = 10;
 constexpr size_t kTelemetryEnvelopeSize = 20;
+constexpr size_t kHelloFrameSize = 42;
 
 enum class MessageKind : uint8_t {
-    SnapshotBegin = 1,
-    Telemetry = 2,
-    SnapshotEnd = 3,
+    // Always the first server-to-client message.
+    Hello = 1,
+    SnapshotBegin = 2,
+    Telemetry = 3,
+    SnapshotEnd = 4,
     // Carries the new durable generation; the consumer refetches
     // /api/nodes. See WEBSOCKET.md for why polling cannot replace it.
-    RegistryChanged = 4,
+    RegistryChanged = 5,
 };
 
 inline void writeUint16(uint8_t* const output, const uint16_t value) {
@@ -38,19 +43,43 @@ inline void writeUint64(uint8_t* const output, const uint64_t value) {
     writeUint32(output + 4, static_cast<uint32_t>(value >> 32U));
 }
 
-inline size_t encodeControl(
+inline size_t encodeSnapshotControl(
     const MessageKind kind,
     const uint32_t sequence,
+    const uint32_t registryGeneration,
     uint8_t* const output,
     const size_t capacity) {
-    if (output == nullptr || capacity < kControlFrameSize ||
+    if (output == nullptr || capacity < kSnapshotControlFrameSize ||
         (kind != MessageKind::SnapshotBegin && kind != MessageKind::SnapshotEnd)) {
         return 0;
     }
     output[0] = kVersion;
     output[1] = static_cast<uint8_t>(kind);
     writeUint32(output + 2, sequence);
-    return kControlFrameSize;
+    writeUint32(output + 6, registryGeneration);
+    return kSnapshotControlFrameSize;
+}
+
+inline size_t encodeHello(
+    const uint32_t sequence,
+    const uint8_t* const gatewayId,
+    const uint8_t* const bootId,
+    const uint32_t registryGeneration,
+    uint8_t* const output,
+    const size_t capacity) {
+    if (output == nullptr || capacity < kHelloFrameSize ||
+        gatewayId == nullptr || bootId == nullptr) {
+        return 0;
+    }
+    output[0] = kVersion;
+    output[1] = static_cast<uint8_t>(MessageKind::Hello);
+    writeUint32(output + 2, sequence);
+    for (size_t index = 0; index < kIdentitySize; ++index) {
+        output[6 + index] = gatewayId[index];
+        output[22 + index] = bootId[index];
+    }
+    writeUint32(output + 38, registryGeneration);
+    return kHelloFrameSize;
 }
 
 // The sequence is the telemetry watermark, as in the snapshot control frames,

@@ -1,4 +1,4 @@
-#include "HealthServer.h"
+#include "WebServer.h"
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
@@ -33,7 +33,7 @@
 #include "TimeService.h"
 #include "WebUiService.h"
 
-namespace gateway::health {
+namespace gateway::web_server {
 namespace {
 
 AsyncWebServer server(80);
@@ -1165,13 +1165,32 @@ size_t encodeTelemetryFrame(
         capacity);
 }
 
-bool sendControl(
+bool sendSnapshotControl(
     AsyncWebSocketClient* const client,
     const radiosensors::stream::MessageKind kind,
-    const uint32_t sequence) {
-    uint8_t message[radiosensors::stream::kControlFrameSize]{};
-    radiosensors::stream::encodeControl(kind, sequence, message, sizeof(message));
-    return client->binary(message, sizeof(message));
+    const uint32_t sequence,
+    const uint32_t registryGeneration) {
+    uint8_t message[radiosensors::stream::kSnapshotControlFrameSize]{};
+    const size_t size = radiosensors::stream::encodeSnapshotControl(
+        kind, sequence, registryGeneration, message, sizeof(message));
+    return size == sizeof(message) && client->binary(message, size);
+}
+
+bool sendHello(
+    AsyncWebSocketClient* const client,
+    const uint32_t sequence,
+    const uint32_t registryGeneration) {
+    uint8_t gatewayId[radiosensors::stream::kIdentitySize]{};
+    uint8_t bootId[radiosensors::stream::kIdentitySize]{};
+    if (!decodeHex(identity::gatewayId(), gatewayId, sizeof(gatewayId)) ||
+        !decodeHex(identity::bootId(), bootId, sizeof(bootId))) {
+        return false;
+    }
+    uint8_t message[radiosensors::stream::kHelloFrameSize]{};
+    const size_t size = radiosensors::stream::encodeHello(
+        sequence, gatewayId, bootId, registryGeneration,
+        message, sizeof(message));
+    return size == sizeof(message) && client->binary(message, size);
 }
 
 bool sendTelemetry(
@@ -1184,8 +1203,16 @@ bool sendTelemetry(
 
 void sendSnapshot(AsyncWebSocketClient* const client) {
     const telemetry_store::Snapshot initial = telemetry_store::snapshot();
-    if (!sendControl(
-            client, radiosensors::stream::MessageKind::SnapshotBegin, initial.updates)) return;
+    const uint32_t initialRegistryGeneration = registry_store::generation();
+    if (!sendHello(client, initial.updates, initialRegistryGeneration) ||
+        !sendSnapshotControl(
+            client,
+            radiosensors::stream::MessageKind::SnapshotBegin,
+            initial.updates,
+            initialRegistryGeneration)) {
+        client->close();
+        return;
+    }
 
     for (uint8_t nodeId = radiosensors::registry::kFirstNodeId;
          nodeId <= radiosensors::registry::kLastNodeId;
@@ -1193,12 +1220,20 @@ void sendSnapshot(AsyncWebSocketClient* const client) {
         telemetry_store::Record record{};
         if (telemetry_store::find(nodeId, record) &&
             !sendTelemetry(client, record)) {
+            client->close();
             return;
         }
     }
 
     const telemetry_store::Snapshot final = telemetry_store::snapshot();
-    sendControl(client, radiosensors::stream::MessageKind::SnapshotEnd, final.updates);
+    const uint32_t finalRegistryGeneration = registry_store::generation();
+    if (!sendSnapshotControl(
+            client,
+            radiosensors::stream::MessageKind::SnapshotEnd,
+            final.updates,
+            finalRegistryGeneration)) {
+        client->close();
+    }
 }
 
 // The name is written by whoever connects and is echoed into JSON and into the
@@ -1452,6 +1487,7 @@ void handleInfo(AsyncWebServerRequest* request) {
     JsonDocument document;
     document["firmware_version"] = firmware::version;
     document["api_version"] = api::version;
+    document["stream_version"] = radiosensors::stream::kVersion;
     document["ui"]["state"] = web_ui::stateName();
     document["ui"]["version"] = web_ui::version();
     document["ui"]["required_firmware"] = web_ui::requiredFirmware();
@@ -1619,4 +1655,4 @@ void publishTelemetry(const telemetry_store::Record& record) {
     }
 }
 
-}  // namespace gateway::health
+}  // namespace gateway::web_server

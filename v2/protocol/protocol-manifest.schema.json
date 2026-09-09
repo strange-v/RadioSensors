@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:osk-sense:protocol-manifest-schema:1",
+  "title": "OSK Sense protocol artifacts",
+  "oneOf": [
+    { "$ref": "#/$defs/manifest" },
+    { "$ref": "#/$defs/vector_document" }
+  ],
+  "$defs": {
+    "artifact_header": {
+      "type": "object",
+      "properties": {
+        "$schema": { "type": "string" },
+        "schema_version": { "const": 1 }
+      },
+      "required": ["$schema", "schema_version"]
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": { "type": "integer" },
+        "denominator": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["numerator", "denominator"],
+      "additionalProperties": false
+    },
+    "raw_range": {
+      "type": "object",
+      "properties": {
+        "min": { "type": "integer" },
+        "max": { "type": "integer" }
+      },
+      "required": ["min", "max"],
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "quantity": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "encoding": {
+          "enum": [
+            "uint8",
+            "int16_le",
+            "uint16_le",
+            "uint32_le",
+            "uint64_le",
+            "bytes"
+          ]
+        },
+        "length": { "type": "integer", "minimum": 1 },
+        "length_from": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "format": { "enum": ["lowercase_hex"] },
+        "scale": { "$ref": "#/$defs/scale" },
+        "unit": { "type": "string", "minLength": 1 },
+        "valid_raw": { "$ref": "#/$defs/raw_range" },
+        "allowed_raw": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "no_value_raw": {
+          "oneOf": [
+            { "enum": ["type_min", "type_max"] },
+            { "type": "integer" }
+          ]
+        },
+        "const_raw": { "type": "integer" }
+      },
+      "required": ["name", "offset", "encoding"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "encoding": { "const": "bytes" } },
+            "required": ["encoding"]
+          },
+          "then": {
+            "oneOf": [
+              { "required": ["length"] },
+              { "required": ["length_from"] }
+            ]
+          }
+        }
+      ]
+    },
+    "fixed_size": {
+      "type": "object",
+      "properties": {
+        "fixed": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["fixed"],
+      "additionalProperties": false
+    },
+    "variable_size": {
+      "type": "object",
+      "properties": {
+        "base": { "type": "integer", "minimum": 1 },
+        "plus_field": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      },
+      "required": ["base", "plus_field"],
+      "additionalProperties": false
+    },
+    "stream_message": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "integer", "minimum": 1, "maximum": 255 },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "size": {
+          "oneOf": [
+            { "$ref": "#/$defs/fixed_size" },
+            { "$ref": "#/$defs/variable_size" }
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "required": ["kind", "name", "size", "fields"],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "frame_size": { "type": "integer", "minimum": 3, "maximum": 255 },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "required": ["id", "name", "frame_size", "fields"],
+      "additionalProperties": false
+    },
+    "frame_kind": {
+      "type": "object",
+      "properties": {
+        "value": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "header": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      },
+      "required": ["value", "header", "name"],
+      "additionalProperties": false
+    },
+    "radio": {
+      "type": "object",
+      "properties": {
+        "protocol_major": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "header": {
+          "type": "object",
+          "properties": {
+            "offset": { "const": 0 },
+            "encoding": { "const": "uint8" },
+            "protocol_major_mask": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "protocol_major_shift": { "type": "integer", "minimum": 0, "maximum": 7 },
+            "frame_kind_mask": { "type": "integer", "minimum": 0, "maximum": 255 }
+          },
+          "required": [
+            "offset",
+            "encoding",
+            "protocol_major_mask",
+            "protocol_major_shift",
+            "frame_kind_mask"
+          ],
+          "additionalProperties": false
+        },
+        "frame_kinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/frame_kind" },
+          "minItems": 1
+        }
+      },
+      "required": ["protocol_major", "header", "frame_kinds"],
+      "additionalProperties": false
+    },
+    "gateway_stream": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "minimum": 1, "maximum": 255 },
+        "byte_order": { "const": "little_endian" },
+        "common_prefix_size": { "type": "integer", "minimum": 1 },
+        "common_fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" },
+          "minItems": 1
+        },
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stream_message" },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "version",
+        "byte_order",
+        "common_prefix_size",
+        "common_fields",
+        "messages"
+      ],
+      "additionalProperties": false
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "offset_base": { "const": "application_frame" },
+        "header": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "common_prefix_size": { "type": "integer", "minimum": 1 },
+        "common_fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" },
+          "minItems": 1
+        },
+        "profiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/profile" },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "offset_base",
+        "header",
+        "common_prefix_size",
+        "common_fields",
+        "profiles"
+      ],
+      "additionalProperties": false
+    },
+    "manifest": {
+      "allOf": [
+        { "$ref": "#/$defs/artifact_header" },
+        {
+          "type": "object",
+          "properties": {
+            "$schema": { "type": "string" },
+            "schema_version": { "const": 1 },
+            "scope": { "const": "gateway_client_telemetry" },
+            "radio": { "$ref": "#/$defs/radio" },
+            "gateway_stream": { "$ref": "#/$defs/gateway_stream" },
+            "telemetry": { "$ref": "#/$defs/telemetry" }
+          },
+          "required": [
+            "$schema",
+            "schema_version",
+            "scope",
+            "radio",
+            "gateway_stream",
+            "telemetry"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "telemetry_vector": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "profile_id": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "hex": { "type": "string", "pattern": "^(?:[0-9A-F]{2})+$" },
+        "raw": { "type": "object", "additionalProperties": { "type": ["integer", "null"] } },
+        "values": { "type": "object", "additionalProperties": { "type": ["number", "null"] } }
+      },
+      "required": ["name", "profile_id", "hex", "raw", "values"],
+      "additionalProperties": false
+    },
+    "invalid_telemetry_vector": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "profile_id": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "hex": { "type": "string", "pattern": "^(?:[0-9A-F]{2})+$" },
+        "error": {
+          "enum": ["wrong_header", "wrong_length", "invalid_value"]
+        }
+      },
+      "required": ["name", "profile_id", "hex", "error"],
+      "additionalProperties": false
+    },
+    "stream_vector": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "message": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "hex": { "type": "string", "pattern": "^(?:[0-9A-F]{2})+$" },
+        "decoded": { "type": "object" }
+      },
+      "required": ["name", "message", "hex", "decoded"],
+      "additionalProperties": false
+    },
+    "vector_document": {
+      "allOf": [
+        { "$ref": "#/$defs/artifact_header" },
+        {
+          "type": "object",
+          "properties": {
+            "$schema": { "type": "string" },
+            "schema_version": { "const": 1 },
+            "scope": { "const": "gateway_client_telemetry_vectors" },
+            "telemetry": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/telemetry_vector" }
+            },
+            "invalid_telemetry": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/invalid_telemetry_vector" }
+            },
+            "gateway_stream": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/stream_vector" }
+            }
+          },
+          "required": [
+            "$schema",
+            "schema_version",
+            "scope",
+            "telemetry",
+            "invalid_telemetry",
+            "gateway_stream"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

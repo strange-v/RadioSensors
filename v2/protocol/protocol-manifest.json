@@ -1,0 +1,348 @@
+{
+  "$schema": "./protocol-manifest.schema.json",
+  "schema_version": 1,
+  "scope": "gateway_client_telemetry",
+  "radio": {
+    "protocol_major": 2,
+    "header": {
+      "offset": 0,
+      "encoding": "uint8",
+      "protocol_major_mask": 224,
+      "protocol_major_shift": 5,
+      "frame_kind_mask": 31
+    },
+    "frame_kinds": [
+      { "value": 0, "header": 64, "name": "telemetry" },
+      { "value": 1, "header": 65, "name": "join_request" },
+      { "value": 2, "header": 66, "name": "join_accept" },
+      { "value": 3, "header": 67, "name": "join_confirm" },
+      { "value": 4, "header": 68, "name": "command" },
+      { "value": 5, "header": 69, "name": "command_result" },
+      { "value": 6, "header": 70, "name": "error" },
+      { "value": 7, "header": 71, "name": "join_complete" },
+      { "value": 8, "header": 72, "name": "command_ready" },
+      { "value": 9, "header": 73, "name": "no_command" }
+    ]
+  },
+  "gateway_stream": {
+    "version": 1,
+    "byte_order": "little_endian",
+    "common_prefix_size": 6,
+    "common_fields": [
+      {
+        "name": "stream_version",
+        "offset": 0,
+        "encoding": "uint8",
+        "const_raw": 1
+      },
+      {
+        "name": "message_kind",
+        "offset": 1,
+        "encoding": "uint8"
+      },
+      {
+        "name": "sequence",
+        "offset": 2,
+        "encoding": "uint32_le"
+      }
+    ],
+    "messages": [
+      {
+        "kind": 1,
+        "name": "hello",
+        "size": { "fixed": 42 },
+        "fields": [
+          {
+            "name": "gateway_id",
+            "offset": 6,
+            "encoding": "bytes",
+            "length": 16,
+            "format": "lowercase_hex"
+          },
+          {
+            "name": "boot_id",
+            "offset": 22,
+            "encoding": "bytes",
+            "length": 16,
+            "format": "lowercase_hex"
+          },
+          {
+            "name": "registry_generation",
+            "offset": 38,
+            "encoding": "uint32_le"
+          }
+        ]
+      },
+      {
+        "kind": 2,
+        "name": "snapshot_begin",
+        "size": { "fixed": 10 },
+        "fields": [
+          {
+            "name": "registry_generation",
+            "offset": 6,
+            "encoding": "uint32_le"
+          }
+        ]
+      },
+      {
+        "kind": 3,
+        "name": "telemetry",
+        "size": { "base": 20, "plus_field": "payload_size" },
+        "fields": [
+          {
+            "name": "node_id",
+            "offset": 6,
+            "encoding": "uint8",
+            "valid_raw": { "min": 1, "max": 99 }
+          },
+          {
+            "name": "profile_id",
+            "offset": 7,
+            "encoding": "uint16_le",
+            "valid_raw": { "min": 1, "max": 65535 }
+          },
+          {
+            "name": "received_at_unix_ms",
+            "quantity": "timestamp",
+            "offset": 9,
+            "encoding": "uint64_le",
+            "unit": "ms"
+          },
+          {
+            "name": "rssi",
+            "quantity": "signal_strength",
+            "offset": 17,
+            "encoding": "int16_le",
+            "unit": "dBm"
+          },
+          {
+            "name": "payload_size",
+            "offset": 19,
+            "encoding": "uint8"
+          },
+          {
+            "name": "payload",
+            "offset": 20,
+            "encoding": "bytes",
+            "length_from": "payload_size"
+          }
+        ]
+      },
+      {
+        "kind": 4,
+        "name": "snapshot_end",
+        "size": { "fixed": 10 },
+        "fields": [
+          {
+            "name": "registry_generation",
+            "offset": 6,
+            "encoding": "uint32_le"
+          }
+        ]
+      },
+      {
+        "kind": 5,
+        "name": "registry_changed",
+        "size": { "fixed": 10 },
+        "fields": [
+          {
+            "name": "registry_generation",
+            "offset": 6,
+            "encoding": "uint32_le"
+          }
+        ]
+      }
+    ]
+  },
+  "telemetry": {
+    "offset_base": "application_frame",
+    "header": 64,
+    "common_prefix_size": 3,
+    "common_fields": [
+      {
+        "name": "supply_voltage",
+        "quantity": "voltage",
+        "offset": 1,
+        "encoding": "uint16_le",
+        "scale": { "numerator": 1, "denominator": 1000 },
+        "unit": "V",
+        "no_value_raw": "type_max"
+      }
+    ],
+    "profiles": [
+      {
+        "id": 1,
+        "name": "voltage",
+        "frame_size": 3,
+        "fields": []
+      },
+      {
+        "id": 2,
+        "name": "temperature",
+        "frame_size": 5,
+        "fields": [
+          {
+            "name": "temperature",
+            "quantity": "temperature",
+            "offset": 3,
+            "encoding": "int16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "°C",
+            "valid_raw": { "min": -8000, "max": 12500 },
+            "no_value_raw": "type_min"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "name": "climate_th",
+        "frame_size": 7,
+        "fields": [
+          {
+            "name": "temperature",
+            "quantity": "temperature",
+            "offset": 3,
+            "encoding": "int16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "°C",
+            "valid_raw": { "min": -8000, "max": 12500 },
+            "no_value_raw": "type_min"
+          },
+          {
+            "name": "humidity",
+            "quantity": "relative_humidity",
+            "offset": 5,
+            "encoding": "uint16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "%",
+            "valid_raw": { "min": 0, "max": 10000 },
+            "no_value_raw": "type_max"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "name": "climate_thp",
+        "frame_size": 9,
+        "fields": [
+          {
+            "name": "temperature",
+            "quantity": "temperature",
+            "offset": 3,
+            "encoding": "int16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "°C",
+            "valid_raw": { "min": -8000, "max": 12500 },
+            "no_value_raw": "type_min"
+          },
+          {
+            "name": "humidity",
+            "quantity": "relative_humidity",
+            "offset": 5,
+            "encoding": "uint16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "%",
+            "valid_raw": { "min": 0, "max": 10000 },
+            "no_value_raw": "type_max"
+          },
+          {
+            "name": "pressure",
+            "quantity": "pressure",
+            "offset": 7,
+            "encoding": "uint16_le",
+            "scale": { "numerator": 1, "denominator": 10 },
+            "unit": "hPa",
+            "valid_raw": { "min": 3000, "max": 11000 },
+            "no_value_raw": "type_max"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "name": "binary_input",
+        "frame_size": 4,
+        "fields": [
+          {
+            "name": "state",
+            "quantity": "binary_state",
+            "offset": 3,
+            "encoding": "uint8",
+            "allowed_raw": [0, 1]
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "name": "pulse_counter",
+        "frame_size": 7,
+        "fields": [
+          {
+            "name": "count",
+            "quantity": "pulse_count",
+            "offset": 3,
+            "encoding": "uint32_le"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "name": "binary_climate_th",
+        "frame_size": 8,
+        "fields": [
+          {
+            "name": "state",
+            "quantity": "binary_state",
+            "offset": 3,
+            "encoding": "uint8",
+            "allowed_raw": [0, 1]
+          },
+          {
+            "name": "temperature",
+            "quantity": "temperature",
+            "offset": 4,
+            "encoding": "int16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "°C",
+            "valid_raw": { "min": -8000, "max": 12500 },
+            "no_value_raw": "type_min"
+          },
+          {
+            "name": "humidity",
+            "quantity": "relative_humidity",
+            "offset": 6,
+            "encoding": "uint16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "%",
+            "valid_raw": { "min": 0, "max": 10000 },
+            "no_value_raw": "type_max"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "name": "binary_temperature",
+        "frame_size": 6,
+        "fields": [
+          {
+            "name": "state",
+            "quantity": "binary_state",
+            "offset": 3,
+            "encoding": "uint8",
+            "allowed_raw": [0, 1]
+          },
+          {
+            "name": "temperature",
+            "quantity": "temperature",
+            "offset": 4,
+            "encoding": "int16_le",
+            "scale": { "numerator": 1, "denominator": 100 },
+            "unit": "°C",
+            "valid_raw": { "min": -8000, "max": 12500 },
+            "no_value_raw": "type_min"
+          }
+        ]
+      }
+    ]
+  }
+}

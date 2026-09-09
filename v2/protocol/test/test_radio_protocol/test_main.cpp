@@ -200,15 +200,17 @@ void test_telemetry_prefix_rejects_wrong_length_and_header() {
 }
 
 void test_gateway_stream_known_vectors() {
-    uint8_t control[radiosensors::stream::kControlFrameSize]{};
+    uint8_t control[radiosensors::stream::kSnapshotControlFrameSize]{};
     TEST_ASSERT_EQUAL_UINT32(
         sizeof(control),
-        radiosensors::stream::encodeControl(
+        radiosensors::stream::encodeSnapshotControl(
             radiosensors::stream::MessageKind::SnapshotBegin,
             0x78563412,
+            0x01020304,
             control,
             sizeof(control)));
-    const uint8_t expectedControl[] = {1, 1, 0x12, 0x34, 0x56, 0x78};
+    const uint8_t expectedControl[] = {
+        1, 2, 0x12, 0x34, 0x56, 0x78, 0x04, 0x03, 0x02, 0x01};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedControl, control, sizeof(control));
 
     const uint8_t payload[] = {0x40, 0xE7, 0x0C};
@@ -226,11 +228,49 @@ void test_gateway_stream_known_vectors() {
             telemetry,
             sizeof(telemetry)));
     const uint8_t expectedTelemetry[] = {
-        1, 2, 4, 3, 2, 1, 7, 0x34, 0x12,
+        1, 3, 4, 3, 2, 1, 7, 0x34, 0x12,
         0x44, 0x33, 0x22, 0x11, 0x04, 0x03, 0x02, 0x01,
         0xC1, 0xFF, 3, 0x40, 0xE7, 0x0C};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(
         expectedTelemetry, telemetry, sizeof(telemetry));
+}
+
+void test_gateway_stream_hello_known_vector() {
+    const uint8_t gatewayId[radiosensors::stream::kIdentitySize] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t bootId[radiosensors::stream::kIdentitySize] = {
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    uint8_t frame[radiosensors::stream::kHelloFrameSize]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        sizeof(frame),
+        radiosensors::stream::encodeHello(
+            0x01020304, gatewayId, bootId, 0x0000002A,
+            frame, sizeof(frame)));
+    const uint8_t expected[] = {
+        1, 1, 0x04, 0x03, 0x02, 0x01,
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+        0x2A, 0x00, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, frame, sizeof(frame));
+}
+
+void test_gateway_stream_control_encoders_validate_input() {
+    uint8_t snapshot[radiosensors::stream::kSnapshotControlFrameSize - 1]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        0,
+        radiosensors::stream::encodeSnapshotControl(
+            radiosensors::stream::MessageKind::SnapshotBegin,
+            1, 1, snapshot, sizeof(snapshot)));
+    uint8_t hello[radiosensors::stream::kHelloFrameSize]{};
+    const uint8_t identity[radiosensors::stream::kIdentitySize]{};
+    TEST_ASSERT_EQUAL_UINT32(
+        0,
+        radiosensors::stream::encodeHello(
+            1, nullptr, identity, 1, hello, sizeof(hello)));
 }
 
 void test_gateway_stream_registry_changed_known_vector() {
@@ -240,7 +280,7 @@ void test_gateway_stream_registry_changed_known_vector() {
         radiosensors::stream::encodeRegistryChanged(
             0x01020304, 0x0000002A, frame, sizeof(frame)));
     const uint8_t expected[] = {
-        1, 4, 0x04, 0x03, 0x02, 0x01, 0x2A, 0x00, 0x00, 0x00};
+        1, 5, 0x04, 0x03, 0x02, 0x01, 0x2A, 0x00, 0x00, 0x00};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, frame, sizeof(frame));
 }
 
@@ -361,6 +401,8 @@ int main(int, char**) {
     RUN_TEST(test_climate_encoders_validate_measurements_and_allow_sentinels);
     RUN_TEST(test_telemetry_prefix_rejects_wrong_length_and_header);
     RUN_TEST(test_gateway_stream_known_vectors);
+    RUN_TEST(test_gateway_stream_hello_known_vector);
+    RUN_TEST(test_gateway_stream_control_encoders_validate_input);
     RUN_TEST(test_gateway_stream_registry_changed_known_vector);
     RUN_TEST(test_gateway_stream_registry_changed_rejects_small_buffer);
     RUN_TEST(test_allows_empty_payload_for_kind_specific_validation);

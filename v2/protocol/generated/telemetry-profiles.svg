@@ -1,0 +1,265 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1174" height="704" viewBox="0 0 1174 704" role="img" aria-labelledby="title description">
+  <title id="title">Telemetry profile byte map</title>
+  <desc id="description">Rows are telemetry profiles and columns are application-frame byte offsets. Colors encode field representation.</desc>
+  <defs>
+    <pattern id="unused" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" class="unused-line" />
+    </pattern>
+  </defs>
+  <style>
+    :root { color-scheme: light dark; }
+    text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #172033; }
+    .title { font-size: 22px; font-weight: 600; }
+    .axis, .secondary { font-size: 12px; fill: #596579; }
+    .row-name { font-size: 14px; font-weight: 600; }
+    .field-name { font-size: 13px; font-weight: 600; }
+    .field-type { font-size: 11px; fill: #3f4b5e; }
+    .cell { stroke: #ffffff; stroke-width: 2; }
+    .constant { fill: #d8dee8; }
+    .uint8 { fill: #fde0a6; }
+    .uint16_le { fill: #bfe7fa; }
+    .int16_le { fill: #bfead8; }
+    .uint32_le { fill: #ddcdf9; }
+    .uint64_le { fill: #ffd0b5; }
+    .bytes { fill: #f7c9df; }
+    .unused { fill: url(#unused); stroke: #d8dee8; stroke-width: 1; }
+    .unused-line { stroke: #c5cedb; stroke-width: 1; }
+    .legend-label { font-size: 12px; fill: #596579; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #eef2f7; }
+      .axis, .secondary, .field-type, .legend-label { fill: #b8c2d1; }
+      .cell { stroke: #111827; }
+      .constant { fill: #465268; }
+      .uint8 { fill: #75571c; }
+      .uint16_le { fill: #185b78; }
+      .int16_le { fill: #23664e; }
+      .uint32_le { fill: #59418b; }
+      .uint64_le { fill: #844429; }
+      .bytes { fill: #7a3459; }
+      .unused { stroke: #465268; }
+      .unused-line { stroke: #465268; }
+    }
+  </style>
+  <text class="title" x="24" y="30">Telemetry profile byte map</text>
+  <text class="axis" x="24" y="65">profile</text>
+  <text class="axis" x="266" y="65" text-anchor="middle">0</text>
+  <text class="axis" x="370" y="65" text-anchor="middle">1</text>
+  <text class="axis" x="474" y="65" text-anchor="middle">2</text>
+  <text class="axis" x="578" y="65" text-anchor="middle">3</text>
+  <text class="axis" x="682" y="65" text-anchor="middle">4</text>
+  <text class="axis" x="786" y="65" text-anchor="middle">5</text>
+  <text class="axis" x="890" y="65" text-anchor="middle">6</text>
+  <text class="axis" x="994" y="65" text-anchor="middle">7</text>
+  <text class="axis" x="1098" y="65" text-anchor="middle">8</text>
+  <text class="row-name" x="24" y="104">1 · voltage</text>
+  <text class="secondary" x="24" y="123">3 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="82" width="104" height="62" />
+    <text class="field-name" x="266" y="102" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="119" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="136" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="82" width="208" height="62" />
+    <text class="field-name" x="422" y="102" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="119" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="136" text-anchor="middle">byte 1–2</text>
+  </g>
+  <rect class="unused" x="526" y="82" width="624" height="62" />
+  <text class="row-name" x="24" y="174">2 · temperature</text>
+  <text class="secondary" x="24" y="193">5 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="152" width="104" height="62" />
+    <text class="field-name" x="266" y="172" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="189" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="206" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="152" width="208" height="62" />
+    <text class="field-name" x="422" y="172" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="189" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="206" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell int16_le" x="526" y="152" width="208" height="62" />
+    <text class="field-name" x="630" y="172" text-anchor="middle">temperature</text>
+    <text class="field-type" x="630" y="189" text-anchor="middle">int16 LE</text>
+    <text class="field-type" x="630" y="206" text-anchor="middle">byte 3–4</text>
+  </g>
+  <rect class="unused" x="734" y="152" width="416" height="62" />
+  <text class="row-name" x="24" y="244">3 · climate_th</text>
+  <text class="secondary" x="24" y="263">7 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="222" width="104" height="62" />
+    <text class="field-name" x="266" y="242" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="259" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="276" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="222" width="208" height="62" />
+    <text class="field-name" x="422" y="242" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="259" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="276" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell int16_le" x="526" y="222" width="208" height="62" />
+    <text class="field-name" x="630" y="242" text-anchor="middle">temperature</text>
+    <text class="field-type" x="630" y="259" text-anchor="middle">int16 LE</text>
+    <text class="field-type" x="630" y="276" text-anchor="middle">byte 3–4</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="734" y="222" width="208" height="62" />
+    <text class="field-name" x="838" y="242" text-anchor="middle">humidity</text>
+    <text class="field-type" x="838" y="259" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="838" y="276" text-anchor="middle">byte 5–6</text>
+  </g>
+  <rect class="unused" x="942" y="222" width="208" height="62" />
+  <text class="row-name" x="24" y="314">4 · climate_thp</text>
+  <text class="secondary" x="24" y="333">9 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="292" width="104" height="62" />
+    <text class="field-name" x="266" y="312" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="329" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="346" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="292" width="208" height="62" />
+    <text class="field-name" x="422" y="312" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="329" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="346" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell int16_le" x="526" y="292" width="208" height="62" />
+    <text class="field-name" x="630" y="312" text-anchor="middle">temperature</text>
+    <text class="field-type" x="630" y="329" text-anchor="middle">int16 LE</text>
+    <text class="field-type" x="630" y="346" text-anchor="middle">byte 3–4</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="734" y="292" width="208" height="62" />
+    <text class="field-name" x="838" y="312" text-anchor="middle">humidity</text>
+    <text class="field-type" x="838" y="329" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="838" y="346" text-anchor="middle">byte 5–6</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="942" y="292" width="208" height="62" />
+    <text class="field-name" x="1046" y="312" text-anchor="middle">pressure</text>
+    <text class="field-type" x="1046" y="329" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="1046" y="346" text-anchor="middle">byte 7–8</text>
+  </g>
+  <text class="row-name" x="24" y="384">5 · binary_input</text>
+  <text class="secondary" x="24" y="403">4 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="362" width="104" height="62" />
+    <text class="field-name" x="266" y="382" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="399" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="416" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="362" width="208" height="62" />
+    <text class="field-name" x="422" y="382" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="399" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="416" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell uint8" x="526" y="362" width="104" height="62" />
+    <text class="field-name" x="578" y="382" text-anchor="middle">state</text>
+    <text class="field-type" x="578" y="399" text-anchor="middle">uint8</text>
+    <text class="field-type" x="578" y="416" text-anchor="middle">byte 3</text>
+  </g>
+  <rect class="unused" x="630" y="362" width="520" height="62" />
+  <text class="row-name" x="24" y="454">6 · pulse_counter</text>
+  <text class="secondary" x="24" y="473">7 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="432" width="104" height="62" />
+    <text class="field-name" x="266" y="452" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="469" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="486" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="432" width="208" height="62" />
+    <text class="field-name" x="422" y="452" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="469" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="486" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell uint32_le" x="526" y="432" width="416" height="62" />
+    <text class="field-name" x="734" y="452" text-anchor="middle">count</text>
+    <text class="field-type" x="734" y="469" text-anchor="middle">uint32 LE</text>
+    <text class="field-type" x="734" y="486" text-anchor="middle">byte 3–6</text>
+  </g>
+  <rect class="unused" x="942" y="432" width="208" height="62" />
+  <text class="row-name" x="24" y="524">7 · binary_climate_th</text>
+  <text class="secondary" x="24" y="543">8 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="502" width="104" height="62" />
+    <text class="field-name" x="266" y="522" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="539" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="556" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="502" width="208" height="62" />
+    <text class="field-name" x="422" y="522" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="539" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="556" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell uint8" x="526" y="502" width="104" height="62" />
+    <text class="field-name" x="578" y="522" text-anchor="middle">state</text>
+    <text class="field-type" x="578" y="539" text-anchor="middle">uint8</text>
+    <text class="field-type" x="578" y="556" text-anchor="middle">byte 3</text>
+  </g>
+  <g>
+    <rect class="cell int16_le" x="630" y="502" width="208" height="62" />
+    <text class="field-name" x="734" y="522" text-anchor="middle">temperature</text>
+    <text class="field-type" x="734" y="539" text-anchor="middle">int16 LE</text>
+    <text class="field-type" x="734" y="556" text-anchor="middle">byte 4–5</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="838" y="502" width="208" height="62" />
+    <text class="field-name" x="942" y="522" text-anchor="middle">humidity</text>
+    <text class="field-type" x="942" y="539" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="942" y="556" text-anchor="middle">byte 6–7</text>
+  </g>
+  <rect class="unused" x="1046" y="502" width="104" height="62" />
+  <text class="row-name" x="24" y="594">8 · binary_temperature</text>
+  <text class="secondary" x="24" y="613">6 bytes</text>
+  <g>
+    <rect class="cell constant" x="214" y="572" width="104" height="62" />
+    <text class="field-name" x="266" y="592" text-anchor="middle">header</text>
+    <text class="field-type" x="266" y="609" text-anchor="middle">0x40</text>
+    <text class="field-type" x="266" y="626" text-anchor="middle">byte 0</text>
+  </g>
+  <g>
+    <rect class="cell uint16_le" x="318" y="572" width="208" height="62" />
+    <text class="field-name" x="422" y="592" text-anchor="middle">VCC</text>
+    <text class="field-type" x="422" y="609" text-anchor="middle">uint16 LE</text>
+    <text class="field-type" x="422" y="626" text-anchor="middle">byte 1–2</text>
+  </g>
+  <g>
+    <rect class="cell uint8" x="526" y="572" width="104" height="62" />
+    <text class="field-name" x="578" y="592" text-anchor="middle">state</text>
+    <text class="field-type" x="578" y="609" text-anchor="middle">uint8</text>
+    <text class="field-type" x="578" y="626" text-anchor="middle">byte 3</text>
+  </g>
+  <g>
+    <rect class="cell int16_le" x="630" y="572" width="208" height="62" />
+    <text class="field-name" x="734" y="592" text-anchor="middle">temperature</text>
+    <text class="field-type" x="734" y="609" text-anchor="middle">int16 LE</text>
+    <text class="field-type" x="734" y="626" text-anchor="middle">byte 4–5</text>
+  </g>
+  <rect class="unused" x="838" y="572" width="312" height="62" />
+  <rect class="constant" x="24" y="672" width="18" height="12" />
+  <text class="legend-label" x="49" y="683">constant</text>
+  <rect class="uint8" x="122" y="672" width="18" height="12" />
+  <text class="legend-label" x="147" y="683">uint8</text>
+  <rect class="uint16_le" x="199" y="672" width="18" height="12" />
+  <text class="legend-label" x="224" y="683">uint16 LE</text>
+  <rect class="int16_le" x="304" y="672" width="18" height="12" />
+  <text class="legend-label" x="329" y="683">int16 LE</text>
+  <rect class="uint32_le" x="402" y="672" width="18" height="12" />
+  <text class="legend-label" x="427" y="683">uint32 LE</text>
+  <rect class="uint64_le" x="507" y="672" width="18" height="12" />
+  <text class="legend-label" x="532" y="683">uint64 LE</text>
+  <rect class="bytes" x="612" y="672" width="18" height="12" />
+  <text class="legend-label" x="637" y="683">bytes</text>
+</svg>
