@@ -108,8 +108,23 @@ const telemetry = manifest.telemetry
 const profiles = new Map(telemetry.profiles.map((profile) => [profile.id, profile]))
 unique([...profiles.keys()], 'profile IDs')
 unique(telemetry.profiles.map((profile) => profile.name), 'profile names')
+const telemetrySemantics = new Map()
 for (const profile of telemetry.profiles) {
-  validateLayout([...telemetry.common_fields, ...profile.fields], profile.frame_size, 1)
+  const fields = [...telemetry.common_fields, ...profile.fields]
+  validateLayout(fields, profile.frame_size, 1)
+  for (const field of fields) {
+    const semantics = { quantity: field.quantity ?? null, unit: field.unit ?? null }
+    const previous = telemetrySemantics.get(field.name)
+    if (previous !== undefined) {
+      assert.deepEqual(
+        semantics,
+        previous,
+        `${field.name} must retain quantity and unit semantics across profiles`,
+      )
+    } else {
+      telemetrySemantics.set(field.name, semantics)
+    }
+  }
 }
 
 function decodeTelemetry(vector) {

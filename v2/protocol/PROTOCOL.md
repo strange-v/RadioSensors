@@ -174,6 +174,8 @@ Each profile added to the manifest and described below must define all of the fo
 | Meaning | Scale, unit, valid range, and sentinel values |
 | Test vector | Complete application frame in hexadecimal and expected values |
 
+`field.name` is a stable machine identifier, not a display label. It must be unique across the common and profile-specific fields of a complete telemetry frame. Once released, it must not be renamed or reused for another quantity. The same name in different profiles represents the same logical entity and must have the same `quantity` and `unit`; offsets and wire encodings may differ. A profile containing multiple measurements of one quantity gives each a distinct semantic name. User-facing labels come from the consumer's translations.
+
 ### Production profile numbering
 
 V2 profile IDs are stable opaque keys allocated sequentially. Their numeric values do not encode a capability family, hardware type, or Home Assistant presentation. IDs are never reused after release. Profile 0 remains invalid.

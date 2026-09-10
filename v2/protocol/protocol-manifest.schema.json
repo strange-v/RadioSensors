@@ -36,7 +36,11 @@
     "field": {
       "type": "object",
       "properties": {
-        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable machine identifier. Telemetry field names are unique within a complete profile and the same name across profiles retains compatible quantity and unit semantics."
+        },
         "quantity": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "offset": { "type": "integer", "minimum": 0 },
         "encoding": {
