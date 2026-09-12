@@ -9,7 +9,8 @@ uint16_t BatteryMonitor::readMillivolts() const {
     VREF.CTRLA =
         (VREF.CTRLA & ~VREF_ADC0REFSEL_gm) | VREF_ADC0REFSEL_1V1_gc;
     ADC0.CTRLB = ADC_SAMPNUM_ACC64_gc;
-    ADC0.CTRLC = ADC_REFSEL_VDDREF_gc | ADC_PRESC_DIV16_gc | ADC_SAMPCAP_bm;
+    // 500 kHz ADC clock at the 4 MHz CPU clock.
+    ADC0.CTRLC = ADC_REFSEL_VDDREF_gc | ADC_PRESC_DIV8_gc | ADC_SAMPCAP_bm;
     ADC0.CTRLD = ADC_INITDLY_DLY64_gc;
     ADC0.MUXPOS = ADC_MUXPOS_INTREF_gc;
     ADC0.CTRLA = ADC_ENABLE_bm;

@@ -12,10 +12,10 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 
 ## Nodes
 
-- Connect and validate the door runtime, then the counter runtime and climate-equipped door variants.
+- Implement the door runtime and climate-equipped door variants. A new door state change must be sent even while radio retry backoff is active.
 - Implement PA6 command sessions and 10-second network factory reset while preserving counter state.
 - Freeze generic `COMMAND` and `COMMAND_RESULT` payloads and add the ACK pending hint flow.
-- Measure sleep current and choose the final PA5 low-power configuration.
+- Measure sleep current, including `counter_reed` to choose between CR2032 and 2×AA, and choose the final PA5 low-power configuration.
 - Measure commissioning retry/RX-window and command receive durations.
 
 `V1_FEATURE_INVENTORY.md` remains a temporary parity checklist until these node profiles are reviewed, then it should move to archive or be deleted.

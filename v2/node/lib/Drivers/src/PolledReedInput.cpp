@@ -10,6 +10,14 @@ void PolledReedInput::sleep() {
     pinMode(pin_, OUTPUT);
 }
 
+bool PolledReedInput::readOnce() {
+    pinMode(pin_, INPUT_PULLUP);
+    delayMicroseconds(kSettleMicroseconds);
+    const bool high = digitalRead(pin_) == HIGH;
+    sleep();
+    return high;
+}
+
 bool PolledReedInput::sample(bool& rawHigh) {
     pinMode(pin_, INPUT_PULLUP);
     delayMicroseconds(kSettleMicroseconds);

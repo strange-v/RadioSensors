@@ -1,29 +1,19 @@
 #include <Arduino.h>
-
-#if defined(NODE_BUILD_CLIMATE_TMP112)
-
-#include <ProfileIds.h>
 #include <Wire.h>
 
-#include "ClimateNodeApplication.h"
+#include "CommissioningService.h"
 #include "LowPowerClock.h"
 #include "NodeRadio.h"
+#include "NodeRuntime.h"
 #include "ProvisioningButton.h"
 #include "Profiles/ClimateTmp112Profile.h"
 
 namespace {
 using namespace radiosensors;
+using Profile = node::ClimateTmp112Profile;
 
 constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
-constexpr uint16_t kProfileId =
-    protocol::profileIdValue(protocol::ProfileId::Temperature);
 
-node::NodeRadio radio(NODE_RFM69_CS, NODE_RFM69_IRQ);
-node::LowPowerClock clock;
-node::ProvisioningButton button(NODE_BUTTON_PIN);
-node::ClimateTmp112Profile profile(Wire, NODE_TMP112_ADDRESS);
-node::CommissioningService commissioning(
-    radio, kProfileId, kFirmwareVersion);
 #if defined(NODE_CLIMATE_ADAPTIVE_REPORTING)
 const node::ClimateReportPolicy reportPolicy =
     node::ClimateReportPolicy::adaptive(
@@ -34,8 +24,15 @@ const node::ClimateReportPolicy reportPolicy =
 const node::ClimateReportPolicy reportPolicy =
     node::ClimateReportPolicy::fixed(NODE_CLIMATE_REPORT_INTERVAL_MS);
 #endif
-node::ClimateNodeApplication<node::ClimateTmp112Profile> application(
-    profile, radio, commissioning, clock, button, reportPolicy);
+
+node::NodeRadio radio(NODE_RFM69_CS, NODE_RFM69_IRQ);
+node::LowPowerClock clock;
+node::ProvisioningButton button(NODE_BUTTON_PIN);
+Profile profile(Wire, NODE_TMP112_ADDRESS, reportPolicy);
+node::CommissioningService commissioning(
+    radio, Profile::kProfileId, kFirmwareVersion);
+node::NodeRuntime<Profile> runtime(
+    profile, radio, commissioning, clock, button);
 }
 
 void setup() {
@@ -43,15 +40,9 @@ void setup() {
     Serial.begin(9600);
     Serial.println(F("node: startup"));
 #endif
-    application.begin();
+    runtime.begin();
 }
 
 void loop() {
-    application.runOnce();
+    runtime.runOnce();
 }
-
-#else
-
-#error "This profile runtime is not implemented yet"
-
-#endif

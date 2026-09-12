@@ -12,7 +12,7 @@ Telemetry profiles define wire-level measurements. Labels such as gas, water, fr
 
 ## Node model
 
-Each ATtiny1614 image is statically composed for one stable profile. Shared code owns commissioning, radio, EEPROM, power, scheduling, and commands; profile code owns acquisition and telemetry encoding. There is no dynamic feature registry on the 16 KiB Flash/2 KiB RAM target.
+Each ATtiny1614 image is statically composed for one stable profile. Shared code owns commissioning, radio, EEPROM, power, the wake clock, radio retry, and commands; profile code owns acquisition, report scheduling, and telemetry encoding. There is no dynamic feature registry on the 16 KiB Flash/2 KiB RAM target.
 
 An unconfigured production node uses address and commissioning network ID 0 and has a unique 16-byte factory key supplied with its UID in a QR credential. The gateway keeps that key only in RAM during pairing. Successful commissioning assigns a persistent node ID, operational network ID, and installation key. Network configuration and counter state use separate EEPROM domains.
 

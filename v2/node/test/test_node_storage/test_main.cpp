@@ -1,4 +1,6 @@
-#include <NodeStorage.h>
+#include <ConfirmedInput.h>
+#include <CounterStorage.h>
+#include <SupplyVoltage.h>
 #include <TelemetrySchedule.h>
 #include <unity.h>
 
@@ -9,7 +11,11 @@
 using namespace radiosensors::node::storage;
 using radiosensors::node::CounterReportSchedule;
 using radiosensors::node::ClimateReportPolicy;
+using radiosensors::node::ConfirmedInput;
+using radiosensors::node::InputChange;
+using radiosensors::node::MinimumPhaseFilter;
 using radiosensors::node::DoorReportSchedule;
+using radiosensors::node::LoadedSupplyVoltage;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
 using radiosensors::node::kCounterMinimumReportMs;
@@ -42,6 +48,32 @@ NetworkConfig makeConfig(const uint8_t nodeId = 7) {
     value.lastPowerCommandId = 0x1234;
     return value;
 }
+
+class FakeContact {
+public:
+    bool readOnce() {
+        ++reads;
+        return level;
+    }
+
+    bool sample(bool& high) {
+        ++bursts;
+        if (!settles) return false;
+        high = settledLevel;
+        return true;
+    }
+
+    void set(const bool high) {
+        level = high;
+        settledLevel = high;
+    }
+
+    bool level = true;
+    bool settledLevel = true;
+    bool settles = true;
+    int reads = 0;
+    int bursts = 0;
+};
 
 FactoryCredentials makeFactoryCredentials() {
     FactoryCredentials value{};
@@ -325,6 +357,108 @@ void test_adaptive_climate_policy_uses_v1_threshold_semantics() {
     TEST_ASSERT_EQUAL_UINT32(60000UL, policy.intervalForMillivolts(2501));
 }
 
+void test_supply_voltage_reports_lower_of_before_and_previous_after() {
+    LoadedSupplyVoltage voltage;
+    TEST_ASSERT_EQUAL_UINT16(3000, voltage.report(3000));
+    voltage.transmitted(2800);
+    TEST_ASSERT_EQUAL_UINT16(2800, voltage.report(2950));
+    TEST_ASSERT_EQUAL_UINT16(2700, voltage.report(2700));
+    voltage.transmitted(2990);
+    TEST_ASSERT_EQUAL_UINT16(2960, voltage.report(2960));
+}
+
+void test_confirmed_input_bursts_only_on_disagreeing_read() {
+    FakeContact contact;
+    ConfirmedInput input(true);
+    for (int tick = 0; tick < 10; ++tick) {
+        TEST_ASSERT_EQUAL_UINT8(
+            static_cast<uint8_t>(InputChange::None),
+            static_cast<uint8_t>(input.update(contact)));
+    }
+    TEST_ASSERT_EQUAL_INT(10, contact.reads);
+    TEST_ASSERT_EQUAL_INT(0, contact.bursts);
+
+    contact.set(false);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::Fell),
+        static_cast<uint8_t>(input.update(contact)));
+    TEST_ASSERT_EQUAL_INT(1, contact.bursts);
+    TEST_ASSERT_FALSE(input.high());
+}
+
+void test_confirmed_input_rejects_glitch_and_unsettled_burst() {
+    FakeContact contact;
+    ConfirmedInput input(true);
+    contact.level = false;
+    contact.settledLevel = true;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::None),
+        static_cast<uint8_t>(input.update(contact)));
+    TEST_ASSERT_TRUE(input.high());
+
+    contact.settles = false;
+    contact.settledLevel = false;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::None),
+        static_cast<uint8_t>(input.update(contact)));
+    TEST_ASSERT_TRUE(input.high());
+
+    contact.settles = true;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::Fell),
+        static_cast<uint8_t>(input.update(contact)));
+}
+
+void test_confirmed_input_counts_boot_inside_low_phase_once() {
+    FakeContact contact;
+    contact.set(false);
+    ConfirmedInput input(true);
+    int rises = 0;
+    const bool levels[] = {false, false, true, true, false, true};
+    for (const bool level : levels) {
+        contact.set(level);
+        if (input.update(contact) == InputChange::Rose) ++rises;
+    }
+    TEST_ASSERT_EQUAL_INT(2, rises);
+}
+
+void test_minimum_phase_rejects_chatter_and_counts_one_rise_per_pulse() {
+    MinimumPhaseFilter phase(500, true);
+    // Level sampled every 250 ms: chatter while the magnet approaches, a held
+    // LOW, chatter while it leaves, then a held HIGH.
+    const bool levels[] = {
+        true, false, true, false, false, false, false,
+        true, false, true, true, true, true,
+    };
+    int falls = 0;
+    int rises = 0;
+    uint32_t now = 0;
+    for (const bool level : levels) {
+        const InputChange change = phase.update(now, level);
+        if (change == InputChange::Fell) ++falls;
+        if (change == InputChange::Rose) ++rises;
+        now += 250;
+    }
+    TEST_ASSERT_EQUAL_INT(1, falls);
+    TEST_ASSERT_EQUAL_INT(1, rises);
+}
+
+void test_minimum_phase_accepts_level_held_for_minimum_time() {
+    MinimumPhaseFilter phase(500, true);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::None),
+        static_cast<uint8_t>(phase.update(1000, false)));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::None),
+        static_cast<uint8_t>(phase.update(1250, false)));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::Fell),
+        static_cast<uint8_t>(phase.update(1500, false)));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(InputChange::None),
+        static_cast<uint8_t>(phase.update(1750, false)));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_layout_fills_eeprom_without_overlap);
@@ -345,5 +479,11 @@ int main(int, char**) {
     RUN_TEST(test_radio_retry_uses_bounded_exponential_backoff);
     RUN_TEST(test_fixed_climate_policy_ignores_supply_voltage);
     RUN_TEST(test_adaptive_climate_policy_uses_v1_threshold_semantics);
+    RUN_TEST(test_supply_voltage_reports_lower_of_before_and_previous_after);
+    RUN_TEST(test_confirmed_input_bursts_only_on_disagreeing_read);
+    RUN_TEST(test_confirmed_input_rejects_glitch_and_unsettled_burst);
+    RUN_TEST(test_confirmed_input_counts_boot_inside_low_phase_once);
+    RUN_TEST(test_minimum_phase_rejects_chatter_and_counts_one_rise_per_pulse);
+    RUN_TEST(test_minimum_phase_accepts_level_held_for_minimum_time);
     return UNITY_END();
 }

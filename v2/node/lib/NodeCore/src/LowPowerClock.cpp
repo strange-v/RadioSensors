@@ -5,12 +5,20 @@
 #include <avr/sleep.h>
 
 namespace {
+#if NODE_TICK_MS == 32000
+constexpr uint8_t kPitPeriod = RTC_PERIOD_CYC32768_gc;
+#elif NODE_TICK_MS == 250
+constexpr uint8_t kPitPeriod = RTC_PERIOD_CYC256_gc;
+#else
+#error "NODE_TICK_MS must be an exact 1024 Hz RTC PIT period: 32000 or 250"
+#endif
+
 volatile uint32_t elapsedMs = 0;
 }
 
 ISR(RTC_PIT_vect) {
     RTC.PITINTFLAGS = RTC_PI_bm;
-    elapsedMs += 32000UL;
+    elapsedMs += radiosensors::node::LowPowerClock::kTickMs;
 }
 
 namespace radiosensors {
@@ -24,7 +32,7 @@ void LowPowerClock::begin() {
     while (RTC.STATUS != 0) {}
     RTC.CLKSEL = RTC_CLKSEL_INT1K_gc;
     RTC.PITINTCTRL = RTC_PI_bm;
-    RTC.PITCTRLA = RTC_PERIOD_CYC32768_gc | RTC_PITEN_bm;
+    RTC.PITCTRLA = kPitPeriod | RTC_PITEN_bm;
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
     sei();
