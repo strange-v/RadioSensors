@@ -34,6 +34,8 @@ Each environment compiles exactly one composition root from `src/` through `buil
 
 `NODE_TICK_MS` selects the RTC PIT wake period: 32 s for periodic images, 250 ms for polled inputs.
 
+No input may float in sleep. Each composition root disables the digital input buffer of the pins its image leaves unconnected: the sensor I2C pads on counter images, the reed pad on climate images, and PB2/PB3 outside debug builds. `NodeRadio` pulls up MISO, which the RFM69 releases while deselected.
+
 Reported supply voltage is the lower of the measurement taken just before transmission and the one taken immediately after the previous transmission, so it reflects battery sag under radio load.
 
 ## Factory provisioning
@@ -62,6 +64,8 @@ PA5 is the active-low reed/counter input. Each 250 ms tick reads it once, with t
 A counter additionally accepts a new level only after it has persisted for `NODE_COUNTER_MINIMUM_PHASE_MS` (500 ms) of RTC time, because a magnet moving slowly near the pull-in distance makes the reed chatter far longer than the debounce burst. With the 250 ms tick, phases of at least 750 ms are always accepted and phases shorter than 500 ms never are. Doors do not use this filter.
 
 A door sends confirmed changes immediately. Door and counter profiles use a rolling one-hour keep-alive from the last acknowledged report. A counter counts from boot, including before commissioning, persists every confirmed LOW-to-HIGH pulse before any transmission, and reports the absolute count no more than once per minute while dirty.
+
+Measured on the internal board, `counter_reed` draws 1.8 µA between wake-ups and 2.8 µA on average with the contact idle; one acknowledged transmission takes about 19 ms at 12.8 mA. A CR2032 therefore covers several years of gas metering.
 
 PA6 is the active-low provisioning button. An unconfigured-node press triggers commissioning immediately. The planned configured behavior is a short `COMMAND_READY` session and a 10-second network reset that preserves counter state.
 

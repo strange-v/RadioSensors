@@ -13,6 +13,9 @@ bool NodeRadio::begin(const uint8_t nodeId, const uint8_t networkId) {
     const bool initialized =
         radio_.initialize(NODE_RFM69_FREQUENCY, nodeId, networkId);
     radio_.setHighPower(true);
+    // The RFM69 releases MISO while deselected, which would leave the input
+    // floating through every sleep. The weak pull-up does not disturb SPI.
+    pinMode(PIN_SPI_MISO, INPUT_PULLUP);
     return initialized;
 }
 
