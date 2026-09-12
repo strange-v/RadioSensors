@@ -14,15 +14,10 @@ constexpr size_t kFactoryKeySize = 16;
 constexpr size_t kNetworkConfigSlotSize = 32;
 constexpr size_t kNetworkConfigSlotA = 0x00;
 constexpr size_t kNetworkConfigSlotB = 0x20;
-constexpr size_t kSetCountSlotSize = 16;
-constexpr size_t kSetCountSlotA = 0x40;
-constexpr size_t kSetCountSlotB = 0x50;
-constexpr size_t kCounterRingStart = 0x60;
-constexpr size_t kCounterRecordSize = 5;
-constexpr size_t kCounterRecordCount = 32;
+constexpr size_t kProfileAreaStart = 0x40;
 static_assert(
-    kCounterRingStart + kCounterRecordSize * kCounterRecordCount == kEepromSize,
-    "counter EEPROM layout must fill the ATtiny1614 EEPROM exactly");
+    kNetworkConfigSlotB + kNetworkConfigSlotSize == kProfileAreaStart,
+    "profile EEPROM area must follow the network configuration slots");
 
 enum class ProvisioningState : uint8_t {
     Provisional = 1,
@@ -43,19 +38,6 @@ struct NetworkConfig {
 
 struct FactoryCredentials {
     uint8_t key[kFactoryKeySize]{};
-};
-
-enum class SetCountStatus : uint8_t {
-    Pending = 1,
-    Applied = 2,
-};
-
-struct SetCountResult {
-    uint8_t generation = 0;
-    SetCountStatus status = SetCountStatus::Pending;
-    uint16_t commandId = 0;
-    uint32_t oldCount = 0;
-    uint32_t appliedCount = 0;
 };
 
 inline uint16_t crc16Ccitt(const uint8_t* data, size_t size) {
@@ -212,44 +194,6 @@ inline bool decodeNetworkConfig(
     return true;
 }
 
-inline bool encodeSetCountResult(
-    const SetCountResult& value, uint8_t* output, const size_t capacity) {
-    if (output == nullptr || capacity < kSetCountSlotSize) return false;
-    const uint8_t status = static_cast<uint8_t>(value.status);
-    if (status != static_cast<uint8_t>(SetCountStatus::Pending) &&
-        status != static_cast<uint8_t>(SetCountStatus::Applied)) {
-        return false;
-    }
-    memset(output, 0, kSetCountSlotSize);
-    output[0] = 0xC7;
-    output[1] = 1;
-    output[2] = value.generation;
-    output[3] = status;
-    write16(output + 4, value.commandId);
-    write32(output + 6, value.oldCount);
-    write32(output + 10, value.appliedCount);
-    write16(output + 14, crc16Ccitt(output, 14));
-    return true;
-}
-
-inline bool decodeSetCountResult(
-    const uint8_t* input, const size_t size, SetCountResult& value) {
-    if (input == nullptr || size != kSetCountSlotSize || input[0] != 0xC7 ||
-        input[1] != 1 || read16(input + 14) != crc16Ccitt(input, 14)) {
-        return false;
-    }
-    if (input[3] != static_cast<uint8_t>(SetCountStatus::Pending) &&
-        input[3] != static_cast<uint8_t>(SetCountStatus::Applied)) {
-        return false;
-    }
-    value.generation = input[2];
-    value.status = static_cast<SetCountStatus>(input[3]);
-    value.commandId = read16(input + 4);
-    value.oldCount = read32(input + 6);
-    value.appliedCount = read32(input + 10);
-    return true;
-}
-
 inline bool generationIsNewer(const uint8_t candidate, const uint8_t current) {
     return static_cast<int8_t>(candidate - current) > 0;
 }
@@ -339,154 +283,6 @@ private:
     bool hasValue_ = false;
     uint8_t currentSlot_ = 1;
     uint8_t currentGeneration_ = 0;
-};
-
-template <typename Storage>
-class SetCountStore {
-public:
-    explicit SetCountStore(Storage& storage) : storage_(storage) {}
-
-    bool load(SetCountResult& value) {
-        uint8_t first[kSetCountSlotSize];
-        uint8_t second[kSetCountSlotSize];
-        SetCountResult a{};
-        SetCountResult b{};
-        readBlock(storage_, kSetCountSlotA, first, sizeof(first));
-        readBlock(storage_, kSetCountSlotB, second, sizeof(second));
-        const bool validA = decodeSetCountResult(first, sizeof(first), a);
-        const bool validB = decodeSetCountResult(second, sizeof(second), b);
-        initialized_ = true;
-        hasValue_ = validA || validB;
-        if (!hasValue_) {
-            currentSlot_ = 1;
-            currentGeneration_ = 0;
-            return false;
-        }
-        if (validA && (!validB || generationIsNewer(a.generation, b.generation))) {
-            value = a;
-            currentSlot_ = 0;
-        } else {
-            value = b;
-            currentSlot_ = 1;
-        }
-        currentGeneration_ = value.generation;
-        return true;
-    }
-
-    bool save(SetCountResult& value) {
-        if (!initialized_) {
-            SetCountResult ignored{};
-            load(ignored);
-        }
-        value.generation = hasValue_
-            ? static_cast<uint8_t>(currentGeneration_ + 1U)
-            : 0;
-        uint8_t bytes[kSetCountSlotSize];
-        if (!encodeSetCountResult(value, bytes, sizeof(bytes))) return false;
-        const uint8_t nextSlot = static_cast<uint8_t>(currentSlot_ ^ 1U);
-        const size_t address = nextSlot == 0 ? kSetCountSlotA : kSetCountSlotB;
-        storage_.update(address, 0);
-        for (size_t index = 1; index < sizeof(bytes); ++index) {
-            storage_.update(address + index, bytes[index]);
-        }
-        storage_.update(address, bytes[0]);
-        currentSlot_ = nextSlot;
-        currentGeneration_ = value.generation;
-        hasValue_ = true;
-        return true;
-    }
-
-private:
-    Storage& storage_;
-    bool initialized_ = false;
-    bool hasValue_ = false;
-    uint8_t currentSlot_ = 1;
-    uint8_t currentGeneration_ = 0;
-};
-
-inline bool counterSequenceIsNewer(
-    const uint8_t candidate, const uint8_t current) {
-    const uint16_t delta = candidate >= current
-        ? candidate - current
-        : static_cast<uint16_t>(candidate) + 255U - current;
-    return delta != 0 && delta < 128U;
-}
-
-template <typename Storage>
-class CounterStore {
-public:
-    explicit CounterStore(Storage& storage) : storage_(storage) {}
-
-    bool load(uint32_t& count) {
-        bool found = false;
-        uint8_t newestSequence = 0;
-        uint8_t newestSlot = 0;
-        uint32_t newestCount = 0;
-        for (uint8_t slot = 0; slot < kCounterRecordCount; ++slot) {
-            const size_t address = kCounterRingStart + slot * kCounterRecordSize;
-            const uint8_t sequence = storage_.read(address);
-            if (sequence == 0xFFU) continue;
-            uint8_t bytes[4];
-            readBlock(storage_, address + 1, bytes, sizeof(bytes));
-            if (!found || counterSequenceIsNewer(sequence, newestSequence)) {
-                found = true;
-                newestSequence = sequence;
-                newestSlot = slot;
-                newestCount = read32(bytes);
-            }
-        }
-        initialized_ = true;
-        hasValue_ = found;
-        if (!found) {
-            currentSlot_ = static_cast<uint8_t>(kCounterRecordCount - 1);
-            currentSequence_ = 0;
-            currentCount_ = 0;
-            count = 0;
-            return false;
-        }
-        currentSlot_ = newestSlot;
-        currentSequence_ = newestSequence;
-        currentCount_ = newestCount;
-        count = newestCount;
-        return true;
-    }
-
-    bool save(const uint32_t count) {
-        if (!initialized_) {
-            uint32_t ignored = 0;
-            load(ignored);
-        }
-        if (hasValue_ && count == currentCount_) return true;
-        const uint8_t nextSlot = static_cast<uint8_t>(
-            (currentSlot_ + 1U) % kCounterRecordCount);
-        const uint8_t nextSequence = !hasValue_
-            ? 0
-            : (currentSequence_ == 0xFEU
-                ? 0
-                : static_cast<uint8_t>(currentSequence_ + 1U));
-        const size_t address =
-            kCounterRingStart + nextSlot * kCounterRecordSize;
-        uint8_t bytes[4];
-        write32(bytes, count);
-        storage_.update(address, 0xFFU);
-        for (uint8_t index = 0; index < sizeof(bytes); ++index) {
-            storage_.update(address + 1U + index, bytes[index]);
-        }
-        storage_.update(address, nextSequence);
-        currentSlot_ = nextSlot;
-        currentSequence_ = nextSequence;
-        currentCount_ = count;
-        hasValue_ = true;
-        return true;
-    }
-
-private:
-    Storage& storage_;
-    bool initialized_ = false;
-    bool hasValue_ = false;
-    uint8_t currentSlot_ = static_cast<uint8_t>(kCounterRecordCount - 1);
-    uint8_t currentSequence_ = 0;
-    uint32_t currentCount_ = 0;
 };
 
 }  // namespace storage

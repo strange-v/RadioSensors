@@ -9,6 +9,10 @@ class PolledReedInput {
 public:
     explicit PolledReedInput(pin_size_t pin) : pin_(pin) {}
 
+    // One read with the pull-up enabled only for the read. Returns true when
+    // the contact is open.
+    bool readOnce();
+
     // Returns false when the input did not stabilize within the bounded sample
     // window. rawHigh is true when the contact is open.
     bool sample(bool& rawHigh);

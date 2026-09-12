@@ -1,10 +1,11 @@
 #pragma once
 
+#include <ProfileIds.h>
 #include <TelemetryFrames.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "BatteryMonitor.h"
+#include "TelemetrySchedule.h"
 #include "Tmp112Sensor.h"
 
 namespace radiosensors {
@@ -12,28 +13,55 @@ namespace node {
 
 class ClimateTmp112Profile {
 public:
-    ClimateTmp112Profile(TwoWire& wire, uint8_t address)
-        : temperature_(wire, address) {}
+    static constexpr uint16_t kProfileId =
+        protocol::profileIdValue(protocol::ProfileId::Temperature);
+    static constexpr size_t kTelemetrySize =
+        protocol::kTemperatureTelemetrySize;
+
+    ClimateTmp112Profile(
+        TwoWire& wire, const uint8_t address,
+        const ClimateReportPolicy reportPolicy)
+        : temperature_(wire, address),
+          reportPolicy_(reportPolicy),
+          reportSchedule_(reportPolicy.intervalForMillivolts(0)) {}
 
     void begin() { temperature_.begin(); }
 
-    size_t encodeTelemetry(uint8_t* output, const size_t capacity) {
+    void poll(uint32_t) {}
+
+    bool reportDue(const uint32_t now) const {
+        return reportSchedule_.due(now);
+    }
+
+    size_t encodeTelemetry(
+        const uint16_t supplyMillivolts, uint8_t* output,
+        const size_t capacity) {
         int16_t temperature = protocol::kInvalidTemperature;
         temperature_.readTemperature(temperature);
-        supplyMillivolts_ = battery_.readMillivolts();
         return protocol::encodeTemperatureTelemetry(
-                   supplyMillivolts_, temperature, output, capacity) ==
+                   supplyMillivolts, temperature, output, capacity) ==
                 protocol::TelemetryCodecStatus::Ok
-            ? protocol::kTemperatureTelemetrySize
+            ? kTelemetrySize
             : 0;
     }
 
-    uint16_t supplyMillivolts() const { return supplyMillivolts_; }
+    void reportAcknowledged(
+        const uint32_t now, const uint16_t supplyMillivolts) {
+        const uint32_t nextInterval =
+            reportPolicy_.intervalForMillivolts(supplyMillivolts);
+        reportSchedule_.setInterval(nextInterval);
+        reportSchedule_.transmissionSucceeded(now);
+#if defined(NODE_DEBUG)
+        Serial.print(F("climate: next="));
+        Serial.print(nextInterval / 1000UL);
+        Serial.println(F(" s"));
+#endif
+    }
 
 private:
     Tmp112Sensor temperature_;
-    BatteryMonitor battery_;
-    uint16_t supplyMillivolts_ = 0;
+    ClimateReportPolicy reportPolicy_;
+    RollingKeepAlive reportSchedule_;
 };
 
 }  // namespace node
