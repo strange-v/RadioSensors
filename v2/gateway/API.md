@@ -158,13 +158,13 @@ Requires the session cookie and matching `X-CSRF-Token`, removes the RAM session
 
 ## Discovery, identity, and compatibility
 
-`GET /api/info` is unauthenticated. It returns the stable installation identity, current boot identity, firmware and client-contract versions, Web UI state and version, board, and hostname:
+`GET /api/info` is unauthenticated. It returns the stable installation identity, current boot identity and uptime, firmware and client-contract versions, Web UI state and version, board, and hostname:
 
 ```json
-{"firmware_version":"0.8.0","api_version":1,"stream_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","ui":{"state":"ready","version":"0.1.0","required_firmware":"0.8"},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"osk-hub-a085e3e6cc20"}
+{"firmware_version":"0.8.0","api_version":1,"stream_version":1,"gateway_id":"cccd7e8a5e2bd5d8b9cb754240a82fd8","boot_id":"1d52f8108f3098bdcc0e1ac5fc71be4b","uptime_seconds":1234,"ui":{"state":"ready","version":"0.1.0","required_firmware":"0.8"},"board":"Waveshare ESP32-S3-ETH + PoE","hostname":"osk-hub-a085e3e6cc20"}
 ```
 
-All fields shown above are required. `api_version` and `stream_version` are unsigned integers. `firmware_version` and the non-empty UI version are SemVer; `ui.version` and `ui.required_firmware` are empty when no compatible UI image is available. A consumer ignores additional fields it does not recognize.
+All fields shown above are required. `api_version`, `stream_version`, and `uptime_seconds` are unsigned integers; `uptime_seconds` is the elapsed time since boot. `firmware_version` and the non-empty UI version are SemVer; `ui.version` and `ui.required_firmware` are empty when no compatible UI image is available. A consumer ignores additional fields it does not recognize.
 
 `gateway_id` is 128 bits encoded as 32 lowercase hexadecimal characters. It is derived from the persistent installation device secret with domain-separated SHA-256, remains stable across ordinary firmware updates and reboots, and changes after the installation secrets are erased or replaced. `boot_id` has the same encoding but is generated randomly on every boot. Consumers use a changed `boot_id` to detect lost in-memory state and resynchronize.
 

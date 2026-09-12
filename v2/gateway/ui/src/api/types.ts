@@ -28,7 +28,7 @@ export interface StreamClient { id: number; name: string }
 export interface StreamClientList { clients: StreamClient[] }
 export interface GatewaySettings { generation: number; hostname: string; mdns_enabled: boolean; ntp_enabled: boolean; pairing_window_seconds: number; setup_window_seconds: number; ntp_servers: string[] }
 export interface PairingStatus { active: boolean; remaining_seconds: number; indication: string }
-export interface GatewayInfo { firmware_version: string; api_version: number; stream_version: number; ui: { state: string; version: string; required_firmware: string }; board: string; hostname: string; gateway_id: string; boot_id: string }
+export interface GatewayInfo { firmware_version: string; api_version: number; stream_version: number; ui: { state: string; version: string; required_firmware: string }; board: string; hostname: string; gateway_id: string; boot_id: string; uptime_seconds: number }
 export interface GatewayNode {
   node_id: number
   // Immutable uppercase factory UID. With gateway_id this is the stable Home
@@ -49,7 +49,7 @@ export interface NodeRegistry { registry_generation: number; nodes: GatewayNode[
 // behind a session in Health, returned by /ui/status.
 export interface GatewayProbe { status: string; boot_id: string }
 export interface Health {
-  status: string; firmware: string; api_version: number; board: string; hostname: string; gateway_id: string; boot_id: string; reset_reason: string; uptime_ms: number; free_heap: number;
+  status: string; firmware: string; api_version: number; board: string; hostname: string; gateway_id: string; boot_id: string; reset_reason: string; uptime_seconds: number; free_heap: number;
   registry: { records: number; generation: number }; setup: { required: boolean; active: boolean; remaining_seconds: number };
   pairing: PairingStatus;
   storage: { ready: boolean; settings_generation: number; auth_generation: number; secrets_generation: number };

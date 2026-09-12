@@ -9,6 +9,7 @@
 #include <UserManagement.h>
 #include <ArduinoJson.h>
 #include <esp_random.h>
+#include <esp_timer.h>
 
 #include <atomic>
 #include <memory>
@@ -41,6 +42,10 @@ AsyncWebSocket telemetrySocket("/ws");
 
 constexpr uint16_t kWebSocketKeepAliveSeconds = 30;
 constexpr uint16_t kMaximumWebSocketClients = 4;
+
+uint32_t uptimeSeconds() {
+    return static_cast<uint32_t>(esp_timer_get_time() / 1000000LL);
+}
 
 // A stream client names itself with the `X-Client` handshake header. That is
 // the only honest source for the name: an API key's name is free text that
@@ -1351,7 +1356,7 @@ void handleStatus(AsyncWebServerRequest* request) {
     response->printf(
         "{\"status\":\"ok\",\"firmware\":\"%s\",\"api_version\":%u,\"board\":\"%s\",\"hostname\":\"%s\","
         "\"gateway_id\":\"%s\",\"boot_id\":\"%s\","
-        "\"reset_reason\":\"%s\",\"uptime_ms\":%lu,\"free_heap\":%lu,"
+        "\"reset_reason\":\"%s\",\"uptime_seconds\":%lu,\"free_heap\":%lu,"
         "\"registry\":{\"records\":%u,\"generation\":%lu},"
         "\"setup\":{\"required\":%s,\"active\":%s,\"remaining_seconds\":%lu},"
         "\"storage\":{\"ready\":%s,\"settings_generation\":%lu,"
@@ -1396,7 +1401,7 @@ void handleStatus(AsyncWebServerRequest* request) {
         identity::gatewayId(),
         identity::bootId(),
         diagnostics::resetReason(),
-        millis(),
+        static_cast<unsigned long>(uptimeSeconds()),
         ESP.getFreeHeap(),
         static_cast<unsigned>(registry_store::recordCount()),
         static_cast<unsigned long>(registry_store::generation()),
@@ -1495,6 +1500,7 @@ void handleInfo(AsyncWebServerRequest* request) {
     document["hostname"] = identity::hostname();
     document["gateway_id"] = identity::gatewayId();
     document["boot_id"] = identity::bootId();
+    document["uptime_seconds"] = uptimeSeconds();
     AsyncResponseStream* response = request->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-store");
     serializeJson(document, *response);
