@@ -7,12 +7,22 @@
 #include "NodeRuntime.h"
 #include "ProvisioningButton.h"
 #include "Profiles/ClimateTmp112Profile.h"
+#include "UnusedPins.h"
 
 namespace {
 using namespace radiosensors;
 using Profile = node::ClimateTmp112Profile;
 
 constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
+
+// PA5 is the reed pad; PB2/PB3 carry UART only in debug builds.
+constexpr uint8_t kUnusedPins[] = {
+    PIN_PA5,
+#if !defined(NODE_DEBUG)
+    PIN_PB2,
+    PIN_PB3,
+#endif
+};
 
 #if defined(NODE_CLIMATE_ADAPTIVE_REPORTING)
 const node::ClimateReportPolicy reportPolicy =
@@ -40,6 +50,7 @@ void setup() {
     Serial.begin(9600);
     Serial.println(F("node: startup"));
 #endif
+    node::disableUnusedPins(kUnusedPins);
     runtime.begin();
 }
 
