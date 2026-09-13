@@ -29,6 +29,9 @@ public:
 
     uint32_t createNonce() const;
 
+    // Stores the level with the network configuration and applies it.
+    bool setRadioPower(uint8_t level, bool fallback);
+
 private:
     void readDeviceUid();
     bool requestJoin();

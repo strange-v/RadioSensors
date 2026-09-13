@@ -40,10 +40,11 @@ Each network configuration slot has this exact format:
 | 7 | 1 | Network ID |
 | 8 | 16 | Installation key |
 | 24 | 4 | Request nonce, little-endian |
-| 28 | 2 | Last applied radio-power command ID, little-endian |
+| 28 | 1 | Radio flags: bit 0 fallback; other bits zero |
+| 29 | 1 | Reserved, zero |
 | 30 | 2 | CRC16-CCITT over bytes 0..29, little-endian |
 
-Profile ID, firmware version, sensor selection, pins, and reporting intervals are compile-time values and are not stored here.
+Profile ID, firmware version, sensor selection, pins, reporting intervals, and the transmit power ceiling are compile-time values and are not stored here. Commissioning stores the ceiling as the radio power level and clears the fallback flag; afterwards the level changes only by a gateway target or a fallback.
 
 Saving always targets the older/inactive slot. Its magic is invalidated first, the payload and CRC are written next, and the two magic bytes are committed last. On boot, both slots are validated and the newest generation is selected, including across the 8-bit generation wrap.
 

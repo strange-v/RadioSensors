@@ -11,6 +11,7 @@
 #include "LowPowerClock.h"
 #include "NodeRadio.h"
 #include "ProvisioningButton.h"
+#include "RadioPowerState.h"
 #include "SupplyVoltage.h"
 #include "TelemetrySchedule.h"
 
@@ -132,7 +133,8 @@ private:
         const protocol::TelemetryPrefix prefix{
             supplyVoltage_.report(battery_.readMillivolts()),
             protocol::encodeRadioState(
-                commissioning_.config().powerLevel, false, false),
+                commissioning_.config().powerLevel,
+                commissioning_.config().radioFallback, false),
             downlinkRssi_};
         uint8_t frame[Profile::kTelemetrySize];
         const size_t size =
@@ -150,6 +152,11 @@ private:
             downlinkRssi_ = protocol::downlinkRssiValue(ackRssi);
             profile_.reportAcknowledged(now, prefix.supplyMillivolts);
             radioRetry_.succeeded();
+            unacknowledgedReports_ = 0;
+            applyPower(afterAcknowledged(
+                commissioning_.config().powerLevel,
+                commissioning_.config().radioFallback, ack.hasPowerTarget,
+                ack.powerTarget, NODE_RADIO_MAX_POWER_LEVEL));
 #if defined(NODE_DEBUG)
             Serial.print(F("telemetry: ack, vcc="));
             Serial.print(prefix.supplyMillivolts);
@@ -161,8 +168,28 @@ private:
 #if defined(NODE_DEBUG)
             Serial.println(F("telemetry: failed"));
 #endif
+            if (unacknowledgedReports_ < UINT8_MAX) ++unacknowledgedReports_;
+            applyPower(afterUnacknowledged(
+                commissioning_.config().powerLevel,
+                commissioning_.config().radioFallback,
+                unacknowledgedReports_, NODE_RADIO_MAX_POWER_LEVEL));
         }
         return acknowledged && ack.commandPending;
+    }
+
+    void applyPower(const PowerDecision decision) {
+        if (!decision.change) return;
+        const bool stored =
+            commissioning_.setRadioPower(decision.level, decision.fallback);
+#if defined(NODE_DEBUG)
+        Serial.print(F("radio: level "));
+        Serial.print(decision.level);
+        Serial.println(stored
+            ? (decision.fallback ? F(", fallback") : F(""))
+            : F(", not stored"));
+#else
+        (void)stored;
+#endif
     }
 
     // Returns whether the gateway answered: with No command, or with a
@@ -239,6 +266,7 @@ private:
     RadioRetryBackoff radioRetry_;
     HintedSessionPolicy hintedSessions_;
     int8_t downlinkRssi_ = protocol::kNoDownlinkRssi;
+    uint8_t unacknowledgedReports_ = 0;
     uint32_t lastJoinAttempt_ = 0;
     bool radioReady_ = false;
     bool joinAttempted_ = false;

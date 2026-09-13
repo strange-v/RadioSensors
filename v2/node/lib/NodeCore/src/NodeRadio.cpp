@@ -27,7 +27,7 @@ void NodeRadio::useCommissioningProfile(const uint8_t factoryKey[16]) {
     radio_.setNetwork(0);
     radio_.encrypt(key);
     memset(key, 0, sizeof(key));
-    radio_.setPowerLevel(NODE_DEFAULT_POWER_LEVEL);
+    radio_.setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
 }
 
 void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
@@ -38,6 +38,10 @@ void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
     radio_.setNetwork(config.networkId);
     radio_.encrypt(key);
     radio_.setPowerLevel(config.powerLevel);
+}
+
+void NodeRadio::setPowerLevel(const uint8_t level) {
+    radio_.setPowerLevel(level);
 }
 
 bool NodeRadio::sendTelemetry(

@@ -1,5 +1,6 @@
 #include <ConfirmedInput.h>
 #include <CounterStorage.h>
+#include <RadioPowerState.h>
 #include <SupplyVoltage.h>
 #include <TelemetrySchedule.h>
 #include <unity.h>
@@ -19,6 +20,9 @@ using radiosensors::node::LoadedSupplyVoltage;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
 using radiosensors::node::HintedSessionPolicy;
+using radiosensors::node::PowerDecision;
+using radiosensors::node::afterAcknowledged;
+using radiosensors::node::afterUnacknowledged;
 using radiosensors::node::kCounterMinimumReportMs;
 
 namespace {
@@ -46,7 +50,7 @@ NetworkConfig makeConfig(const uint8_t nodeId = 7) {
         value.installationKey[index] = static_cast<uint8_t>(index + 1);
     }
     value.requestNonce = 0x89ABCDEFUL;
-    value.lastPowerCommandId = 0x1234;
+    value.radioFallback = true;
     return value;
 }
 
@@ -155,7 +159,42 @@ void test_network_config_round_trip_and_newest_slot() {
     TEST_ASSERT_EQUAL_UINT8(19, restored.powerLevel);
     TEST_ASSERT_EQUAL_UINT8(1, restored.generation);
     TEST_ASSERT_EQUAL_HEX32(0x89ABCDEFUL, restored.requestNonce);
-    TEST_ASSERT_EQUAL_HEX16(0x1234, restored.lastPowerCommandId);
+    TEST_ASSERT_TRUE(restored.radioFallback);
+}
+
+void test_network_config_rejects_reserved_radio_flags() {
+    uint8_t bytes[kNetworkConfigSlotSize];
+    NetworkConfig value = makeConfig();
+    TEST_ASSERT_TRUE(encodeNetworkConfig(value, bytes, sizeof(bytes)));
+    bytes[28] = 0x02;
+    write16(bytes + 30, crc16Ccitt(bytes, 30));
+    NetworkConfig restored{};
+    TEST_ASSERT_FALSE(decodeNetworkConfig(bytes, sizeof(bytes), restored));
+}
+
+void test_power_target_is_clamped_and_ends_a_fallback() {
+    PowerDecision decision = afterAcknowledged(2, false, false, 0, 5);
+    TEST_ASSERT_FALSE(decision.change);
+    decision = afterAcknowledged(2, false, true, 2, 5);
+    TEST_ASSERT_FALSE(decision.change);
+    decision = afterAcknowledged(2, false, true, 9, 5);
+    TEST_ASSERT_TRUE(decision.change);
+    TEST_ASSERT_EQUAL_UINT8(5, decision.level);
+    TEST_ASSERT_FALSE(decision.fallback);
+    decision = afterAcknowledged(5, true, true, 3, 5);
+    TEST_ASSERT_TRUE(decision.change);
+    TEST_ASSERT_EQUAL_UINT8(3, decision.level);
+    TEST_ASSERT_FALSE(decision.fallback);
+}
+
+void test_node_falls_back_to_its_ceiling_after_three_lost_reports() {
+    TEST_ASSERT_FALSE(afterUnacknowledged(1, false, 2, 5).change);
+    const PowerDecision decision = afterUnacknowledged(1, false, 3, 5);
+    TEST_ASSERT_TRUE(decision.change);
+    TEST_ASSERT_EQUAL_UINT8(5, decision.level);
+    TEST_ASSERT_TRUE(decision.fallback);
+    TEST_ASSERT_FALSE(afterUnacknowledged(5, false, 3, 5).change);
+    TEST_ASSERT_FALSE(afterUnacknowledged(5, true, 9, 5).change);
 }
 
 void test_network_config_falls_back_from_corrupt_new_slot() {
@@ -588,6 +627,9 @@ int main(int, char**) {
     RUN_TEST(test_factory_credentials_round_trip_and_validation);
     RUN_TEST(test_factory_credential_store_reads_user_row_independently);
     RUN_TEST(test_network_config_round_trip_and_newest_slot);
+    RUN_TEST(test_network_config_rejects_reserved_radio_flags);
+    RUN_TEST(test_power_target_is_clamped_and_ends_a_fallback);
+    RUN_TEST(test_node_falls_back_to_its_ceiling_after_three_lost_reports);
     RUN_TEST(test_network_config_falls_back_from_corrupt_new_slot);
     RUN_TEST(test_network_config_generation_wrap_selects_latest);
     RUN_TEST(test_factory_reset_preserves_counter_area);

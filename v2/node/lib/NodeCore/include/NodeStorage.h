@@ -33,7 +33,8 @@ struct NetworkConfig {
     uint8_t networkId = 0;
     uint8_t installationKey[16]{};
     uint32_t requestNonce = 0;
-    uint16_t lastPowerCommandId = 0;
+    // The node raised itself to its ceiling after losing the gateway.
+    bool radioFallback = false;
 };
 
 struct FactoryCredentials {
@@ -162,7 +163,7 @@ inline bool encodeNetworkConfig(
     output[7] = value.networkId;
     memcpy(output + 8, value.installationKey, sizeof(value.installationKey));
     write32(output + 24, value.requestNonce);
-    write16(output + 28, value.lastPowerCommandId);
+    output[28] = value.radioFallback ? 1 : 0;
     write16(output + 30, crc16Ccitt(output, 30));
     return true;
 }
@@ -179,7 +180,8 @@ inline bool decodeNetworkConfig(
     if ((state != static_cast<uint8_t>(ProvisioningState::Provisional) &&
          state != static_cast<uint8_t>(ProvisioningState::Active)) ||
         input[5] == 0 || input[5] == 255 || input[6] == 0 ||
-        input[6] == 255 || input[5] == input[6]) {
+        input[6] == 255 || input[5] == input[6] ||
+        (input[28] & 0xFEU) != 0 || input[29] != 0) {
         return false;
     }
     value.generation = input[3];
@@ -190,7 +192,7 @@ inline bool decodeNetworkConfig(
     value.networkId = input[7];
     memcpy(value.installationKey, input + 8, sizeof(value.installationKey));
     value.requestNonce = read32(input + 24);
-    value.lastPowerCommandId = read16(input + 28);
+    value.radioFallback = input[28] != 0;
     return true;
 }
 
