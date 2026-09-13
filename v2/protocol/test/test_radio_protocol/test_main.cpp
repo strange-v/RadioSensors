@@ -47,19 +47,10 @@ void test_command_session_known_vectors() {
 }
 
 void test_command_known_vectors() {
-    const uint8_t powerExpected[] = {
-        0x44, 0xEF, 0xCD, 0xAB, 0x89, 0x34, 0x12, 0x01, 0x10};
     const uint8_t countExpected[] = {
-        0x44, 0xEF, 0xCD, 0xAB, 0x89, 0x35, 0x12, 0x02,
+        0x44, 0xEF, 0xCD, 0xAB, 0x89, 0x35, 0x12, 0x01,
         0x78, 0x56, 0x34, 0x12};
     uint8_t encoded[kMaxCommandSize]{};
-
-    const Command power{0x89ABCDEFUL, 0x1234, 1, 1, {0x10}};
-    TEST_ASSERT_EQUAL(
-        static_cast<int>(CommandSessionCodecStatus::Ok),
-        static_cast<int>(encodeCommand(power, encoded, sizeof(encoded))));
-    TEST_ASSERT_EQUAL_UINT32(sizeof(powerExpected), commandFrameSize(power));
-    TEST_ASSERT_EQUAL_HEX8_ARRAY(powerExpected, encoded, sizeof(powerExpected));
 
     Command decoded{};
     TEST_ASSERT_EQUAL(
@@ -76,6 +67,7 @@ void test_command_known_vectors() {
     TEST_ASSERT_EQUAL(
         static_cast<int>(CommandSessionCodecStatus::Ok),
         static_cast<int>(encodeCommand(decoded, encoded, sizeof(encoded))));
+    TEST_ASSERT_EQUAL_UINT32(sizeof(countExpected), commandFrameSize(decoded));
     TEST_ASSERT_EQUAL_HEX8_ARRAY(countExpected, encoded, sizeof(countExpected));
 }
 
@@ -163,27 +155,24 @@ void test_unknown_command_type_decodes_for_an_unsupported_reply() {
 void test_command_catalogue() {
     size_t size = 0;
     TEST_ASSERT_TRUE(commandArgumentSize(
-        static_cast<uint8_t>(CommandType::SetRadioPower), size));
-    TEST_ASSERT_EQUAL_UINT32(1, size);
-    TEST_ASSERT_TRUE(commandArgumentSize(
         static_cast<uint8_t>(CommandType::SetCount), size));
     TEST_ASSERT_EQUAL_UINT32(4, size);
+    TEST_ASSERT_FALSE(commandArgumentSize(2, size));
     TEST_ASSERT_EQUAL_UINT32(8, commandResultDataSize(
         CommandType::SetCount, CommandStatus::Applied));
     TEST_ASSERT_EQUAL_UINT32(0, commandResultDataSize(
         CommandType::SetCount, CommandStatus::InvalidArgument));
-    TEST_ASSERT_EQUAL_UINT32(0, commandResultDataSize(
-        CommandType::SetRadioPower, CommandStatus::Applied));
 
-    for (uint16_t profile = 1; profile <= 8; ++profile) {
-        TEST_ASSERT_TRUE(
-            profileSupportsCommand(profile, CommandType::SetRadioPower));
+    const uint8_t count[4]{};
+    TEST_ASSERT_TRUE(validCommandArguments(1, count, sizeof(count)));
+    TEST_ASSERT_FALSE(validCommandArguments(1, count, 3));
+    TEST_ASSERT_FALSE(validCommandArguments(2, count, 1));
+
+    for (uint16_t profile = 0; profile <= 9; ++profile) {
         TEST_ASSERT_EQUAL(
             profile == 6,
             profileSupportsCommand(profile, CommandType::SetCount));
     }
-    TEST_ASSERT_FALSE(profileSupportsCommand(0, CommandType::SetRadioPower));
-    TEST_ASSERT_FALSE(profileSupportsCommand(9, CommandType::SetRadioPower));
 }
 
 void test_telemetry_ack_command_hint() {

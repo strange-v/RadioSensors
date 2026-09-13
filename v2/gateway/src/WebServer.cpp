@@ -557,8 +557,6 @@ using radiosensors::protocol::CommandType;
 
 const char* commandTypeName(const uint8_t type) {
     switch (static_cast<CommandType>(type)) {
-        case CommandType::SetRadioPower:
-            return "set_radio_power";
         case CommandType::SetCount:
             return "set_count";
     }
@@ -566,13 +564,8 @@ const char* commandTypeName(const uint8_t type) {
 }
 
 bool parseCommandType(const char* const name, CommandType& type) {
-    if (strcmp(name, "set_radio_power") == 0) {
-        type = CommandType::SetRadioPower;
-    } else if (strcmp(name, "set_count") == 0) {
-        type = CommandType::SetCount;
-    } else {
-        return false;
-    }
+    if (strcmp(name, "set_count") != 0) return false;
+    type = CommandType::SetCount;
     return true;
 }
 
@@ -597,9 +590,7 @@ void writeCommand(JsonObject object, const commands::Entry& entry) {
     object["command_id"] = record.commandId;
     object["type"] = commandTypeName(record.type);
     JsonObject arguments = object["arguments"].to<JsonObject>();
-    if (type == CommandType::SetRadioPower) {
-        arguments["power_level"] = record.arguments[0];
-    } else if (type == CommandType::SetCount) {
+    if (type == CommandType::SetCount) {
         arguments["count"] = radiosensors::protocol::readUint32Le(record.arguments);
     }
     object["queued_at_ms"] = record.queuedAtUnixMs;
@@ -660,10 +651,7 @@ void handleQueueCommand(AsyncWebServerRequest* request, JsonVariant& json) {
     const JsonObjectConst arguments = object["arguments"].as<JsonObjectConst>();
     uint8_t encoded[radiosensors::protocol::kMaxCommandArgumentSize]{};
     size_t size = 0;
-    if (type == CommandType::SetRadioPower && arguments["power_level"].is<uint8_t>()) {
-        encoded[0] = arguments["power_level"].as<uint8_t>();
-        size = radiosensors::protocol::kSetRadioPowerArgumentSize;
-    } else if (type == CommandType::SetCount && arguments["count"].is<uint32_t>()) {
+    if (type == CommandType::SetCount && arguments["count"].is<uint32_t>()) {
         radiosensors::protocol::writeUint32Le(encoded, arguments["count"].as<uint32_t>());
         size = radiosensors::protocol::kSetCountArgumentSize;
     } else {

@@ -229,7 +229,7 @@ A command changes state on a sleeping node, which fetches it in a radio session 
 ```json
 {"commands":[
   {"node_id":7,"command_id":4661,"type":"set_count","arguments":{"count":1234},"queued_at_ms":1770000000000,"state":"delivered"},
-  {"node_id":9,"command_id":4660,"type":"set_radio_power","arguments":{"power_level":16},"queued_at_ms":1770000000000,"state":"completed","status":"applied","completed_at_ms":1770000060000}
+  {"node_id":9,"command_id":4660,"type":"set_count","arguments":{"count":0},"queued_at_ms":1770000000000,"state":"completed","status":"applied","completed_at_ms":1770000060000,"result":{"previous_count":7351,"count":0}}
 ]}
 ```
 
@@ -249,7 +249,6 @@ An applied `set_count` also carries `"result":{"previous_count":1200,"count":123
 
 | `type` | `arguments` | Profiles |
 | --- | --- | --- |
-| `set_radio_power` | `power_level`: `0..31` | all |
 | `set_count` | `count`: unsigned 32-bit | 6 |
 
 The response is `201` with the queued command in the listing shape. Errors: `400 invalid_request`, `404 node_not_found` when no active node has the ID, `409 command_pending`, `409 command_capacity_reached`, `422 invalid_command_values`, `422 unsupported_command` for an unknown type or one the node's profile lacks, `422 invalid_command_arguments`, `500 command_storage_failed`, or `503 commands_unavailable`.

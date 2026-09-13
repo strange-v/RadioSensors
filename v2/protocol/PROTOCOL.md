@@ -115,10 +115,9 @@ Every status except `storage_failure` completes the command. The node sends Comm
 
 | Type | Name | Profiles | Arguments | Result data |
 | ---: | --- | --- | --- | --- |
-| 1 | `set_radio_power` | all | `power_level`: uint8, `0..31` | none |
-| 2 | `set_count` | 6 | `count`: uint32 LE | `previous_count`: uint32 LE, `count`: uint32 LE |
+| 1 | `set_count` | 6 | `count`: uint32 LE | `previous_count`: uint32 LE, `count`: uint32 LE |
 
-`set_radio_power` stores the RFM69 power level with the node's network configuration. The node sends the result at its previous level and switches afterwards. A level too low to reach the gateway strands the node until a network reset and new pairing.
+Commands are one-shot actions. Configuration the gateway maintains, such as radio power, is desired state carried by the telemetry acknowledgement instead.
 
 `set_count` replaces the cumulative pulse count. `previous_count` is the count immediately before the command.
 

@@ -68,22 +68,14 @@ Uid uidFor(uint8_t seed) {
     return uid;
 }
 
-uint8_t typeValue(CommandType type) { return static_cast<uint8_t>(type); }
-
-QueueStatus queuePower(CommandBook& book, uint8_t nodeId, uint8_t level,
-                       uint16_t& id, uint64_t now = 1000) {
-    const Uid uid = uidFor(nodeId);
-    return command_book::queue(book, uid.bytes, nodeId,
-                               typeValue(CommandType::SetRadioPower), &level, 1, now, id);
-}
+const uint8_t kSetCount = static_cast<uint8_t>(CommandType::SetCount);
 
 QueueStatus queueCount(CommandBook& book, uint8_t nodeId, uint32_t count,
-                       uint16_t& id, uint64_t now = 1000) {
-    const Uid uid = uidFor(nodeId);
+                       uint16_t& id, uint64_t now = 1000, uint8_t uidSeed = 0) {
+    const Uid uid = uidFor(uidSeed != 0 ? uidSeed : nodeId);
     uint8_t arguments[4];
     protocol::writeUint32Le(arguments, count);
-    return command_book::queue(book, uid.bytes, nodeId,
-                               typeValue(CommandType::SetCount), arguments, 4, now, id);
+    return command_book::queue(book, uid.bytes, nodeId, kSetCount, arguments, 4, now, id);
 }
 
 CompleteStatus completeUnsupported(CommandBook& book, uint8_t nodeId, uint16_t id) {
@@ -112,7 +104,7 @@ void test_command_book_known_layout() {
     book.nextCommandId = 0x1234;
     uint16_t id = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 7, 16, id, 0x0102030405060708ULL)));
+                          static_cast<int>(queueCount(book, 7, 0x12345678UL, id, 0x0102030405060708ULL)));
     TEST_ASSERT_EQUAL_HEX16(0x1234, id);
 
     uint8_t snapshot[kCommandsSnapshotSize]{};
@@ -132,8 +124,9 @@ void test_command_book_known_layout() {
     TEST_ASSERT_EQUAL_UINT8(7, record[10]);
     TEST_ASSERT_EQUAL_HEX16(0x1234, protocol::readUint16Le(record + 11));
     TEST_ASSERT_EQUAL_UINT8(1, record[13]);
-    TEST_ASSERT_EQUAL_UINT8(1, record[14]);
-    TEST_ASSERT_EQUAL_UINT8(16, record[15]);
+    TEST_ASSERT_EQUAL_UINT8(4, record[14]);
+    TEST_ASSERT_EQUAL_HEX32(0x12345678UL, protocol::readUint32Le(record + 15));
+    TEST_ASSERT_EQUAL_HEX32(0, protocol::readUint32Le(record + 19));
     TEST_ASSERT_EQUAL_UINT8(1, record[23]);
     TEST_ASSERT_EQUAL_UINT8(0, record[24]);
     TEST_ASSERT_EQUAL_UINT8(0, record[25]);
@@ -152,25 +145,22 @@ void test_command_book_known_layout() {
 void test_queue_rejects_invalid_requests() {
     CommandBook book = defaultCommandBook();
     uint16_t id = 0;
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::InvalidArguments),
-                          static_cast<int>(queuePower(book, 7, 32, id)));
     const Uid uid = uidFor(7);
     const uint8_t shortCount[3] = {1, 2, 3};
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::InvalidArguments),
                           static_cast<int>(command_book::queue(
-                              book, uid.bytes, 7, typeValue(CommandType::SetCount),
-                              shortCount, sizeof(shortCount), 0, id)));
+                              book, uid.bytes, 7, kSetCount, shortCount, sizeof(shortCount), 0, id)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::InvalidArguments),
                           static_cast<int>(command_book::queue(
                               book, uid.bytes, 7, 9, shortCount, 1, 0, id)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::InvalidNode),
-                          static_cast<int>(queuePower(book, 0, 1, id)));
+                          static_cast<int>(queueCount(book, 0, 1, id)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::InvalidNode),
-                          static_cast<int>(queuePower(book, 100, 1, id)));
+                          static_cast<int>(queueCount(book, 100, 1, id)));
     TEST_ASSERT_EQUAL_UINT8(0, book.count);
 
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 7, 1, id)));
+                          static_cast<int>(queueCount(book, 7, 1, id)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Busy),
                           static_cast<int>(queueCount(book, 7, 5, id)));
     TEST_ASSERT_EQUAL_UINT8(1, book.count);
@@ -216,7 +206,7 @@ void test_complete_records_result_and_rejects_mismatches() {
 
     uint16_t nextId = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 7, 3, nextId)));
+                          static_cast<int>(queueCount(book, 7, 9, nextId)));
     TEST_ASSERT_EQUAL_UINT16(id + 1, nextId);
     TEST_ASSERT_EQUAL_UINT8(1, book.count);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CommandState::Pending),
@@ -227,14 +217,11 @@ void test_record_of_a_previous_node_does_not_block_a_reused_id() {
     CommandBook book = defaultCommandBook();
     uint16_t id = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 7, 1, id)));
-    const Uid newUid = uidFor(70);
-    const uint8_t level = 2;
+                          static_cast<int>(queueCount(book, 7, 1, id)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(command_book::queue(
-                              book, newUid.bytes, 7, typeValue(CommandType::SetRadioPower),
-                              &level, 1, 0, id)));
+                          static_cast<int>(queueCount(book, 7, 2, id, 0, 70)));
     TEST_ASSERT_EQUAL_UINT8(1, book.count);
+    const Uid newUid = uidFor(70);
     TEST_ASSERT_EQUAL_HEX8_ARRAY(newUid.bytes, command_book::find(book, 7)->deviceUid,
                                  sizeof(newUid.bytes));
 }
@@ -244,12 +231,12 @@ void test_command_ids_skip_zero_on_wrap() {
     book.nextCommandId = UINT16_MAX;
     uint16_t id = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 1, 1, id)));
+                          static_cast<int>(queueCount(book, 1, 1, id)));
     TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, id);
     TEST_ASSERT_EQUAL_UINT16(1, book.nextCommandId);
     TEST_ASSERT_TRUE(command_book::cancel(book, 1));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 1, 1, id)));
+                          static_cast<int>(queueCount(book, 1, 1, id)));
     TEST_ASSERT_EQUAL_UINT16(1, id);
 }
 
@@ -258,18 +245,18 @@ void test_full_book_evicts_the_oldest_result() {
     uint16_t ids[kMaxCommandRecords + 1]{};
     for (uint8_t node = 1; node <= kMaxCommandRecords; ++node) {
         TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                              static_cast<int>(queuePower(book, node, 1, ids[node])));
+                              static_cast<int>(queueCount(book, node, 1, ids[node])));
     }
     uint16_t id = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::CapacityReached),
-                          static_cast<int>(queuePower(book, 17, 1, id)));
+                          static_cast<int>(queueCount(book, 17, 1, id)));
 
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CompleteStatus::Completed),
                           static_cast<int>(completeUnsupported(book, 5, ids[5])));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CompleteStatus::Completed),
                           static_cast<int>(completeUnsupported(book, 3, ids[3])));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 17, 1, id)));
+                          static_cast<int>(queueCount(book, 17, 1, id)));
     TEST_ASSERT_EQUAL_UINT8(kMaxCommandRecords, book.count);
     TEST_ASSERT_NULL(command_book::find(book, 3));
     TEST_ASSERT_NOT_NULL(command_book::find(book, 5));
@@ -281,9 +268,9 @@ void test_cancel_remove_and_clear() {
     uint16_t first = 0;
     uint16_t second = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 1, 1, first)));
+                          static_cast<int>(queueCount(book, 1, 1, first)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 2, 1, second)));
+                          static_cast<int>(queueCount(book, 2, 1, second)));
     TEST_ASSERT_FALSE(command_book::cancel(book, 3));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CompleteStatus::Completed),
                           static_cast<int>(completeUnsupported(book, 2, second)));
@@ -293,7 +280,7 @@ void test_cancel_remove_and_clear() {
     TEST_ASSERT_EQUAL_UINT8(0, book.count);
 
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 4, 1, first)));
+                          static_cast<int>(queueCount(book, 4, 1, first)));
     const uint16_t next = book.nextCommandId;
     command_book::clear(book);
     TEST_ASSERT_EQUAL_UINT8(0, book.count);
@@ -306,7 +293,7 @@ void test_store_falls_back_to_the_previous_generation() {
     CommandBook book = defaultCommandBook();
     uint16_t id = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 1, 1, id)));
+                          static_cast<int>(queueCount(book, 1, 1, id)));
     TEST_ASSERT_TRUE(store.save(book));
     const CommandBook first = book;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
@@ -330,9 +317,9 @@ void test_decode_rejects_invalid_snapshots() {
     CommandBook book = defaultCommandBook();
     uint16_t id = 0;
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 1, 1, id)));
+                          static_cast<int>(queueCount(book, 1, 1, id)));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
-                          static_cast<int>(queuePower(book, 2, 1, id)));
+                          static_cast<int>(queueCount(book, 2, 1, id)));
     uint8_t valid[kCommandsSnapshotSize]{};
     TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok),
                           static_cast<int>(encodeCommandBook(book, 1, valid, sizeof(valid))));

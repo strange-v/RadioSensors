@@ -19,7 +19,6 @@ constexpr size_t kMaxCommandSize =
 constexpr size_t kMaxCommandResultSize =
     kCommandEnvelopeSize + kMaxCommandResultDataSize;
 
-constexpr size_t kSetRadioPowerArgumentSize = 1;
 constexpr uint8_t kMaxRadioPowerLevel = 31;
 constexpr size_t kSetCountArgumentSize = 4;
 constexpr size_t kSetCountResultSize = 8;
@@ -28,8 +27,7 @@ constexpr size_t kSetCountResultSize = 8;
 constexpr uint8_t kTelemetryAckCommandPending = 0x01;
 
 enum class CommandType : uint8_t {
-    SetRadioPower = 1,
-    SetCount = 2,
+    SetCount = 1,
 };
 
 enum class CommandStatus : uint8_t {
@@ -253,9 +251,6 @@ inline CommandSessionCodecStatus decodeCommandResult(
 // Argument size of a known command type; false for an unknown type.
 inline bool commandArgumentSize(const uint8_t type, size_t& size) {
     switch (static_cast<CommandType>(type)) {
-        case CommandType::SetRadioPower:
-            size = kSetRadioPowerArgumentSize;
-            return true;
         case CommandType::SetCount:
             size = kSetCountArgumentSize;
             return true;
@@ -266,12 +261,8 @@ inline bool commandArgumentSize(const uint8_t type, size_t& size) {
 inline bool validCommandArguments(
     const uint8_t type, const uint8_t* const arguments, const size_t size) {
     size_t expected = 0;
-    if (!commandArgumentSize(type, expected) || size != expected ||
-        arguments == nullptr) {
-        return false;
-    }
-    return static_cast<CommandType>(type) != CommandType::SetRadioPower ||
-        arguments[0] <= kMaxRadioPowerLevel;
+    return commandArgumentSize(type, expected) && size == expected &&
+        arguments != nullptr;
 }
 
 // Result data accompanies only an applied command.
@@ -284,9 +275,6 @@ inline size_t commandResultDataSize(
 inline bool profileSupportsCommand(
     const uint16_t profileId, const CommandType type) {
     switch (type) {
-        case CommandType::SetRadioPower:
-            return profileId >= profileIdValue(ProfileId::Voltage) &&
-                profileId <= profileIdValue(ProfileId::BinaryTemperature);
         case CommandType::SetCount:
             return profileId == profileIdValue(ProfileId::PulseCounter);
     }

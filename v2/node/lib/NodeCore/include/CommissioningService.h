@@ -1,6 +1,5 @@
 #pragma once
 
-#include <CommandSessionFrames.h>
 #include <CommissioningFrames.h>
 #include <JoinRequest.h>
 #include <stdint.h>
@@ -29,12 +28,6 @@ public:
     bool resetNetwork();
 
     uint32_t createNonce() const;
-
-    // Stores the level with the network configuration. The radio keeps its
-    // current level until applyRadioProfile(), so the command result still
-    // goes out at the level the gateway last heard.
-    protocol::CommandStatus storeRadioPower(uint16_t commandId, uint8_t level);
-    void applyRadioProfile();
 
 private:
     void readDeviceUid();

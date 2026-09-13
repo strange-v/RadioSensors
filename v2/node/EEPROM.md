@@ -80,7 +80,7 @@ The result slots use the same invalidate/payload/commit sequence as network conf
 
 On boot, a valid `Pending` result is completed before new pulses are accepted. Repeating a command with the same ID returns the stored result instead of changing the count again.
 
-A new installation starts a new command ID sequence, so commissioning clears both recorded IDs: the network configuration is written with radio-power command ID zero, and a stored `SET_COUNT` result is replaced by one with command ID zero. The gateway never issues zero.
+A new installation starts a new command ID sequence, so commissioning replaces a stored `SET_COUNT` result with one whose command ID is zero. The gateway never issues zero.
 
 Each ring entry contains a one-byte sequence followed by a four-byte unsigned cumulative count. Sequence `0xFF` means invalid/uncommitted; valid sequences wrap from `0xFE` to `0x00`. A save invalidates the destination sequence byte, writes the count, then commits the sequence byte last. There are 32 entries.
 

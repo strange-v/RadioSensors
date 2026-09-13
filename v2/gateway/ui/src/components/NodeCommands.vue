@@ -6,7 +6,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, errorCode, isAdmin } from '../api/client'
 import type { CommandType, GatewayNode, NodeCommand } from '../api/types'
-import { RADIO_POWER_MAX, commandArguments, commandValue, parseCommandValue, supportedCommands } from '../utils/commands'
+import { commandArguments, commandValue, parseCommandValue, supportedCommands } from '../utils/commands'
 
 const props = defineProps<{ node: GatewayNode }>()
 const { t } = useI18n()
@@ -17,7 +17,7 @@ const POLL_MS = 3_000
 
 const types = computed(() => supportedCommands(props.node.profile_id))
 const command = ref<NodeCommand | null>(null)
-const selectedType = ref<CommandType>(types.value[0] ?? 'set_radio_power')
+const selectedType = ref<CommandType>(types.value[0] ?? 'set_count')
 const draftValue = ref('')
 const busy = ref(false)
 const failure = ref('')
@@ -124,7 +124,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
       <label>
         <span>{{ $t(`commands.field.${selectedType}`) }}</span>
         <input v-model="draftValue" inputmode="numeric" :aria-label="$t(`commands.field.${selectedType}`)" @keydown.enter="send">
-        <small :class="{ invalid: invalidValue }">{{ invalidValue ? $t(`commands.invalid.${selectedType}`, { max: RADIO_POWER_MAX }) : $t(`commands.hint.${selectedType}`, { max: RADIO_POWER_MAX }) }}</small>
+        <small :class="{ invalid: invalidValue }">{{ invalidValue ? $t(`commands.invalid.${selectedType}`) : $t(`commands.hint.${selectedType}`) }}</small>
       </label>
       <div class="command-actions">
         <button class="button primary" :disabled="busy || parsedValue === null" type="button" @click="send">{{ busy ? $t('commands.sending') : $t('commands.send') }}</button>

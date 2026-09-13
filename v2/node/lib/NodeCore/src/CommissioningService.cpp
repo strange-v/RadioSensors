@@ -81,23 +81,6 @@ uint32_t CommissioningService::createNonce() const {
     return value;
 }
 
-protocol::CommandStatus CommissioningService::storeRadioPower(
-    const uint16_t commandId, const uint8_t level) {
-    if (commandId == config_.lastPowerCommandId) {
-        return protocol::CommandStatus::Applied;
-    }
-    storage::NetworkConfig next = config_;
-    next.powerLevel = level;
-    next.lastPowerCommandId = commandId;
-    if (!store_.save(next)) return protocol::CommandStatus::StorageFailure;
-    config_ = next;
-    return protocol::CommandStatus::Applied;
-}
-
-void CommissioningService::applyRadioProfile() {
-    radio_.useOperationalProfile(config_);
-}
-
 bool CommissioningService::advance() {
     if (active()) return true;
     if (config_.nodeId != 0) return confirmJoin();

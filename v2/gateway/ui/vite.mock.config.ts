@@ -47,12 +47,9 @@ const commandTimers = new Map<number, ReturnType<typeof setTimeout>[]>()
 function queueMockCommand(body: Record<string, unknown>) {
   const node = nodes.find((entry) => entry.node_id === body.node_id && entry.state === 'active')
   if (!node) return { status: 404, body: { error: 'node_not_found' } }
-  const supported = node.profile_id === 6 ? ['set_radio_power', 'set_count'] : ['set_radio_power']
-  if (!supported.includes(String(body.type))) return { status: 422, body: { error: 'unsupported_command' } }
+  if (node.profile_id !== 6 || body.type !== 'set_count') return { status: 422, body: { error: 'unsupported_command' } }
   const args = (body.arguments ?? {}) as Record<string, number>
-  const valid = body.type === 'set_radio_power'
-    ? Number.isInteger(args.power_level) && args.power_level >= 0 && args.power_level <= 31
-    : Number.isInteger(args.count) && args.count >= 0 && args.count <= 0xffff_ffff
+  const valid = Number.isInteger(args.count) && args.count >= 0 && args.count <= 0xffff_ffff
   if (!valid) return { status: 422, body: { error: 'invalid_command_arguments' } }
   const existing = commands.findIndex((entry) => entry.node_id === node.node_id)
   if (existing >= 0 && commands[existing].state !== 'completed') return { status: 409, body: { error: 'command_pending' } }
