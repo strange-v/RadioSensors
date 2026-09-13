@@ -17,6 +17,7 @@ public:
     bool begin(uint8_t nodeId, uint8_t networkId);
     void useCommissioningProfile(const uint8_t factoryKey[16]);
     void useOperationalProfile(const storage::NetworkConfig& config);
+    void setPowerLevel(uint8_t level);
     // `ack` is what the acknowledgement carried, `ackRssi` its strength.
     bool sendTelemetry(
         uint8_t gatewayId, const uint8_t* frame, uint8_t size,

@@ -78,6 +78,19 @@ PA6 is the active-low provisioning button. A hold is timed with `millis()` while
 
 The gateway rejects a join request from a UID it still holds as active. To pair a reset node again, also delete it on the gateway (`DELETE /ui/nodes`).
 
+## Radio power
+
+Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`; every image uses 2 until its board is measured. The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
+
+| Event | Level |
+| --- | --- |
+| Commissioning | Ceiling |
+| Acknowledgement carrying a power target | The target clamped to the ceiling, stored and applied at once; fallback cleared |
+| Third consecutive report without acknowledgement | Ceiling with the fallback flag, unless already there |
+| Boot with a stored level above the ceiling | Ceiling |
+
+Level and fallback flag are part of the network configuration, so they survive a reset. The supply-limited flag is always zero.
+
 ## Command sessions
 
 An active node opens a command session when its button is short-pressed, or when a telemetry acknowledgement carries the command-pending flag ([PROTOCOL.md](../protocol/PROTOCOL.md)). It sends Command ready, listens 250 ms for the answer, and repeats up to three times with the same nonce. Input polling pauses meanwhile, as during a commissioning window.
