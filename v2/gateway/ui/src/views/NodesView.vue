@@ -64,6 +64,13 @@ async function afterNodeChange() {
   await load()
 }
 
+// A radio policy change keeps the dialog open on the refreshed record.
+async function refreshSelected() {
+  const nodeId = selected.value?.node_id
+  await fetchState(true)
+  selected.value = nodes.value.find((node) => node.node_id === nodeId) ?? null
+}
+
 type SortKey = 'name' | 'rssi' | 'lastSeen'
 const sortKey = ref<SortKey>('name')
 const sortAscending = ref(true)
@@ -294,7 +301,7 @@ onBeforeUnmount(() => { window.clearInterval(pairingTimer); window.clearInterval
       </section>
     </template>
 
-    <NodeDetail v-if="selected" :node="selected" @close="selected = null" @changed="afterNodeChange" />
+    <NodeDetail v-if="selected" :node="selected" @close="selected = null" @changed="afterNodeChange" @updated="refreshSelected" />
 
     <Modal v-if="showPairing" :title="$t('pairing.title')" :busy="scanning ? $t('pairing.scanState.scanning') : undefined" @close="closePairing">
       <div class="form-stack">

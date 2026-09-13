@@ -8,11 +8,13 @@ import { api, errorCode, isAdmin } from '../api/client'
 import type { GatewayNode } from '../api/types'
 import Modal from './Modal.vue'
 import NodeCommands from './NodeCommands.vue'
+import NodeRadio from './NodeRadio.vue'
 import SignalBars from './SignalBars.vue'
 import { byteLength, lastSeen, nodeName, signal } from '../utils/format'
 
 const props = defineProps<{ node: GatewayNode }>()
-const emit = defineEmits<{ close: []; changed: [] }>()
+// `changed` closes the dialog; `updated` refreshes it in place.
+const emit = defineEmits<{ close: []; changed: []; updated: [] }>()
 
 const { t } = useI18n()
 const DISPLAY_NAME_MAX_BYTES = 48
@@ -83,6 +85,7 @@ async function remove() {
         <div><dt>{{ $t('nodes.columnLastSeen') }}</dt><dd>{{ lastSeen(t, node.last_seen_at_ms) }}</dd></div>
       </dl>
 
+      <NodeRadio v-if="node.state === 'active'" :node="node" @updated="emit('updated')" />
       <NodeCommands v-if="node.state === 'active'" :key="node.node_id" :node="node" />
 
       <template v-if="isAdmin">

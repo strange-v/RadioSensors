@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { ApiTokenList, CommandList, CommandRequest, CreatedApiToken, NodeCommand, GatewayProbe, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
+import type { ApiTokenList, CommandList, CommandRequest, CreatedApiToken, NodeCommand, PatchedNode, PowerPolicyWrite, GatewayProbe, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
 
 export class ApiError extends Error { constructor(public status: number, public code: string) { super(code) } }
 
@@ -80,6 +80,7 @@ export const api = {
   queueCommand: (command: CommandRequest) => request<NodeCommand>('/ui/commands', { method: 'POST', body: JSON.stringify(command) }),
   cancelCommand: (nodeId: number) => request<void>('/ui/commands', { method: 'DELETE', body: JSON.stringify({ node_id: nodeId }) }),
   renameNode: (nodeId: number, displayName: string) => request<RenamedNode>('/ui/nodes', { method: 'PATCH', body: JSON.stringify({ node_id: nodeId, display_name: displayName }) }),
+  setPowerPolicy: (nodeId: number, policy: PowerPolicyWrite) => request<PatchedNode>('/ui/nodes', { method: 'PATCH', body: JSON.stringify({ node_id: nodeId, ...policy }) }),
   deleteNode: (nodeId: number) => request<void>('/ui/nodes', { method: 'DELETE', body: JSON.stringify({ node_id: nodeId }) }),
   settings: () => request<GatewaySettings>('/ui/settings'),
   updateSettings: (settings: Omit<GatewaySettings, 'generation'>) => request<GatewaySettings>('/ui/settings', { method: 'PUT', body: JSON.stringify(settings) }),
