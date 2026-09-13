@@ -1,5 +1,6 @@
 #pragma once
 
+#include <CommandSessionFrames.h>
 #include <ProfileIds.h>
 #include <TelemetryFrames.h>
 #include <stddef.h>
@@ -59,6 +60,9 @@ public:
         Serial.println(F(" s"));
 #endif
     }
+
+    void applyCommand(const protocol::Command&, protocol::CommandResult&) {}
+    void commissioned() {}
 
 private:
     Tmp112Sensor temperature_;

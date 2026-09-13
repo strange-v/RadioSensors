@@ -1,5 +1,6 @@
 #pragma once
 
+#include <CommandSessionFrames.h>
 #include <avr/io.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -27,6 +28,10 @@ namespace node {
 //   size_t encodeTelemetry(uint16_t supplyMillivolts, uint8_t* output,
 //                          size_t capacity);
 //   void reportAcknowledged(uint32_t now, uint16_t supplyMillivolts);
+//   void applyCommand(const protocol::Command& command,
+//                     protocol::CommandResult& result);
+//       // a profile command; `result.status` arrives as Unsupported
+//   void commissioned();  // forget command IDs recorded by the profile
 //
 // The contract is a template parameter, not an interface: avr-gcc keeps
 // vtables in RAM, and each image contains exactly one profile.
@@ -61,15 +66,15 @@ public:
         profile_.poll(now);
         if (radioReady_) {
             if (commissioning_.active()) {
-#if defined(NODE_DEBUG)
+                const bool commandPending = reportIfDue(now);
                 if (gesture == ButtonGesture::ShortPress) {
-                    Serial.println(
-                        F("button: command sessions are not implemented"));
+                    runCommandSession();
+                } else if (commandPending && hintedSessions_.allowed(now)) {
+                    hintedSessions_.finished(now, runCommandSession());
                 }
-#endif
-                reportIfDue(now);
             } else {
                 commissionIfDue(now, gesture == ButtonGesture::ShortPress);
+                if (commissioning_.active()) profile_.commissioned();
             }
         }
         clock_.sleepUntilInterrupt();
@@ -77,6 +82,8 @@ public:
 
 private:
     static constexpr uint32_t kJoinRetryIntervalMs = 5UL * 60UL * 1000UL;
+    static constexpr uint32_t kSessionWindowMs = 250;
+    static constexpr uint8_t kSessionAttempts = 3;
 
     // USERROW and profile EEPROM, including the counter, survive. The restart
     // brings the node up unconfigured, on its factory commissioning profile.
@@ -111,11 +118,12 @@ private:
         commissioning_.advance();
     }
 
-    void reportIfDue(const uint32_t now) {
+    // Returns whether the acknowledgement announced a pending command.
+    bool reportIfDue(const uint32_t now) {
         const bool urgent = profile_.takeUrgentReport();
         if (!profile_.reportDue(now) ||
             (!urgent && !radioRetry_.allowed(now))) {
-            return;
+            return false;
         }
 #if defined(NODE_DEBUG)
         Serial.println(F("telemetry: measuring"));
@@ -126,10 +134,11 @@ private:
         const size_t size =
             profile_.encodeTelemetry(supplyMillivolts, frame, sizeof(frame));
         bool acknowledged = false;
+        bool commandPending = false;
         if (size != 0) {
             acknowledged = radio_.sendTelemetry(
                 commissioning_.config().gatewayId, frame,
-                static_cast<uint8_t>(size));
+                static_cast<uint8_t>(size), commandPending);
             supplyVoltage_.transmitted(battery_.readMillivolts());
         }
         if (acknowledged) {
@@ -138,7 +147,7 @@ private:
 #if defined(NODE_DEBUG)
             Serial.print(F("telemetry: ack, vcc="));
             Serial.print(supplyMillivolts);
-            Serial.println(F(" mV"));
+            Serial.println(commandPending ? F(" mV, command pending") : F(" mV"));
 #endif
         } else {
             radioRetry_.failed(now);
@@ -146,6 +155,85 @@ private:
             Serial.println(F("telemetry: failed"));
 #endif
         }
+        return commandPending;
+    }
+
+    // Returns whether the gateway answered: with No command, or with a
+    // command that was then applied and answered.
+    bool runCommandSession() {
+        const uint8_t gatewayId = commissioning_.config().gatewayId;
+        const uint32_t nonce = commissioning_.createNonce();
+        uint8_t ready[protocol::kCommandReadySize];
+        protocol::encodeCommandReady(nonce, ready, sizeof(ready));
+        uint8_t frame[protocol::kMaxCommandSize];
+        for (uint8_t attempt = 0; attempt < kSessionAttempts; ++attempt) {
+            radio_.send(gatewayId, ready, sizeof(ready));
+            const uint8_t size = radio_.receiveFrame(
+                kSessionWindowMs, gatewayId, frame, sizeof(frame));
+            uint32_t echoed = 0;
+            if (protocol::decodeNoCommand(frame, size, echoed) ==
+                    protocol::CommandSessionCodecStatus::Ok &&
+                echoed == nonce) {
+#if defined(NODE_DEBUG)
+                Serial.println(F("command: none pending"));
+#endif
+                radio_.sleep();
+                return true;
+            }
+            protocol::Command command{};
+            if (protocol::decodeCommand(frame, size, command) ==
+                    protocol::CommandSessionCodecStatus::Ok &&
+                command.sessionNonce == nonce) {
+                answerCommand(gatewayId, command);
+                return true;
+            }
+        }
+#if defined(NODE_DEBUG)
+        Serial.println(F("command: gateway did not answer"));
+#endif
+        radio_.sleep();
+        return false;
+    }
+
+    void answerCommand(const uint8_t gatewayId, const protocol::Command& command) {
+        protocol::CommandResult result{};
+        result.sessionNonce = command.sessionNonce;
+        result.commandId = command.commandId;
+        result.status = protocol::CommandStatus::Unsupported;
+        bool powerStored = false;
+        if (command.type ==
+            static_cast<uint8_t>(protocol::CommandType::SetRadioPower)) {
+            if (protocol::validCommandArguments(
+                    command.type, command.arguments, command.argumentSize)) {
+                result.status = commissioning_.storeRadioPower(
+                    command.commandId, command.arguments[0]);
+                powerStored = result.status == protocol::CommandStatus::Applied;
+            } else {
+                result.status = protocol::CommandStatus::InvalidArgument;
+            }
+        } else {
+            profile_.applyCommand(command, result);
+        }
+        uint8_t bytes[protocol::kMaxCommandResultSize];
+        const bool sent =
+            protocol::encodeCommandResult(result, bytes, sizeof(bytes)) ==
+                protocol::CommandSessionCodecStatus::Ok &&
+            radio_.sendAcknowledged(
+                gatewayId, bytes,
+                static_cast<uint8_t>(protocol::commandResultFrameSize(result)));
+        if (powerStored) commissioning_.applyRadioProfile();
+        radio_.sleep();
+#if defined(NODE_DEBUG)
+        Serial.print(F("command: id="));
+        Serial.print(command.commandId);
+        Serial.print(F(" type="));
+        Serial.print(command.type);
+        Serial.print(F(" status="));
+        Serial.print(static_cast<uint8_t>(result.status));
+        Serial.println(sent ? F(" ack") : F(" no ack"));
+#else
+        (void)sent;
+#endif
     }
 
     Profile& profile_;
@@ -156,6 +244,7 @@ private:
     BatteryMonitor battery_;
     LoadedSupplyVoltage supplyVoltage_;
     RadioRetryBackoff radioRetry_;
+    HintedSessionPolicy hintedSessions_;
     uint32_t lastJoinAttempt_ = 0;
     bool radioReady_ = false;
     bool joinAttempted_ = false;

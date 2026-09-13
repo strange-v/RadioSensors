@@ -1,6 +1,7 @@
 #include "NodeRadio.h"
 
 #include <Arduino.h>
+#include <CommandSessionFrames.h>
 #include <string.h>
 
 namespace radiosensors {
@@ -41,11 +42,20 @@ void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
 }
 
 bool NodeRadio::sendTelemetry(
-    const uint8_t gatewayId, const uint8_t* frame, const uint8_t size) {
+    const uint8_t gatewayId, const uint8_t* frame, const uint8_t size,
+    bool& commandPending) {
     const bool acknowledged =
         radio_.sendWithRetry(gatewayId, frame, size, 2, 40);
+    // The acknowledgement is still in DATA until the radio receives again.
+    commandPending = acknowledged &&
+        protocol::telemetryAckCommandPending(radio_.DATA, radio_.DATALEN);
     radio_.sleep();
     return acknowledged;
+}
+
+bool NodeRadio::sendAcknowledged(
+    const uint8_t recipient, const uint8_t* frame, const uint8_t size) {
+    return radio_.sendWithRetry(recipient, frame, size, 2, 40);
 }
 
 void NodeRadio::send(
@@ -56,18 +66,33 @@ void NodeRadio::send(
 bool NodeRadio::receive(
     const uint32_t timeoutMs, const uint8_t expectedSender, uint8_t* output,
     const uint8_t expectedSize) {
+    return receiveMatching(
+               timeoutMs, expectedSender, output, expectedSize,
+               expectedSize) == expectedSize;
+}
+
+uint8_t NodeRadio::receiveFrame(
+    const uint32_t timeoutMs, const uint8_t expectedSender, uint8_t* output,
+    const uint8_t capacity) {
+    return receiveMatching(timeoutMs, expectedSender, output, 1, capacity);
+}
+
+uint8_t NodeRadio::receiveMatching(
+    const uint32_t timeoutMs, const uint8_t expectedSender, uint8_t* output,
+    const uint8_t minimumSize, const uint8_t maximumSize) {
     const uint32_t started = millis();
     radio_.receiveDone();
     while (static_cast<uint32_t>(millis() - started) < timeoutMs) {
         if (!radio_.receiveDone()) continue;
-        if (radio_.SENDERID == expectedSender &&
-            radio_.DATALEN == expectedSize) {
-            memcpy(output, radio_.DATA, expectedSize);
-            return true;
+        const uint8_t size = radio_.DATALEN;
+        if (radio_.SENDERID == expectedSender && size >= minimumSize &&
+            size <= maximumSize) {
+            memcpy(output, radio_.DATA, size);
+            return size;
         }
         radio_.receiveDone();
     }
-    return false;
+    return 0;
 }
 
 void NodeRadio::sleep() {

@@ -165,5 +165,32 @@ private:
     bool waiting_ = false;
 };
 
+// Limits command sessions that a telemetry acknowledgement starts. A gateway
+// that keeps announcing a command it never records would otherwise cost a
+// session per report: at most one per five minutes, and after one the gateway
+// did not answer, the radio retry delays.
+class HintedSessionPolicy {
+public:
+    static constexpr uint32_t kMinimumIntervalMs = 5UL * 60UL * 1000UL;
+
+    bool allowed(const uint32_t now) const {
+        return (!hasSession_ ||
+                intervalElapsed(now, lastSession_, kMinimumIntervalMs)) &&
+            unanswered_.allowed(now);
+    }
+
+    void finished(const uint32_t now, const bool answered) {
+        lastSession_ = now;
+        hasSession_ = true;
+        if (answered) unanswered_.succeeded();
+        else unanswered_.failed(now);
+    }
+
+private:
+    RadioRetryBackoff unanswered_;
+    uint32_t lastSession_ = 0;
+    bool hasSession_ = false;
+};
+
 }  // namespace node
 }  // namespace radiosensors

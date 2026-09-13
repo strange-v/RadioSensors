@@ -6,15 +6,12 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 
 - Consider an optional DIY onboarding mode based on a random commissioning code scoped to one gateway installation. It must be opt-in and provisioned into custom nodes by the builder; it must never become a product-wide key or replace unique factory credentials for pre-provisioned nodes.
 - Review registry locking. A commit holds the registry mutex across the NVS write in `store.save()`, and `activeProfileId()` takes that same mutex with `portMAX_DELAY` on the telemetry ingest path, so a pairing commit or a rename can block telemetry for the duration of a flash write. The radio receive path is already unaffected: it tests the lock-free active-node bitmap. Measure the worst-case NVS write before deciding whether to widen the lock-free view, shorten the critical section, or leave it.
-- Implement durable idempotent commands and the telemetry-ACK pending hint.
 - Design encrypted migration backup/restore and production recovery flows.
 - Validate sustained radio traffic, OTA coexistence, PBKDF2 timing, watchdog behavior, flash encryption, and secure boot policy.
 
 ## Nodes
 
 - Add `binary_tmp112` and `binary_sht40` with a fixed 5-minute climate interval; every report, periodic or on a state change, carries the full frame. Measure consumption against the battery-life target before settling the interval.
-- Implement PA6 short-press command sessions.
-- Freeze generic `COMMAND` and `COMMAND_RESULT` payloads and add the ACK pending hint flow.
-- Measure commissioning retry/RX-window and command receive durations.
+- Validate command sessions on hardware: button and ACK-flag sessions, a result lost after the node applied it, a gateway reboot between delivery and result, and a radio power change. Measure the session and commissioning receive windows, settle the 250 ms session window, and add both to POWER.md.
 
 `V1_FEATURE_INVENTORY.md` remains a temporary parity checklist until these node profiles are reviewed, then it should move to archive or be deleted.

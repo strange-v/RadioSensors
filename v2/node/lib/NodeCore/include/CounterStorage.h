@@ -219,6 +219,78 @@ private:
     uint32_t currentCount_ = 0;
 };
 
+enum class SetCountOutcome : uint8_t {
+    Applied,
+    Redelivered,
+    StorageFailure,
+};
+
+// Applies SET_COUNT in three recoverable steps: a Pending result, the new
+// count in the ring, then the Applied result. A command whose ID matches the
+// stored result is a redelivery and leaves the count alone.
+template <typename Storage>
+class SetCountJournal {
+public:
+    SetCountJournal(CounterStore<Storage>& counter, SetCountStore<Storage>& results)
+        : counter_(counter), results_(results) {}
+
+    // Finishes an apply interrupted by a reset. Call before counting pulses.
+    void recover(uint32_t& count) {
+        hasResult_ = results_.load(last_);
+        if (hasResult_ && last_.status == SetCountStatus::Pending) {
+            completePending(count);
+        }
+    }
+
+    SetCountOutcome apply(
+        const uint16_t commandId, const uint32_t requested, uint32_t& count,
+        SetCountResult& result) {
+        if (hasResult_ && commandId != 0 && last_.commandId == commandId) {
+            if (last_.status == SetCountStatus::Pending &&
+                !completePending(count)) {
+                return SetCountOutcome::StorageFailure;
+            }
+            result = last_;
+            return SetCountOutcome::Redelivered;
+        }
+        SetCountResult next{};
+        next.status = SetCountStatus::Pending;
+        next.commandId = commandId;
+        next.oldCount = count;
+        next.appliedCount = requested;
+        if (!results_.save(next)) return SetCountOutcome::StorageFailure;
+        last_ = next;
+        hasResult_ = true;
+        if (!completePending(count)) return SetCountOutcome::StorageFailure;
+        result = last_;
+        return SetCountOutcome::Applied;
+    }
+
+    // Commissioning starts a new command ID space, so an ID recorded under a
+    // previous installation must not look like a redelivery.
+    void forgetCommandIds(const uint32_t count) {
+        if (!hasResult_ || last_.commandId == 0) return;
+        SetCountResult cleared{};
+        cleared.status = SetCountStatus::Applied;
+        cleared.oldCount = count;
+        cleared.appliedCount = count;
+        if (results_.save(cleared)) last_ = cleared;
+    }
+
+private:
+    bool completePending(uint32_t& count) {
+        count = last_.appliedCount;
+        if (!counter_.save(count)) return false;
+        last_.status = SetCountStatus::Applied;
+        return results_.save(last_);
+    }
+
+    CounterStore<Storage>& counter_;
+    SetCountStore<Storage>& results_;
+    SetCountResult last_{};
+    bool hasResult_ = false;
+};
+
 }  // namespace storage
 }  // namespace node
 }  // namespace radiosensors

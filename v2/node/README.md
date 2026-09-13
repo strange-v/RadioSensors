@@ -73,10 +73,21 @@ PA6 is the active-low provisioning button. A hold is timed with `millis()` while
 
 | Gesture | Effect |
 | --- | --- |
-| Released within 10 s | Unconfigured or provisional node: commissioning attempt. Active node: reserved for the planned `COMMAND_READY` session. |
+| Released within 10 s | Unconfigured or provisional node: commissioning attempt. Active node: command session. |
 | Held for 10 s | Invalidates both network configuration slots and restarts the node unconfigured. USERROW and profile EEPROM, including the counter, are preserved. Refused when the factory credentials are invalid, because the node could never rejoin. |
 
 The gateway rejects a join request from a UID it still holds as active. To pair a reset node again, also delete it on the gateway (`DELETE /ui/nodes`).
+
+## Command sessions
+
+An active node opens a command session when its button is short-pressed, or when a telemetry acknowledgement carries the command-pending flag ([PROTOCOL.md](../protocol/PROTOCOL.md)). It sends Command ready, listens 250 ms for the answer, and repeats up to three times with the same nonce. Input polling pauses meanwhile, as during a commissioning window.
+
+| Command | Handled by | Effect |
+| --- | --- | --- |
+| `set_radio_power` | runtime, every image | Stored with the network configuration; the result goes out at the previous level and the new level applies afterwards |
+| `set_count` | counter image | Pending result, ring write, Applied result ([EEPROM.md](EEPROM.md)); the count is reported again within a minute |
+
+Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the 1/5/15/60-minute telemetry retry delays. A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.
 
 ## Persistence and protocols
 
