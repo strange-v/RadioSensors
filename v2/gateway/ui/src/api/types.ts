@@ -43,8 +43,8 @@ export interface GatewayNode {
   has_telemetry?: boolean
 }
 // The command types of v2/protocol/protocol-manifest.json.
-export type CommandType = 'set_radio_power' | 'set_count'
-export interface CommandArguments { power_level?: number; count?: number }
+export type CommandType = 'set_count'
+export interface CommandArguments { count?: number }
 export interface NodeCommand {
   node_id: number
   command_id: number

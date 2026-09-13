@@ -1,6 +1,6 @@
 # OSK Sense Node firmware
 
-This PlatformIO project produces one statically composed ATtiny1614 image per stable telemetry profile. Shared code owns commissioning, radio, EEPROM, power, the wake clock, and command sessions; profiles own acquisition, report scheduling, and payload encoding. `node_test` remains separate bench firmware.
+This PlatformIO project produces one statically composed ATtiny1614 image per stable telemetry profile. Shared code owns commissioning, radio, EEPROM, power, the wake clock, and command sessions; profiles own acquisition, report scheduling, and payload encoding.
 
 ## Builds
 
@@ -84,7 +84,6 @@ An active node opens a command session when its button is short-pressed, or when
 
 | Command | Handled by | Effect |
 | --- | --- | --- |
-| `set_radio_power` | runtime, every image | Stored with the network configuration; the result goes out at the previous level and the new level applies afterwards |
 | `set_count` | counter image | Pending result, ring write, Applied result ([EEPROM.md](EEPROM.md)); the count is reported again within a minute |
 
 Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the 1/5/15/60-minute telemetry retry delays. A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.

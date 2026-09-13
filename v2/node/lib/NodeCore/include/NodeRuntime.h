@@ -200,20 +200,7 @@ private:
         result.sessionNonce = command.sessionNonce;
         result.commandId = command.commandId;
         result.status = protocol::CommandStatus::Unsupported;
-        bool powerStored = false;
-        if (command.type ==
-            static_cast<uint8_t>(protocol::CommandType::SetRadioPower)) {
-            if (protocol::validCommandArguments(
-                    command.type, command.arguments, command.argumentSize)) {
-                result.status = commissioning_.storeRadioPower(
-                    command.commandId, command.arguments[0]);
-                powerStored = result.status == protocol::CommandStatus::Applied;
-            } else {
-                result.status = protocol::CommandStatus::InvalidArgument;
-            }
-        } else {
-            profile_.applyCommand(command, result);
-        }
+        profile_.applyCommand(command, result);
         uint8_t bytes[protocol::kMaxCommandResultSize];
         const bool sent =
             protocol::encodeCommandResult(result, bytes, sizeof(bytes)) ==
@@ -221,7 +208,6 @@ private:
             radio_.sendAcknowledged(
                 gatewayId, bytes,
                 static_cast<uint8_t>(protocol::commandResultFrameSize(result)));
-        if (powerStored) commissioning_.applyRadioProfile();
         radio_.sleep();
 #if defined(NODE_DEBUG)
         Serial.print(F("command: id="));

@@ -70,19 +70,6 @@
     "types": [
       {
         "type": 1,
-        "name": "set_radio_power",
-        "arguments": [
-          {
-            "name": "power_level",
-            "offset": 8,
-            "encoding": "uint8",
-            "valid_raw": { "min": 0, "max": 31 }
-          }
-        ],
-        "result": []
-      },
-      {
-        "type": 2,
         "name": "set_count",
         "arguments": [
           { "name": "count", "offset": 8, "encoding": "uint32_le" }
@@ -245,14 +232,14 @@
         "id": 1,
         "name": "voltage",
         "frame_size": 3,
-        "commands": [1],
+        "commands": [],
         "fields": []
       },
       {
         "id": 2,
         "name": "temperature",
         "frame_size": 5,
-        "commands": [1],
+        "commands": [],
         "fields": [
           {
             "name": "temperature",
@@ -270,7 +257,7 @@
         "id": 3,
         "name": "climate_th",
         "frame_size": 7,
-        "commands": [1],
+        "commands": [],
         "fields": [
           {
             "name": "temperature",
@@ -298,7 +285,7 @@
         "id": 4,
         "name": "climate_thp",
         "frame_size": 9,
-        "commands": [1],
+        "commands": [],
         "fields": [
           {
             "name": "temperature",
@@ -336,7 +323,7 @@
         "id": 5,
         "name": "binary_input",
         "frame_size": 4,
-        "commands": [1],
+        "commands": [],
         "fields": [
           {
             "name": "state",
@@ -351,7 +338,7 @@
         "id": 6,
         "name": "pulse_counter",
         "frame_size": 7,
-        "commands": [1, 2],
+        "commands": [1],
         "fields": [
           {
             "name": "count",
@@ -365,7 +352,7 @@
         "id": 7,
         "name": "binary_climate_th",
         "frame_size": 8,
-        "commands": [1],
+        "commands": [],
         "fields": [
           {
             "name": "state",
@@ -400,7 +387,7 @@
         "id": 8,
         "name": "binary_temperature",
         "frame_size": 6,
-        "commands": [1],
+        "commands": [],
         "fields": [
           {
             "name": "state",

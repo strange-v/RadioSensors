@@ -61,19 +61,18 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('NodeCommands', () => {
-  it('offers the count only on a counter profile', async () => {
+  it('appears only on a profile that has commands', async () => {
     const counter = await mountCard()
-    expect(counter.findAll('.segmented button').map((button) => button.text()))
-      .toEqual([en.commands.type.set_radio_power, en.commands.type.set_count])
+    expect(counter.find('.segmented').exists()).toBe(false)
+    expect(counter.get('label span').text()).toBe(en.commands.field.set_count)
 
     const climate = await mountCard(node({ profile_id: 2 }))
-    expect(climate.find('.segmented').exists()).toBe(false)
-    expect(climate.get('label span').text()).toBe(en.commands.field.set_radio_power)
+    expect(climate.find('.node-commands').exists()).toBe(false)
   })
 
-  it('refuses a radio power level the node cannot use', async () => {
-    const wrapper = await mountCard(node({ profile_id: 2 }))
-    await wrapper.get('input').setValue('32')
+  it('refuses a count the node cannot store', async () => {
+    const wrapper = await mountCard()
+    await wrapper.get('input').setValue('4294967296')
     expect(wrapper.get('.button.primary').attributes('disabled')).toBeDefined()
     expect(wrapper.find('small.invalid').exists()).toBe(true)
 
@@ -83,7 +82,6 @@ describe('NodeCommands', () => {
 
   it('queues a command and follows it until the node answers', async () => {
     const wrapper = await mountCard()
-    await wrapper.findAll('.segmented button')[1].trigger('click')
     await wrapper.get('input').setValue('1234')
     await wrapper.get('.button.primary').trigger('click')
     await flushPromises()
@@ -106,8 +104,8 @@ describe('NodeCommands', () => {
   })
 
   it('sends from the keyboard, and not while the value is invalid', async () => {
-    const wrapper = await mountCard(node({ profile_id: 2 }))
-    await wrapper.get('input').setValue('40')
+    const wrapper = await mountCard()
+    await wrapper.get('input').setValue('-1')
     await wrapper.get('input').trigger('keydown', { key: 'Enter' })
     await flushPromises()
     expect(gatewayApi.queueCommand).not.toHaveBeenCalled()
@@ -115,7 +113,7 @@ describe('NodeCommands', () => {
     await wrapper.get('input').setValue('12')
     await wrapper.get('input').trigger('keydown', { key: 'Enter' })
     await flushPromises()
-    expect(gatewayApi.queueCommand).toHaveBeenCalledWith({ node_id: 6, type: 'set_radio_power', arguments: { power_level: 12 } })
+    expect(gatewayApi.queueCommand).toHaveBeenCalledWith({ node_id: 6, type: 'set_count', arguments: { count: 12 } })
   })
 
   it('cancels a waiting command', async () => {
