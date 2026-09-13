@@ -10,10 +10,6 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 - Validate sustained radio traffic, OTA coexistence, PBKDF2 timing, watchdog behavior, flash encryption, and secure boot policy.
 - Report NVS usage in `/ui/status`. A full registry leaves little free space for slot rewrites in the 20 KiB partition; enlarge it if that is confirmed.
 
-## Clients
-
-- Update the Home Assistant integration to the five-byte telemetry prefix and expose `tx_power_level`, `radio_fallback`, and `downlink_rssi` as diagnostic entities.
-
 ## Nodes
 
 - Add `binary_tmp112` and `binary_sht40` with a fixed 5-minute climate interval; every report, periodic or on a state change, carries the full frame. Measure consumption against the battery-life target before settling the interval.
