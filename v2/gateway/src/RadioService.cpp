@@ -1,11 +1,13 @@
 #include "RadioService.h"
 
 #include <RFM69.h>
+#include <CommandSessionFrames.h>
 #include <JoinRequest.h>
 #include <SPI.h>
 
 #include <atomic>
 
+#include "CommandService.h"
 #include "RadioConfig.h"
 #include "NodeRegistryStore.h"
 #include "ConfigurationStore.h"
@@ -21,6 +23,7 @@ constexpr uint32_t kTaskStackSize = 4096;
 constexpr UBaseType_t kTaskPriority = 11;
 constexpr BaseType_t kTaskCore = 1;
 constexpr UBaseType_t kRxQueueDepth = 16;
+constexpr UBaseType_t kSessionQueueDepth = 8;
 constexpr UBaseType_t kCommandQueueDepth = 8;
 constexpr uint8_t kInitializationAttempts = 3;
 constexpr uint32_t kInitializationRecoveryDelayMs = 25;
@@ -46,6 +49,7 @@ TaskHandle_t radioTaskHandle = nullptr;
 QueueHandle_t interruptQueue = nullptr;
 QueueHandle_t receivedFrameQueue = nullptr;
 QueueHandle_t telemetryFrameQueue = nullptr;
+QueueHandle_t sessionFrameQueue = nullptr;
 QueueHandle_t commandQueue = nullptr;
 QueueHandle_t commandCompletionQueue = nullptr;
 SemaphoreHandle_t synchronousCommandMutex = nullptr;
@@ -88,6 +92,11 @@ struct TaskStats {
     uint32_t commandsQueued = 0;
     uint32_t commandsDropped = 0;
     uint32_t commandsProcessed = 0;
+    uint32_t sessionFramesQueued = 0;
+    uint32_t sessionFramesDropped = 0;
+    uint32_t sessionFramesRejected = 0;
+    uint32_t commandResultAcksSent = 0;
+    uint32_t commandHintsSent = 0;
     uint32_t lastPacketMs = 0;
     uint16_t lastSenderId = 0;
     int16_t lastRssi = 0;
@@ -170,11 +179,15 @@ void drainReceivedFrame() {
         }
         portEXIT_CRITICAL(&statsMux);
 
+        const bool active = senderId <= UINT8_MAX &&
+            currentProfile.load() == Profile::Operational &&
+            registry_store::isActiveNode(static_cast<uint8_t>(senderId));
+        const bool sessionFrame =
+            decodeStatus == radiosensors::protocol::DecodeStatus::Ok &&
+            (frame.kind == radiosensors::protocol::FrameKind::CommandReady ||
+             frame.kind == radiosensors::protocol::FrameKind::CommandResult);
         if (decodeStatus == radiosensors::protocol::DecodeStatus::Ok &&
             frame.kind == radiosensors::protocol::FrameKind::Telemetry) {
-            const bool active = senderId <= UINT8_MAX &&
-                currentProfile.load() == Profile::Operational &&
-                registry_store::isActiveNode(static_cast<uint8_t>(senderId));
             const bool queued = active &&
                 xQueueSendToBack(telemetryFrameQueue, &received, 0) == pdPASS;
             portENTER_CRITICAL(&statsMux);
@@ -185,17 +198,39 @@ void drainReceivedFrame() {
 
             // An ACK means the active node's frame was accepted into the
             // bounded telemetry queue. If the queue is full, make the node
-            // retry instead of acknowledging data that was discarded.
+            // retry instead of acknowledging data that was discarded. Its
+            // payload tells the node a command is waiting for it.
             if (queued && ackRequested) {
-                rfm69.sendACK();
+                const uint8_t flags =
+                    commands::hasPending(static_cast<uint8_t>(senderId))
+                        ? radiosensors::protocol::kTelemetryAckCommandPending
+                        : 0;
+                if (flags != 0) rfm69.sendACK(&flags, sizeof(flags));
+                else rfm69.sendACK();
                 portENTER_CRITICAL(&statsMux);
                 ++taskStats.telemetryAcksSent;
+                if (flags != 0) ++taskStats.commandHintsSent;
                 portEXIT_CRITICAL(&statsMux);
             } else if (ackRequested) {
                 portENTER_CRITICAL(&statsMux);
                 ++taskStats.ackRequestsIgnored;
                 portEXIT_CRITICAL(&statsMux);
             }
+        } else if (sessionFrame) {
+            const bool queued = active &&
+                xQueueSendToBack(sessionFrameQueue, &received, 0) == pdPASS;
+            // Like telemetry, a result is acknowledged once it is queued: one
+            // lost before it is recorded is redelivered in a later session.
+            const bool acknowledge = queued && ackRequested &&
+                frame.kind == radiosensors::protocol::FrameKind::CommandResult;
+            if (acknowledge) rfm69.sendACK();
+            portENTER_CRITICAL(&statsMux);
+            if (!active) ++taskStats.sessionFramesRejected;
+            else if (queued) ++taskStats.sessionFramesQueued;
+            else ++taskStats.sessionFramesDropped;
+            if (acknowledge) ++taskStats.commandResultAcksSent;
+            else if (ackRequested) ++taskStats.ackRequestsIgnored;
+            portEXIT_CRITICAL(&statsMux);
         } else if (decodeStatus == radiosensors::protocol::DecodeStatus::Ok) {
             const bool queued =
                 xQueueSendToBack(receivedFrameQueue, &received, 0) == pdPASS;
@@ -403,12 +438,13 @@ bool begin() {
     interruptQueue = xQueueCreate(1, sizeof(uint8_t));
     receivedFrameQueue = xQueueCreate(kRxQueueDepth, sizeof(ReceivedFrame));
     telemetryFrameQueue = xQueueCreate(kRxQueueDepth, sizeof(ReceivedFrame));
+    sessionFrameQueue = xQueueCreate(kSessionQueueDepth, sizeof(ReceivedFrame));
     commandQueue = xQueueCreate(kCommandQueueDepth, sizeof(RadioCommand));
     commandCompletionQueue = xQueueCreate(kCommandQueueDepth, sizeof(uint32_t));
     synchronousCommandMutex = xSemaphoreCreateMutex();
     radioQueueSet = xQueueCreateSet(1 + kCommandQueueDepth);
     if (interruptQueue == nullptr || receivedFrameQueue == nullptr ||
-        telemetryFrameQueue == nullptr ||
+        telemetryFrameQueue == nullptr || sessionFrameQueue == nullptr ||
         commandQueue == nullptr || commandCompletionQueue == nullptr ||
         synchronousCommandMutex == nullptr || radioQueueSet == nullptr ||
         xQueueAddToSet(interruptQueue, radioQueueSet) != pdPASS ||
@@ -468,6 +504,14 @@ bool receiveTelemetry(ReceivedFrame& frame, const TickType_t waitTicks) {
         return false;
     }
     return xQueueReceive(telemetryFrameQueue, &frame, waitTicks) == pdPASS;
+}
+
+bool receiveSessionFrame(ReceivedFrame& frame, const TickType_t waitTicks) {
+    if (sessionFrameQueue == nullptr) {
+        if (waitTicks > 0) vTaskDelay(waitTicks);
+        return false;
+    }
+    return xQueueReceive(sessionFrameQueue, &frame, waitTicks) == pdPASS;
 }
 
 bool requestProfile(const Profile profile) {
@@ -626,6 +670,11 @@ Snapshot snapshot() {
     result.commandsQueued = taskStats.commandsQueued;
     result.commandsDropped = taskStats.commandsDropped;
     result.commandsProcessed = taskStats.commandsProcessed;
+    result.sessionFramesQueued = taskStats.sessionFramesQueued;
+    result.sessionFramesDropped = taskStats.sessionFramesDropped;
+    result.sessionFramesRejected = taskStats.sessionFramesRejected;
+    result.commandResultAcksSent = taskStats.commandResultAcksSent;
+    result.commandHintsSent = taskStats.commandHintsSent;
     result.profile = currentProfile.load();
     result.currentNetworkId = currentNetworkId.load();
     result.lastPacketMs = taskStats.lastPacketMs;

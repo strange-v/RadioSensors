@@ -70,7 +70,7 @@ Web UI:
 | POST | `/ui/radio/reset` | admin session + CSRF | implemented |
 | POST | `/ui/pairing/open` | admin | implemented |
 | POST | `/ui/pairing/close` | admin | implemented |
-| POST | `/ui/commands` | admin | planned |
+| GET, POST, DELETE | `/ui/commands` | session; admin + CSRF for POST and DELETE | implemented |
 | GET | `/ui/export` | admin | planned |
 | POST | `/ui/restore` | admin plus destructive confirmation | planned |
 
@@ -218,7 +218,45 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
 
 The name may be empty and must contain at most 48 valid UTF-8 bytes without control characters. The response contains the applied name and durable `registry_generation`. Invalid names return `422 invalid_display_name` and an unknown node returns `404 node_not_found`.
 
-`DELETE /ui/nodes` accepts `{"node_id":7}`, requires an admin session plus CSRF, removes the durable registry entry and its in-memory telemetry, and returns `204`. It does not reset an offline physical node: that node will keep its old network credentials and must be factory-reset before it can be paired again.
+`DELETE /ui/nodes` accepts `{"node_id":7}`, requires an admin session plus CSRF, removes the durable registry entry, its command record, and its in-memory telemetry, and returns `204`. It does not reset an offline physical node: that node will keep its old network credentials and must be factory-reset before it can be paired again.
+
+## Commands
+
+A command changes state on a sleeping node, which fetches it in a radio session ([PROTOCOL.md](../protocol/PROTOCOL.md)). A node has at most one pending command. The gateway keeps it, and the result of the node's last command, in the durable command book ([STORAGE.md](STORAGE.md)).
+
+`GET /ui/commands` requires a session of any role:
+
+```json
+{"commands":[
+  {"node_id":7,"command_id":4661,"type":"set_count","arguments":{"count":1234},"queued_at_ms":1770000000000,"state":"delivered"},
+  {"node_id":9,"command_id":4660,"type":"set_radio_power","arguments":{"power_level":16},"queued_at_ms":1770000000000,"state":"completed","status":"applied","completed_at_ms":1770000060000}
+]}
+```
+
+| `state` | Meaning |
+| --- | --- |
+| `pending` | Waiting for the node to open a session |
+| `delivered` | Sent to the node since this boot; its result has not arrived |
+| `completed` | The node reported `status`: `applied`, `unsupported`, or `invalid_argument` |
+
+An applied `set_count` also carries `"result":{"previous_count":1200,"count":1234}`. Timestamps are zero before time synchronization.
+
+`POST /ui/commands` requires an admin session plus CSRF and queues one command:
+
+```json
+{"node_id":7,"type":"set_count","arguments":{"count":1234}}
+```
+
+| `type` | `arguments` | Profiles |
+| --- | --- | --- |
+| `set_radio_power` | `power_level`: `0..31` | all |
+| `set_count` | `count`: unsigned 32-bit | 6 |
+
+The response is `201` with the queued command in the listing shape. Errors: `400 invalid_request`, `404 node_not_found` when no active node has the ID, `409 command_pending`, `409 command_capacity_reached`, `422 invalid_command_values`, `422 unsupported_command` for an unknown type or one the node's profile lacks, `422 invalid_command_arguments`, `500 command_storage_failed`, or `503 commands_unavailable`.
+
+The node fetches the command when its button is short-pressed or with its next acknowledged telemetry, whichever comes first. The Web UI polls the listing meanwhile. While a pairing window is open the radio listens on the commissioning network, so no session completes.
+
+`DELETE /ui/commands` accepts `{"node_id":7}`, requires an admin session plus CSRF, removes the node's pending command, and returns `204`, or `404 command_not_found` when none is pending. A delivered command may already be applied on the node; cancelling it only discards its result.
 
 ## Settings
 
@@ -248,7 +286,7 @@ The UID is exactly 10 bytes and the factory key exactly 16 bytes, both encoded a
 
 A value from 1 to 255 is applied as given; omit the field to have the gateway generate one. Zero or a non-integer returns `422 invalid_operational_network_id`.
 
-The operation clears the node registry and cached telemetry before writing the new secrets, because every registered node is bound to the previous network and key. It answers `202` with the applied ID and the number of removed records, then restarts: the radio reads its profile once at boot, so a running gateway cannot switch networks in place.
+The operation clears the node registry, the command book, and cached telemetry before writing the new secrets, because every registered node is bound to the previous network and key. It answers `202` with the applied ID and the number of removed records, then restarts: the radio reads its profile once at boot, so a running gateway cannot switch networks in place.
 
 ```json
 {"operational_network_id":42,"removed_nodes":6,"restarting":true}

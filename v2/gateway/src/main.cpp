@@ -2,6 +2,7 @@
 
 #include "BoardProfile.h"
 #include "AuthenticationService.h"
+#include "CommandService.h"
 #include "CommissioningService.h"
 #include "ConfigurationStore.h"
 #include "Diagnostics.h"
@@ -74,6 +75,7 @@ void setup() {
     } else {
         Serial.println("Commissioning disabled because RFM69 is unavailable");
     }
+    gateway::commands::begin(radioReady);
     gateway::web_server::begin();
     gateway::ota::begin();
 }

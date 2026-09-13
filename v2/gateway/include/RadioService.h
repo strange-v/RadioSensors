@@ -57,6 +57,11 @@ struct Snapshot {
     uint32_t commandsQueued;
     uint32_t commandsDropped;
     uint32_t commandsProcessed;
+    uint32_t sessionFramesQueued;
+    uint32_t sessionFramesDropped;
+    uint32_t sessionFramesRejected;
+    uint32_t commandResultAcksSent;
+    uint32_t commandHintsSent;
     Profile profile;
     uint8_t currentNetworkId;
     uint32_t lastPacketMs;
@@ -67,6 +72,8 @@ struct Snapshot {
 bool begin();
 bool receive(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool receiveTelemetry(ReceivedFrame& frame, TickType_t waitTicks = 0);
+// Command ready and Command result frames from active nodes.
+bool receiveSessionFrame(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool requestProfile(Profile profile);
 bool beginCommissioning(const uint8_t key[16]);
 bool send(uint16_t targetId, const uint8_t* data, size_t size, bool requestAck = false);
