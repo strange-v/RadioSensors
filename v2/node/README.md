@@ -80,7 +80,7 @@ The gateway rejects a join request from a UID it still holds as active. To pair 
 
 ## Radio power
 
-Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`; every image uses 2 until its board is measured. The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
+Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`; every image uses 2 until its board is measured. The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame. That RSSI is sampled when the acknowledgement's sync word matches: the RFM69 keeps measuring the channel after a frame ends, so a read after reception returns anything between the frame and the noise floor ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
 
 | Event | Level |
 | --- | --- |

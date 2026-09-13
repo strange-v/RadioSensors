@@ -18,10 +18,11 @@ public:
     void useCommissioningProfile(const uint8_t factoryKey[16]);
     void useOperationalProfile(const storage::NetworkConfig& config);
     void setPowerLevel(uint8_t level);
-    // `ack` is what the acknowledgement carried, `ackRssi` its strength.
+    // `ack` is what the acknowledgement carried, `downlinkRssi` its strength
+    // or protocol::kNoDownlinkRssi.
     bool sendTelemetry(
         uint8_t gatewayId, const uint8_t* frame, uint8_t size,
-        protocol::TelemetryAck& ack, int16_t& ackRssi);
+        protocol::TelemetryAck& ack, int8_t& downlinkRssi);
     bool sendAcknowledged(uint8_t recipient, const uint8_t* frame, uint8_t size);
     void send(uint8_t recipient, const uint8_t* frame, uint8_t size);
     bool receive(

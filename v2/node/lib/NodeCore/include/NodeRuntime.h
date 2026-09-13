@@ -135,7 +135,7 @@ private:
             profile_.encodeTelemetry(prefix, frame, sizeof(frame));
         bool acknowledged = false;
         protocol::TelemetryAck ack{false, false, 0};
-        int16_t ackRssi = 0;
+        int8_t ackRssi = protocol::kNoDownlinkRssi;
         if (size != 0) {
             acknowledged = radio_.sendTelemetry(
                 commissioning_.config().gatewayId, frame,
@@ -143,7 +143,7 @@ private:
             supplyVoltage_.transmitted(battery_.readMillivolts());
         }
         if (acknowledged) {
-            downlinkRssi_ = protocol::downlinkRssiValue(ackRssi);
+            downlinkRssi_ = ackRssi;
             profile_.reportAcknowledged(now, prefix.supplyMillivolts);
             radioRetry_.succeeded();
             unacknowledgedReports_ = 0;
@@ -152,7 +152,8 @@ private:
                 commissioning_.config().radioFallback, ack.hasPowerTarget,
                 ack.powerTarget, NODE_RADIO_MAX_POWER_LEVEL));
 #if defined(NODE_DEBUG)
-            // After an ack the RSSI is in [-127, 0] dBm: print its magnitude.
+            // The RSSI is in [-128, 0] dBm, -128 when not measured: print
+            // its magnitude.
             Serial.print(F("tx ok mv="));
             Serial.print(prefix.supplyMillivolts);
             debugValue(F(" rssi=-"), static_cast<uint8_t>(-downlinkRssi_));
