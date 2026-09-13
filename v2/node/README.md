@@ -67,7 +67,7 @@ A counter additionally accepts a new level only after it has persisted for `NODE
 
 A binary input reports each confirmed change in the same wake-up, even while radio retry backoff is active; if that attempt fails, the report waits for the backoff like any other. State `1` means the contact is open. Binary-input and counter profiles use a rolling one-hour keep-alive from the last acknowledged report. A counter counts from boot, including before commissioning, persists every confirmed LOW-to-HIGH pulse before any transmission, and reports the absolute count no more than once per minute while dirty.
 
-Measured on the internal board, `counter_reed` draws 1.8 µA between wake-ups and 2.8 µA on average with the contact idle; one acknowledged transmission takes about 19 ms at 12.8 mA. A CR2032 therefore covers several years of gas metering.
+Measured consumption and the battery budget are in [POWER.md](POWER.md).
 
 PA6 is the active-low provisioning button. A hold is timed with `millis()` while the MCU stays awake, so input polling pauses until the button is released or the hold completes.
 

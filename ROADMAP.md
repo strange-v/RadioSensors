@@ -12,11 +12,9 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 
 ## Nodes
 
-- Validate the binary-input runtime on hardware: reaction latency and sleep current.
 - Add `binary_tmp112` and `binary_sht40` with a fixed 5-minute climate interval; every report, periodic or on a state change, carries the full frame. Measure consumption against the battery-life target before settling the interval.
 - Implement PA6 short-press command sessions.
 - Freeze generic `COMMAND` and `COMMAND_RESULT` payloads and add the ACK pending hint flow.
-- Measure climate and binary-input sleep current with the unused-pin configuration.
 - Measure commissioning retry/RX-window and command receive durations.
 
 `V1_FEATURE_INVENTORY.md` remains a temporary parity checklist until these node profiles are reviewed, then it should move to archive or be deleted.

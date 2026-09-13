@@ -50,6 +50,7 @@ HTTP authentication does not protect credentials from LAN packet capture. TLS/WS
 - REST endpoints and JSON: `v2/gateway/API.md`.
 - WebSocket bytes and resynchronization: `v2/gateway/WEBSOCKET.md`.
 - Persistent bytes: `v2/gateway/STORAGE.md` and `v2/node/EEPROM.md`.
+- Measured node consumption and battery budgets: `v2/node/POWER.md`.
 - Build, upload, wiring, and bench use: component README files.
 - Unfinished work only: `ROADMAP.md`.
 
