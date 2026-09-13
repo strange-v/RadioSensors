@@ -71,10 +71,10 @@ public:
     bool takeUrgentReport() { return false; }
 
     size_t encodeTelemetry(
-        const uint16_t supplyMillivolts, uint8_t* output,
+        const protocol::TelemetryPrefix& prefix, uint8_t* output,
         const size_t capacity) {
         return protocol::encodeCounterTelemetry(
-                   supplyMillivolts, count_, output, capacity) ==
+                   prefix, count_, output, capacity) ==
                 protocol::TelemetryCodecStatus::Ok
             ? kTelemetrySize
             : 0;

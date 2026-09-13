@@ -1,6 +1,7 @@
 #pragma once
 
 #include <CommandSessionFrames.h>
+#include <TelemetryFrames.h>
 #include <avr/io.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -25,8 +26,8 @@ namespace node {
 //   bool reportDue(uint32_t now) const;
 //   bool takeUrgentReport();  // true once per event that must not wait for
 //                             // radio retry backoff
-//   size_t encodeTelemetry(uint16_t supplyMillivolts, uint8_t* output,
-//                          size_t capacity);
+//   size_t encodeTelemetry(const protocol::TelemetryPrefix& prefix,
+//                          uint8_t* output, size_t capacity);
 //   void reportAcknowledged(uint32_t now, uint16_t supplyMillivolts);
 //   void applyCommand(const protocol::Command& command,
 //                     protocol::CommandResult& result);
@@ -128,26 +129,32 @@ private:
 #if defined(NODE_DEBUG)
         Serial.println(F("telemetry: measuring"));
 #endif
-        const uint16_t supplyMillivolts =
-            supplyVoltage_.report(battery_.readMillivolts());
+        const protocol::TelemetryPrefix prefix{
+            supplyVoltage_.report(battery_.readMillivolts()),
+            protocol::encodeRadioState(
+                commissioning_.config().powerLevel, false, false),
+            downlinkRssi_};
         uint8_t frame[Profile::kTelemetrySize];
         const size_t size =
-            profile_.encodeTelemetry(supplyMillivolts, frame, sizeof(frame));
+            profile_.encodeTelemetry(prefix, frame, sizeof(frame));
         bool acknowledged = false;
-        bool commandPending = false;
+        protocol::TelemetryAck ack{false, false, 0};
+        int16_t ackRssi = 0;
         if (size != 0) {
             acknowledged = radio_.sendTelemetry(
                 commissioning_.config().gatewayId, frame,
-                static_cast<uint8_t>(size), commandPending);
+                static_cast<uint8_t>(size), ack, ackRssi);
             supplyVoltage_.transmitted(battery_.readMillivolts());
         }
         if (acknowledged) {
-            profile_.reportAcknowledged(now, supplyMillivolts);
+            downlinkRssi_ = protocol::downlinkRssiValue(ackRssi);
+            profile_.reportAcknowledged(now, prefix.supplyMillivolts);
             radioRetry_.succeeded();
 #if defined(NODE_DEBUG)
             Serial.print(F("telemetry: ack, vcc="));
-            Serial.print(supplyMillivolts);
-            Serial.println(commandPending ? F(" mV, command pending") : F(" mV"));
+            Serial.print(prefix.supplyMillivolts);
+            Serial.print(F(" mV, rssi="));
+            Serial.println(downlinkRssi_);
 #endif
         } else {
             radioRetry_.failed(now);
@@ -155,7 +162,7 @@ private:
             Serial.println(F("telemetry: failed"));
 #endif
         }
-        return commandPending;
+        return acknowledged && ack.commandPending;
     }
 
     // Returns whether the gateway answered: with No command, or with a
@@ -231,6 +238,7 @@ private:
     LoadedSupplyVoltage supplyVoltage_;
     RadioRetryBackoff radioRetry_;
     HintedSessionPolicy hintedSessions_;
+    int8_t downlinkRssi_ = protocol::kNoDownlinkRssi;
     uint32_t lastJoinAttempt_ = 0;
     bool radioReady_ = false;
     bool joinAttempted_ = false;

@@ -16,6 +16,7 @@ assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema')
 
 const integerTypes = {
   uint8: { bytes: 1, min: 0, max: 0xff, read: (buffer, offset) => buffer.readUInt8(offset) },
+  int8: { bytes: 1, min: -0x80, max: 0x7f, read: (buffer, offset) => buffer.readInt8(offset) },
   int16_le: { bytes: 2, min: -0x8000, max: 0x7fff, read: (buffer, offset) => buffer.readInt16LE(offset) },
   uint16_le: { bytes: 2, min: 0, max: 0xffff, read: (buffer, offset) => buffer.readUInt16LE(offset) },
   uint32_le: { bytes: 4, min: 0, max: 0xffffffff, read: (buffer, offset) => buffer.readUInt32LE(offset) },
@@ -30,6 +31,10 @@ const integerTypes = {
 function unique(values, label) {
   assert.equal(new Set(values).size, values.length, `${label} must be unique`)
 }
+
+// A field with `bits` stands for its named sub-fields; everything else for itself.
+const namedValues = (field) => field.bits ?? [field]
+const bitShift = (mask) => Math.log2(mask & -mask)
 
 function byteLength(field, fieldsByName = new Map()) {
   if (field.encoding !== 'bytes') return integerTypes[field.encoding].bytes
@@ -51,6 +56,12 @@ function validateField(field) {
   if (field.encoding === 'bytes') return
   const type = integerTypes[field.encoding]
   assert(type, `unsupported encoding ${field.encoding}`)
+  let usedBits = 0
+  for (const bit of field.bits ?? []) {
+    assert(type.min === 0 && bit.mask <= type.max, `${field.name}.${bit.name} mask exceeds its type`)
+    assert((usedBits & bit.mask) === 0, `${field.name}.${bit.name} overlaps another bit field`)
+    usedBits |= bit.mask
+  }
   for (const value of field.allowed_raw ?? []) {
     assert(value >= type.min && value <= type.max, `${field.name} allowed value exceeds its type`)
   }
@@ -67,7 +78,8 @@ function validateField(field) {
 
 function validateLayout(fields, size, reservedPrefix = 0) {
   const occupied = new Set(Array.from({ length: reservedPrefix }, (_, index) => index))
-  unique(fields.map((field) => field.name), 'field names')
+  unique(fields.flatMap((field) => field.bits ? [field.name, ...field.bits.map((bit) => bit.name)] : [field.name]),
+    'field names')
   for (const field of fields) {
     validateField(field)
     const length = field.encoding === 'bytes' && field.length_from !== undefined
@@ -112,7 +124,7 @@ const telemetrySemantics = new Map()
 for (const profile of telemetry.profiles) {
   const fields = [...telemetry.common_fields, ...profile.fields]
   validateLayout(fields, profile.frame_size, 1)
-  for (const field of fields) {
+  for (const field of fields.flatMap(namedValues)) {
     const semantics = { quantity: field.quantity ?? null, unit: field.unit ?? null }
     const previous = telemetrySemantics.get(field.name)
     if (previous !== undefined) {
@@ -137,8 +149,18 @@ function decodeTelemetry(vector) {
   const values = {}
   try {
     for (const field of [...telemetry.common_fields, ...profile.fields]) {
-      raw[field.name] = readField(buffer, field, raw)
-      values[field.name] = fieldValue(raw[field.name], field)
+      const value = readField(buffer, field, raw)
+      if (field.bits) {
+        const usedBits = field.bits.reduce((mask, bit) => mask | bit.mask, 0)
+        assert((value & ~usedBits) === 0, `${field.name} has reserved bits set`)
+        for (const bit of field.bits) {
+          raw[bit.name] = (value & bit.mask) >> bitShift(bit.mask)
+          values[bit.name] = raw[bit.name]
+        }
+        continue
+      }
+      raw[field.name] = value
+      values[field.name] = fieldValue(value, field)
     }
   } catch {
     throw new Error('invalid_value')

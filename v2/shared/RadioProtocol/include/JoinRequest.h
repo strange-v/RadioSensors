@@ -9,7 +9,7 @@ namespace radiosensors {
 namespace protocol {
 
 constexpr size_t kDeviceUidSize = 10;
-constexpr size_t kJoinRequestSize = 20;
+constexpr size_t kJoinRequestSize = 21;
 constexpr uint16_t kUnassignedProfileId = 0;
 
 struct FirmwareVersion {
@@ -23,6 +23,8 @@ struct JoinRequest {
     uint16_t profileId;
     FirmwareVersion firmware;
     uint32_t requestNonce;
+    // Transmit power ceiling of this node's hardware and supply.
+    uint8_t maxPowerLevel;
 };
 
 enum class JoinRequestStatus : uint8_t {
@@ -34,6 +36,7 @@ enum class JoinRequestStatus : uint8_t {
     WrongFrameKind,
     WrongLength,
     InvalidProfileId,
+    InvalidPowerLevel,
 };
 
 inline void writeUint16Le(uint8_t* const output, const uint16_t value) {
@@ -70,6 +73,9 @@ inline JoinRequestStatus encodeJoinRequest(
     if (request.profileId == kUnassignedProfileId) {
         return JoinRequestStatus::InvalidProfileId;
     }
+    if (request.maxPowerLevel > kMaxRadioPowerLevel) {
+        return JoinRequestStatus::InvalidPowerLevel;
+    }
 
     output[0] = encodeHeader(FrameKind::JoinRequest);
     for (size_t index = 0; index < kDeviceUidSize; ++index) {
@@ -80,6 +86,7 @@ inline JoinRequestStatus encodeJoinRequest(
     output[14] = request.firmware.minor;
     output[15] = request.firmware.patch;
     writeUint32Le(output + 16, request.requestNonce);
+    output[20] = request.maxPowerLevel;
     return JoinRequestStatus::Ok;
 }
 
@@ -110,6 +117,9 @@ inline JoinRequestStatus decodeJoinRequest(
     if (profileId == kUnassignedProfileId) {
         return JoinRequestStatus::InvalidProfileId;
     }
+    if (data[20] > kMaxRadioPowerLevel) {
+        return JoinRequestStatus::InvalidPowerLevel;
+    }
 
     for (size_t index = 0; index < kDeviceUidSize; ++index) {
         request.deviceUid[index] = data[1 + index];
@@ -117,6 +127,7 @@ inline JoinRequestStatus decodeJoinRequest(
     request.profileId = profileId;
     request.firmware = FirmwareVersion{data[13], data[14], data[15]};
     request.requestNonce = readUint32Le(data + 16);
+    request.maxPowerLevel = data[20];
     return JoinRequestStatus::Ok;
 }
 

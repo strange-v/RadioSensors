@@ -19,12 +19,8 @@ constexpr size_t kMaxCommandSize =
 constexpr size_t kMaxCommandResultSize =
     kCommandEnvelopeSize + kMaxCommandResultDataSize;
 
-constexpr uint8_t kMaxRadioPowerLevel = 31;
 constexpr size_t kSetCountArgumentSize = 4;
 constexpr size_t kSetCountResultSize = 8;
-
-// Payload of the RFM69 ACK that answers telemetry: empty, or one flags byte.
-constexpr uint8_t kTelemetryAckCommandPending = 0x01;
 
 enum class CommandType : uint8_t {
     SetCount = 1,
@@ -279,12 +275,6 @@ inline bool profileSupportsCommand(
             return profileId == profileIdValue(ProfileId::PulseCounter);
     }
     return false;
-}
-
-inline bool telemetryAckCommandPending(
-    const uint8_t* const data, const size_t size) {
-    return data != nullptr && size != 0 &&
-        (data[0] & kTelemetryAckCommandPending) != 0;
 }
 
 }  // namespace protocol

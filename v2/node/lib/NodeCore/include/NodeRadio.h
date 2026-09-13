@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RFM69.h>
+#include <TelemetryFrames.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -16,10 +17,10 @@ public:
     bool begin(uint8_t nodeId, uint8_t networkId);
     void useCommissioningProfile(const uint8_t factoryKey[16]);
     void useOperationalProfile(const storage::NetworkConfig& config);
-    // `commandPending` reports the flag carried by the acknowledgement.
+    // `ack` is what the acknowledgement carried, `ackRssi` its strength.
     bool sendTelemetry(
         uint8_t gatewayId, const uint8_t* frame, uint8_t size,
-        bool& commandPending);
+        protocol::TelemetryAck& ack, int16_t& ackRssi);
     bool sendAcknowledged(uint8_t recipient, const uint8_t* frame, uint8_t size);
     void send(uint8_t recipient, const uint8_t* frame, uint8_t size);
     bool receive(

@@ -8,6 +8,7 @@ const manifest = JSON.parse(readFileSync(resolve(protocolRoot, 'protocol-manifes
 
 const dimensions = {
   uint8: 1,
+  int8: 1,
   int16_le: 2,
   uint16_le: 2,
   uint32_le: 4,
@@ -17,6 +18,7 @@ const dimensions = {
 const encodingLabels = {
   constant: 'constant',
   uint8: 'uint8',
+  int8: 'int8',
   int16_le: 'int16 LE',
   uint16_le: 'uint16 LE',
   uint32_le: 'uint32 LE',
@@ -36,6 +38,8 @@ const shortNames = {
   received_at_unix_ms: 'received at',
   payload_size: 'size',
   supply_voltage: 'VCC',
+  radio_state: 'radio',
+  downlink_rssi: 'downlink',
   temperature: 'temperature',
   humidity: 'humidity',
   pressure: 'pressure',
@@ -90,6 +94,7 @@ function documentStart(width, height, title, description) {
     .cell { stroke: #ffffff; stroke-width: 2; }
     .constant { fill: #d8dee8; }
     .uint8 { fill: #fde0a6; }
+    .int8 { fill: #e3ecb8; }
     .uint16_le { fill: #bfe7fa; }
     .int16_le { fill: #bfead8; }
     .uint32_le { fill: #ddcdf9; }
@@ -104,6 +109,7 @@ function documentStart(width, height, title, description) {
       .cell { stroke: #111827; }
       .constant { fill: #465268; }
       .uint8 { fill: #75571c; }
+      .int8 { fill: #5a6424; }
       .uint16_le { fill: #185b78; }
       .int16_le { fill: #23664e; }
       .uint32_le { fill: #59418b; }
@@ -148,6 +154,7 @@ function renderLegend(x, y) {
   const entries = [
     ['constant', 'constant'],
     ['uint8', 'uint8'],
+    ['int8', 'int8'],
     ['uint16_le', 'uint16 LE'],
     ['int16_le', 'int16 LE'],
     ['uint32_le', 'uint32 LE'],
