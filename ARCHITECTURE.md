@@ -24,9 +24,11 @@ The gateway uses address 100. IDs 1..99 are allocated persistently; 0 is for com
 
 Commissioning and operational radio profiles have separate AES keys. Initial gateway setup generates an operational network ID in 1..255 and permits an advanced edit before confirmation. Ordinary changes are locked after a node is active; later changes require a staged migration design.
 
-Normal telemetry is `common telemetry prefix + opaque profile payload`. The gateway may decode the common supply-voltage field but does not decode profile-specific measurements. Exact radio bytes are specified only in [v2/protocol/PROTOCOL.md](v2/protocol/PROTOCOL.md).
+Normal telemetry is `common telemetry prefix + opaque profile payload`. The prefix carries supply voltage and the node's radio state; the gateway may decode it but does not decode profile-specific measurements. Exact radio bytes are specified only in [v2/protocol/PROTOCOL.md](v2/protocol/PROTOCOL.md).
 
-Sleeping-node commands use a pull session. A short button press, or a telemetry ACK carrying the pending-command flag, makes the node send nonce-bound `COMMAND_READY`; it receives one durable command or `NO_COMMAND`. Commands and results are idempotent and durable before acknowledgement.
+Node settings the gateway maintains are desired state, not commands. The node reports the value it actually uses in every telemetry frame, and the gateway repeats the value it wants in the telemetry acknowledgement until the two match, so a lost frame costs nothing and no history can drift from the truth. Hard limits belong to the node: it clamps radio power to its hardware ceiling and falls back on its own after losing the gateway.
+
+Commands are one-shot actions, such as setting a pulse count. Sleeping-node commands use a pull session. A short button press, or a telemetry ACK carrying the pending-command flag, makes the node send nonce-bound `COMMAND_READY`; it receives one durable command or `NO_COMMAND`. Commands and results are idempotent and durable before acknowledgement.
 
 ## Gateway runtime
 
