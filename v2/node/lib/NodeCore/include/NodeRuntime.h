@@ -21,6 +21,8 @@ namespace node {
 //   void begin();
 //   void poll(uint32_t now);  // every clock tick, also before commissioning
 //   bool reportDue(uint32_t now) const;
+//   bool takeUrgentReport();  // true once per event that must not wait for
+//                             // radio retry backoff
 //   size_t encodeTelemetry(uint16_t supplyMillivolts, uint8_t* output,
 //                          size_t capacity);
 //   void reportAcknowledged(uint32_t now, uint16_t supplyMillivolts);
@@ -84,7 +86,11 @@ private:
     }
 
     void reportIfDue(const uint32_t now) {
-        if (!profile_.reportDue(now) || !radioRetry_.allowed(now)) return;
+        const bool urgent = profile_.takeUrgentReport();
+        if (!profile_.reportDue(now) ||
+            (!urgent && !radioRetry_.allowed(now))) {
+            return;
+        }
 #if defined(NODE_DEBUG)
         Serial.println(F("telemetry: measuring"));
 #endif

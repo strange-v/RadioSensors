@@ -70,14 +70,25 @@ private:
     bool hasSuccessfulTransmission_ = false;
 };
 
-class DoorReportSchedule {
+class BinaryReportSchedule {
 public:
-    DoorReportSchedule() : keepAlive_(kEventNodeKeepAliveMs) {}
+    BinaryReportSchedule() : keepAlive_(kEventNodeKeepAliveMs) {}
 
-    void stateChanged() { stateChanged_ = true; }
+    void stateChanged() {
+        stateChanged_ = true;
+        urgent_ = true;
+    }
 
     bool due(const uint32_t now) const {
         return stateChanged_ || keepAlive_.due(now);
+    }
+
+    // True once per state change: the first attempt to report a new state
+    // ignores radio retry backoff, later retries of the same report do not.
+    bool takeUrgent() {
+        const bool urgent = urgent_;
+        urgent_ = false;
+        return urgent;
     }
 
     void transmissionSucceeded(const uint32_t now) {
@@ -88,6 +99,7 @@ public:
 private:
     RollingKeepAlive keepAlive_;
     bool stateChanged_ = false;
+    bool urgent_ = false;
 };
 
 class CounterReportSchedule {

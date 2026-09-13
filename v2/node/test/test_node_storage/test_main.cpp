@@ -14,7 +14,7 @@ using radiosensors::node::ClimateReportPolicy;
 using radiosensors::node::ConfirmedInput;
 using radiosensors::node::InputChange;
 using radiosensors::node::MinimumPhaseFilter;
-using radiosensors::node::DoorReportSchedule;
+using radiosensors::node::BinaryReportSchedule;
 using radiosensors::node::LoadedSupplyVoltage;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
@@ -286,7 +286,7 @@ void test_set_count_result_generation_wrap_selects_latest() {
 }
 
 void test_event_keep_alive_rolls_from_successful_event() {
-    DoorReportSchedule schedule;
+    BinaryReportSchedule schedule;
     TEST_ASSERT_TRUE(schedule.due(0));
     schedule.transmissionSucceeded(0);
     TEST_ASSERT_FALSE(schedule.due(55UL * 60UL * 1000UL));
@@ -297,12 +297,23 @@ void test_event_keep_alive_rolls_from_successful_event() {
     TEST_ASSERT_TRUE(schedule.due(115UL * 60UL * 1000UL));
 }
 
-void test_failed_door_transmission_keeps_event_pending() {
-    DoorReportSchedule schedule;
+void test_failed_binary_transmission_keeps_event_pending() {
+    BinaryReportSchedule schedule;
     schedule.transmissionSucceeded(0);
     schedule.stateChanged();
     TEST_ASSERT_TRUE(schedule.due(1000));
     TEST_ASSERT_TRUE(schedule.due(2000));
+}
+
+void test_binary_state_change_is_urgent_once() {
+    BinaryReportSchedule schedule;
+    TEST_ASSERT_FALSE(schedule.takeUrgent());
+    schedule.stateChanged();
+    TEST_ASSERT_TRUE(schedule.takeUrgent());
+    TEST_ASSERT_FALSE(schedule.takeUrgent());
+    TEST_ASSERT_TRUE(schedule.due(0));
+    schedule.stateChanged();
+    TEST_ASSERT_TRUE(schedule.takeUrgent());
 }
 
 void test_counter_coalesces_pulses_for_one_minute() {
@@ -473,7 +484,8 @@ int main(int, char**) {
     RUN_TEST(test_set_count_result_round_trip_and_corruption_fallback);
     RUN_TEST(test_set_count_result_generation_wrap_selects_latest);
     RUN_TEST(test_event_keep_alive_rolls_from_successful_event);
-    RUN_TEST(test_failed_door_transmission_keeps_event_pending);
+    RUN_TEST(test_failed_binary_transmission_keeps_event_pending);
+    RUN_TEST(test_binary_state_change_is_urgent_once);
     RUN_TEST(test_counter_coalesces_pulses_for_one_minute);
     RUN_TEST(test_keep_alive_handles_clock_wrap);
     RUN_TEST(test_radio_retry_uses_bounded_exponential_backoff);

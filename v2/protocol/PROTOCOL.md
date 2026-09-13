@@ -210,7 +210,7 @@ Example for 3300 mV, 23.50 degrees C, 45.67% RH, and 1013.2 hPa: `40 E4 0C 2E 09
 
 ### Profile 5: binary input
 
-The application frame is exactly four bytes: the common telemetry prefix followed by one-byte state (`0` or `1`). Example for 3300 mV and state `1`: `40 E4 0C 01`.
+The application frame is exactly four bytes: the common telemetry prefix followed by one-byte state (`0` or `1`). State `1` means the contact is open; profiles 7 and 8 use the same meaning. Example for 3300 mV and state `1`: `40 E4 0C 01`.
 
 ### Profile 6: pulse counter
 

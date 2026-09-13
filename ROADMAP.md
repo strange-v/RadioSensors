@@ -12,10 +12,11 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 
 ## Nodes
 
-- Implement the door runtime and climate-equipped door variants. A new door state change must be sent even while radio retry backoff is active.
+- Validate the binary-input runtime on hardware: reaction latency and sleep current.
+- Add `binary_tmp112` and `binary_sht40` with a fixed 5-minute climate interval; every report, periodic or on a state change, carries the full frame. Measure consumption against the battery-life target before settling the interval.
 - Implement PA6 command sessions and 10-second network factory reset while preserving counter state.
 - Freeze generic `COMMAND` and `COMMAND_RESULT` payloads and add the ACK pending hint flow.
-- Measure climate and door sleep current with the unused-pin configuration.
+- Measure climate and binary-input sleep current with the unused-pin configuration.
 - Measure commissioning retry/RX-window and command receive durations.
 
 `V1_FEATURE_INVENTORY.md` remains a temporary parity checklist until these node profiles are reviewed, then it should move to archive or be deleted.

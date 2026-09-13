@@ -42,7 +42,8 @@ private:
 // Accepts a level only after it has persisted for a minimum RTC time. A magnet
 // moving slowly near the pull-in distance makes a reed chatter far longer than
 // the in-wake debounce burst, and each extra rise would be an extra meter
-// pulse. Doors must not use this: it trades latency for that certainty.
+// pulse. Binary inputs must not use this: it trades latency for that
+// certainty.
 class MinimumPhaseFilter {
 public:
     MinimumPhaseFilter(const uint32_t minimumPhaseMs, const bool initialHigh)
