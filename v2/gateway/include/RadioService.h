@@ -62,6 +62,7 @@ struct Snapshot {
     uint32_t sessionFramesRejected;
     uint32_t commandResultAcksSent;
     uint32_t commandHintsSent;
+    uint32_t powerTargetsSent;
     Profile profile;
     uint8_t currentNetworkId;
     uint32_t lastPacketMs;

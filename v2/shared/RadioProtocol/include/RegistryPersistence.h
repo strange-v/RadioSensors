@@ -8,10 +8,10 @@
 namespace radiosensors {
 namespace registry {
 
-constexpr uint16_t kRegistryStorageVersion = 2;
+constexpr uint16_t kRegistryStorageVersion = 3;
 constexpr size_t kRegistryHeaderSize = 12;
 constexpr size_t kStoredNodeRecordSize =
-    21 + 1 + kNodeDisplayNameSize;
+    21 + 1 + kNodeDisplayNameSize + 2;
 constexpr size_t kRegistryCrcSize = 4;
 constexpr size_t kMaxRegistrySnapshotSize =
     kRegistryHeaderSize + kMaxNodes * kStoredNodeRecordSize + kRegistryCrcSize;

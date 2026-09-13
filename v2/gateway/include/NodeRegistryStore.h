@@ -24,6 +24,8 @@ bool isActiveNode(uint8_t nodeId);
 bool hasActiveNodes();
 bool activeProfileId(uint8_t nodeId, uint16_t& profileId);
 bool activeIdentity(uint8_t nodeId, uint8_t* deviceUid, uint16_t& profileId);
+// Transmit power ceiling and policy of an active node.
+bool radioPolicy(uint8_t nodeId, uint8_t& maxPowerLevel, uint8_t& powerPolicy);
 bool snapshot(Snapshot& value);
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
@@ -38,6 +40,10 @@ RegistryCommitStatus renameAndSave(
     const char* displayName,
     size_t length,
     radiosensors::registry::RenameStatus& result);
+RegistryCommitStatus setPowerPolicyAndSave(
+    uint8_t nodeId,
+    uint8_t policy,
+    radiosensors::registry::PowerPolicyStatus& result);
 RegistryCommitStatus removeAndSave(uint8_t nodeId, bool& removed);
 // Drops every record in a single commit. Used by the radio network reset,
 // where removing nodes one at a time would mean one flash write each and a

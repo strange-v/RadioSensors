@@ -6,6 +6,8 @@
 #include <ESP.h>
 #include <GatewayStream.h>
 #include <JoinRequest.h>
+#include <RadioPowerControl.h>
+#include <TelemetryFrames.h>
 #include <UserManagement.h>
 #include <ArduinoJson.h>
 #include <esp_random.h>
@@ -29,6 +31,7 @@
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
 #include "PasswordHashService.h"
+#include "PowerControlService.h"
 #include "RadioConfig.h"
 #include "RadioService.h"
 #include "TelemetryStore.h"
@@ -473,11 +476,37 @@ void handleNodes(AsyncWebServerRequest* request) {
                  node.firmware.minor, node.firmware.patch);
         document["firmware"] = firmware;
         document["state"] = nodeStateName(node.state);
+        document["max_power_level"] = node.maxPowerLevel;
+        const bool fixedPower =
+            radiosensors::radio_power::isFixedPolicy(node.powerPolicy);
+        document["power_policy"] = fixedPower ? "fixed" : "auto";
+        if (fixedPower) {
+            document["fixed_power_level"] =
+                radiosensors::radio_power::fixedLevel(node.powerPolicy);
+        }
+        const uint8_t powerTarget = power_control::desiredLevel(node.nodeId);
+        if (powerTarget != power_control::kNoTarget) {
+            document["tx_power_target"] = powerTarget;
+        }
         telemetry_store::Record telemetry{};
         if (telemetry_store::find(node.nodeId, telemetry)) {
             document["last_seen_at_ms"] = telemetry.receivedAtUnixMs;
             document["rssi"] = telemetry.rssi;
             document["has_telemetry"] = true;
+            radiosensors::protocol::TelemetryView view{};
+            if (radiosensors::protocol::decodeTelemetry(
+                    telemetry.data, telemetry.size, view) ==
+                radiosensors::protocol::TelemetryCodecStatus::Ok) {
+                document["tx_power_level"] =
+                    radiosensors::protocol::radioPowerLevel(view.radioState);
+                document["radio_fallback"] =
+                    (view.radioState & radiosensors::protocol::kRadioFallback) != 0;
+                document["supply_limited"] =
+                    (view.radioState & radiosensors::protocol::kRadioSupplyLimited) != 0;
+                if (view.downlinkRssi != radiosensors::protocol::kNoDownlinkRssi) {
+                    document["downlink_rssi"] = view.downlinkRssi;
+                }
+            }
         } else {
             document["has_telemetry"] = false;
         }
@@ -487,7 +516,37 @@ void handleNodes(AsyncWebServerRequest* request) {
     request->send(response);
 }
 
-void handleRenameNode(AsyncWebServerRequest* request, JsonVariant& json) {
+// Reads `power_policy` and `fixed_power_level` into the registry encoding.
+bool parsePowerPolicy(const JsonObjectConst object, uint8_t& policy) {
+    const char* const mode = object["power_policy"].as<const char*>();
+    if (mode == nullptr) return false;
+    if (strcmp(mode, "auto") == 0) {
+        policy = radiosensors::radio_power::kPolicyAuto;
+        return true;
+    }
+    if (strcmp(mode, "fixed") != 0 || !object["fixed_power_level"].is<uint8_t>()) {
+        return false;
+    }
+    const uint8_t level = object["fixed_power_level"].as<uint8_t>();
+    if (level > radiosensors::protocol::kMaxRadioPowerLevel) return false;
+    policy = radiosensors::radio_power::fixedPolicy(level);
+    return true;
+}
+
+bool sendRegistryCommitError(
+    AsyncWebServerRequest* request, const RegistryCommitStatus commit) {
+    if (commit == RegistryCommitStatus::StorageError) {
+        sendError(request, 500, "node_storage_failed");
+    } else if (commit == RegistryCommitStatus::NotInitialized) {
+        sendError(request, 503, "registry_unavailable");
+    } else {
+        return false;
+    }
+    return true;
+}
+
+// Renames a node, changes its radio power policy, or both.
+void handlePatchNode(AsyncWebServerRequest* request, JsonVariant& json) {
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>()) {
@@ -495,34 +554,69 @@ void handleRenameNode(AsyncWebServerRequest* request, JsonVariant& json) {
         return;
     }
     const JsonObjectConst object = json.as<JsonObjectConst>();
-    if (!object["node_id"].is<uint8_t>() ||
-        !object["display_name"].is<const char*>()) {
+    const bool hasName = !object["display_name"].isNull();
+    const bool hasPolicy = !object["power_policy"].isNull();
+    if (!object["node_id"].is<uint8_t>() || (!hasName && !hasPolicy) ||
+        (hasName && !object["display_name"].is<const char*>())) {
         sendError(request, 422, "invalid_node_values");
         return;
     }
-    const uint8_t nodeId = object["node_id"].as<uint8_t>();
-    const char* const displayName = object["display_name"].as<const char*>();
-    const size_t length = strlen(displayName);
-    radiosensors::registry::RenameStatus renameStatus{};
-    const RegistryCommitStatus commit = registry_store::renameAndSave(
-        nodeId, displayName, length, renameStatus);
-    if (renameStatus == radiosensors::registry::RenameStatus::InvalidName) {
-        sendError(request, 422, "invalid_display_name");
-    } else if (renameStatus == radiosensors::registry::RenameStatus::NotFound) {
-        sendError(request, 404, "node_not_found");
-    } else if (commit == RegistryCommitStatus::StorageError) {
-        sendError(request, 500, "node_storage_failed");
-    } else if (commit == RegistryCommitStatus::NotInitialized) {
-        sendError(request, 503, "registry_unavailable");
-    } else {
-        JsonDocument response;
-        response["node_id"] = nodeId;
-        response["display_name"] = displayName;
-        response["registry_generation"] = registry_store::generation();
-        String body;
-        serializeJson(response, body);
-        request->send(200, "application/json", body);
+    uint8_t policy = radiosensors::radio_power::kPolicyAuto;
+    if (hasPolicy && !parsePowerPolicy(object, policy)) {
+        sendError(request, 422, "invalid_power_policy");
+        return;
     }
+    const uint8_t nodeId = object["node_id"].as<uint8_t>();
+
+    if (hasName) {
+        const char* const displayName = object["display_name"].as<const char*>();
+        radiosensors::registry::RenameStatus renameStatus{};
+        const RegistryCommitStatus commit = registry_store::renameAndSave(
+            nodeId, displayName, strlen(displayName), renameStatus);
+        if (renameStatus == radiosensors::registry::RenameStatus::InvalidName) {
+            sendError(request, 422, "invalid_display_name");
+            return;
+        }
+        if (renameStatus == radiosensors::registry::RenameStatus::NotFound) {
+            sendError(request, 404, "node_not_found");
+            return;
+        }
+        if (sendRegistryCommitError(request, commit)) return;
+    }
+    if (hasPolicy) {
+        radiosensors::registry::PowerPolicyStatus policyStatus{};
+        const RegistryCommitStatus commit =
+            registry_store::setPowerPolicyAndSave(nodeId, policy, policyStatus);
+        if (policyStatus == radiosensors::registry::PowerPolicyStatus::InvalidPolicy) {
+            sendError(request, 422, "invalid_power_policy");
+            return;
+        }
+        if (policyStatus == radiosensors::registry::PowerPolicyStatus::NotFound) {
+            sendError(request, 404, "node_not_found");
+            return;
+        }
+        if (sendRegistryCommitError(request, commit)) return;
+        uint8_t ceiling = 0;
+        uint8_t storedPolicy = 0;
+        if (registry_store::radioPolicy(nodeId, ceiling, storedPolicy)) {
+            power_control::policyChanged(nodeId, storedPolicy, ceiling);
+        }
+    }
+
+    JsonDocument response;
+    response["node_id"] = nodeId;
+    if (hasName) response["display_name"] = object["display_name"].as<const char*>();
+    if (hasPolicy) {
+        const bool fixedPower = radiosensors::radio_power::isFixedPolicy(policy);
+        response["power_policy"] = fixedPower ? "fixed" : "auto";
+        if (fixedPower) {
+            response["fixed_power_level"] = radiosensors::radio_power::fixedLevel(policy);
+        }
+    }
+    response["registry_generation"] = registry_store::generation();
+    String body;
+    serializeJson(response, body);
+    request->send(200, "application/json", body);
 }
 
 void handleDeleteNode(AsyncWebServerRequest* request, JsonVariant& json) {
@@ -548,6 +642,7 @@ void handleDeleteNode(AsyncWebServerRequest* request, JsonVariant& json) {
         // Best effort: a record left behind is bound to the deleted node's UID
         // and is never delivered to a node that reuses the ID.
         commands::removeNode(nodeId);
+        power_control::forget(nodeId);
         request->send(204);
     }
 }
@@ -755,6 +850,7 @@ void handleResetRadioNetwork(AsyncWebServerRequest* request, JsonVariant& json) 
     }
     telemetry_store::clear();
     commands::clear();
+    power_control::clear();
 
     auto secrets = configuration_store::secrets();
     secrets.installationKeyPresent = true;
@@ -1570,6 +1666,7 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"session_frames_queued\":%lu,\"session_frames_dropped\":%lu,"
         "\"session_frames_rejected\":%lu,"
         "\"command_result_acks_sent\":%lu,\"command_hints_sent\":%lu,"
+        "\"power_targets_sent\":%lu,"
         "\"commands_queued\":%lu,\"commands_dropped\":%lu,"
         "\"commands_processed\":%lu},"
         "\"last_packet\":{\"at_ms\":%lu,\"sender_id\":%u,\"rssi\":%d}}}",
@@ -1674,6 +1771,7 @@ void handleStatus(AsyncWebServerRequest* request) {
         radioSnapshot.sessionFramesRejected,
         radioSnapshot.commandResultAcksSent,
         radioSnapshot.commandHintsSent,
+        radioSnapshot.powerTargetsSent,
         radioSnapshot.commandsQueued,
         radioSnapshot.commandsDropped,
         radioSnapshot.commandsProcessed,
@@ -1784,7 +1882,7 @@ void begin() {
     server.on("/ui/clients", HTTP_GET, handleClients);
     server.on("/api/nodes", HTTP_GET, handleNodes);
     auto& renameNodeHandler = server.on(
-        "/ui/nodes", HTTP_PATCH, handleRenameNode);
+        "/ui/nodes", HTTP_PATCH, handlePatchNode);
     renameNodeHandler.setMaxContentLength(256);
     auto& deleteNodeHandler = server.on(
         "/ui/nodes", HTTP_DELETE, handleDeleteNode);

@@ -1,5 +1,6 @@
 #include <JoinRequest.h>
 #include <NodeRegistry.h>
+#include <RadioPowerControl.h>
 #include <RegistryPersistence.h>
 #include <unity.h>
 
@@ -192,6 +193,51 @@ void test_snapshot_round_trip_preserves_records() {
     TEST_ASSERT_EQUAL_MEMORY(name, record->displayName, sizeof(name) - 1);
 }
 
+void test_power_policy_is_bounded_by_the_ceiling_and_persisted() {
+    namespace power = radiosensors::radio_power;
+    NodeRegistry registry;
+    JoinRequest request = makeRequest(0x10, 0x1234, 7);
+    request.maxPowerLevel = 5;
+    const uint8_t nodeId = registry.reserve(request).nodeId;
+    const NodeRecord* record = registry.findByNodeId(nodeId);
+    TEST_ASSERT_EQUAL_UINT8(5, record->maxPowerLevel);
+    TEST_ASSERT_EQUAL_UINT8(power::kPolicyAuto, record->powerPolicy);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(PowerPolicyStatus::InvalidPolicy),
+                      static_cast<int>(registry.setPowerPolicy(nodeId, power::fixedPolicy(6))));
+    TEST_ASSERT_EQUAL(static_cast<int>(PowerPolicyStatus::InvalidPolicy),
+                      static_cast<int>(registry.setPowerPolicy(nodeId, 40)));
+    TEST_ASSERT_EQUAL(static_cast<int>(PowerPolicyStatus::NotFound),
+                      static_cast<int>(registry.setPowerPolicy(99, power::kPolicyAuto)));
+    TEST_ASSERT_EQUAL(static_cast<int>(PowerPolicyStatus::Updated),
+                      static_cast<int>(registry.setPowerPolicy(nodeId, power::fixedPolicy(5))));
+    TEST_ASSERT_EQUAL(static_cast<int>(PowerPolicyStatus::NoChange),
+                      static_cast<int>(registry.setPowerPolicy(nodeId, power::fixedPolicy(5))));
+
+    uint8_t encoded[kMaxRegistrySnapshotSize]{};
+    size_t encodedSize = 0;
+    TEST_ASSERT_EQUAL(static_cast<int>(SnapshotStatus::Ok),
+                      static_cast<int>(encodeRegistrySnapshot(
+                          registry, 3, encoded, sizeof(encoded), encodedSize)));
+    TEST_ASSERT_EQUAL_UINT32(kRegistryHeaderSize + kStoredNodeRecordSize + kRegistryCrcSize,
+                             encodedSize);
+    NodeRegistry decoded;
+    uint32_t generation = 0;
+    TEST_ASSERT_EQUAL(static_cast<int>(SnapshotStatus::Ok),
+                      static_cast<int>(decodeRegistrySnapshot(
+                          encoded, encodedSize, decoded, generation)));
+    TEST_ASSERT_EQUAL_UINT8(5, decoded.findByNodeId(nodeId)->maxPowerLevel);
+    TEST_ASSERT_EQUAL_UINT8(power::fixedPolicy(5), decoded.findByNodeId(nodeId)->powerPolicy);
+
+    // Pairing again with a lower ceiling returns a fixed level above it to
+    // automatic control.
+    request.maxPowerLevel = 3;
+    TEST_ASSERT_EQUAL(static_cast<int>(ReserveStatus::ExistingPendingUpdated),
+                      static_cast<int>(registry.reserve(request).status));
+    TEST_ASSERT_EQUAL_UINT8(3, record->maxPowerLevel);
+    TEST_ASSERT_EQUAL_UINT8(power::kPolicyAuto, record->powerPolicy);
+}
+
 void test_rename_accepts_utf8_and_rejects_invalid_names() {
     NodeRegistry registry;
     registry.reserve(makeRequest(0x10));
@@ -271,6 +317,7 @@ int main(int, char**) {
     RUN_TEST(test_confirm_requires_uid_node_id_and_latest_nonce);
     RUN_TEST(test_registry_capacity_is_bounded);
     RUN_TEST(test_snapshot_round_trip_preserves_records);
+    RUN_TEST(test_power_policy_is_bounded_by_the_ceiling_and_persisted);
     RUN_TEST(test_rename_accepts_utf8_and_rejects_invalid_names);
     RUN_TEST(test_snapshot_rejects_crc_corruption);
     RUN_TEST(test_dual_slot_falls_back_to_previous_valid_generation);

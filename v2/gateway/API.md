@@ -189,9 +189,16 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
       "profile_id": 2,
       "firmware": "1.3.0",
       "state": "active",
+      "max_power_level": 2,
+      "power_policy": "auto",
+      "tx_power_target": 2,
       "has_telemetry": true,
       "last_seen_at_ms": 1770000000000,
-      "rssi": -74
+      "rssi": -74,
+      "tx_power_level": 2,
+      "radio_fallback": false,
+      "supply_limited": false,
+      "downlink_rssi": -71
     },
     {
       "node_id": 8,
@@ -200,6 +207,9 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
       "profile_id": 5,
       "firmware": "1.3.0",
       "state": "pending",
+      "max_power_level": 2,
+      "power_policy": "fixed",
+      "fixed_power_level": 1,
       "has_telemetry": false
     }
   ]
@@ -208,15 +218,21 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
 
 `registry_generation` is an unsigned wrapping 32-bit value changed by every durable registry mutation. Consumers compare it for equality. `node_id` is `1..99`, `device_uid` is exactly 20 uppercase hexadecimal characters, `profile_id` is a nonzero unsigned 16-bit value, and `firmware` is SemVer. `state` is `pending`, `active`, or `disabled`; adding a state is additive, so an unknown value must not make the complete response unreadable.
 
-`has_telemetry` is always present. `last_seen_at_ms` and `rssi` are present exactly when it is true. A zero last-seen timestamp means the frame arrived before gateway time synchronization. The registry response never contains radio payload bytes.
+`max_power_level` is the transmit power ceiling the node reported at pairing, `0..31`. `power_policy` is `auto` or `fixed`; `fixed_power_level` is present exactly when it is `fixed`. `tx_power_target` is the level the gateway currently wants and is absent before the node's first report since boot or a policy change.
 
-`PATCH /ui/nodes` renames a node and requires an admin session plus CSRF:
+`has_telemetry` is always present. `last_seen_at_ms`, `rssi`, `tx_power_level`, `radio_fallback`, and `supply_limited` are present exactly when it is true; `downlink_rssi` also requires that the node has heard an acknowledgement. These radio fields come from the node's latest report ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)). A zero last-seen timestamp means the frame arrived before gateway time synchronization. The registry response never contains radio payload bytes.
+
+`PATCH /ui/nodes` renames a node, changes its radio power policy, or both, and requires an admin session plus CSRF:
 
 ```json
 {"node_id":7,"display_name":"Датчик у спальні"}
+{"node_id":7,"power_policy":"fixed","fixed_power_level":2}
+{"node_id":7,"power_policy":"auto"}
 ```
 
-The name may be empty and must contain at most 48 valid UTF-8 bytes without control characters. The response contains the applied name and durable `registry_generation`. Invalid names return `422 invalid_display_name` and an unknown node returns `404 node_not_found`.
+The name may be empty and must contain at most 48 valid UTF-8 bytes without control characters. A fixed level must not exceed the node's `max_power_level`. The response echoes the applied fields with the durable `registry_generation`. Errors: `422 invalid_node_values`, `422 invalid_display_name`, `422 invalid_power_policy`, `404 node_not_found`, `500 node_storage_failed`, or `503 registry_unavailable`.
+
+A new policy takes effect at the node's next acknowledged report. Automatic control averages the uplink RSSI over three reports at one level and keeps it between −85 and −75 dBm, stepping down at most three levels or up at most six at a time, never above the ceiling. After a node reports a fallback, automatic control stays three levels above the level that failed until the gateway restarts, and a fixed level that failed is no longer requested until the policy is set again. The controller keeps its state in RAM.
 
 `DELETE /ui/nodes` accepts `{"node_id":7}`, requires an admin session plus CSRF, removes the durable registry entry, its command record, and its in-memory telemetry, and returns `204`. It does not reset an offline physical node: that node will keep its old network credentials and must be factory-reset before it can be paired again.
 

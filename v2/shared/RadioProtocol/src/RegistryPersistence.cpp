@@ -67,6 +67,8 @@ SnapshotStatus encodeRegistrySnapshot(
         for (size_t nameIndex = 0; nameIndex < kNodeDisplayNameSize; ++nameIndex) {
             output[offset + 22 + nameIndex] = record.displayName[nameIndex];
         }
+        output[offset + 22 + kNodeDisplayNameSize] = record.maxPowerLevel;
+        output[offset + 23 + kNodeDisplayNameSize] = record.powerPolicy;
         offset += kStoredNodeRecordSize;
     }
 
@@ -127,6 +129,8 @@ static SnapshotStatus decodeRegistrySnapshotUsingRecords(
         for (size_t nameIndex = 0; nameIndex < kNodeDisplayNameSize; ++nameIndex) {
             record.displayName[nameIndex] = data[offset + 22 + nameIndex];
         }
+        record.maxPowerLevel = data[offset + 22 + kNodeDisplayNameSize];
+        record.powerPolicy = data[offset + 23 + kNodeDisplayNameSize];
         offset += kStoredNodeRecordSize;
     }
 

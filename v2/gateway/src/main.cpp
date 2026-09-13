@@ -15,6 +15,7 @@
 #include "NodeRegistryStore.h"
 #include "OtaService.h"
 #include "PasswordHashService.h"
+#include "PowerControlService.h"
 #include "RadioService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
@@ -92,6 +93,7 @@ void loop() {
             if (gateway::telemetry_store::find(
                     static_cast<uint8_t>(telemetry.senderId), record)) {
                 gateway::web_server::publishTelemetry(record);
+                gateway::power_control::observe(record);
             }
             Serial.printf(
                 "Telemetry stored: sender=%u bytes=%u rssi=%d\n",
