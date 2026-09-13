@@ -61,7 +61,7 @@ The solar/supercapacitor climate policy schedules nominal 60 seconds above 2500 
 
 ## Event-node policy
 
-PA5 is the active-low reed/counter input. Each 250 ms tick reads it once, with the pull-up enabled only for that read. A read that disagrees with the confirmed state starts a debounce burst of five equal reads at 1 ms spacing in the same wake-up, so confirmation adds no tick of latency and costs power only on real changes. A LOW or HIGH phase longer than one tick is detected, except while a commissioning receive window blocks polling.
+PA5 is the active-low reed/counter input. Each 250 ms tick reads it once, with the pull-up enabled only for that read. A read that disagrees with the confirmed state starts a debounce burst of five equal reads at 1 ms spacing in the same wake-up, so confirmation adds no tick of latency and costs power only on real changes. A LOW or HIGH phase longer than one tick is detected, except while a commissioning receive window or a held button blocks polling.
 
 A counter additionally accepts a new level only after it has persisted for `NODE_COUNTER_MINIMUM_PHASE_MS` (500 ms) of RTC time, because a magnet moving slowly near the pull-in distance makes the reed chatter far longer than the debounce burst. With the 250 ms tick, phases of at least 750 ms are always accepted and phases shorter than 500 ms never are. Binary inputs do not use this filter.
 
@@ -69,7 +69,14 @@ A binary input reports each confirmed change in the same wake-up, even while rad
 
 Measured on the internal board, `counter_reed` draws 1.8 µA between wake-ups and 2.8 µA on average with the contact idle; one acknowledged transmission takes about 19 ms at 12.8 mA. A CR2032 therefore covers several years of gas metering.
 
-PA6 is the active-low provisioning button. An unconfigured-node press triggers commissioning immediately. The planned configured behavior is a short `COMMAND_READY` session and a 10-second network reset that preserves counter state.
+PA6 is the active-low provisioning button. A hold is timed with `millis()` while the MCU stays awake, so input polling pauses until the button is released or the hold completes.
+
+| Gesture | Effect |
+| --- | --- |
+| Released within 10 s | Unconfigured or provisional node: commissioning attempt. Active node: reserved for the planned `COMMAND_READY` session. |
+| Held for 10 s | Invalidates both network configuration slots and restarts the node unconfigured. USERROW and profile EEPROM, including the counter, are preserved. Refused when the factory credentials are invalid, because the node could never rejoin. |
+
+The gateway rejects a join request from a UID it still holds as active. To pair a reset node again, also delete it on the gateway (`DELETE /ui/nodes`).
 
 ## Persistence and protocols
 

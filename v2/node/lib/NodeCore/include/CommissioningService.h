@@ -23,6 +23,10 @@ public:
     bool advance();
     const storage::NetworkConfig& config() const;
 
+    // Invalidates both network configuration slots. Refused without valid
+    // factory credentials, because the node could then never rejoin.
+    bool resetNetwork();
+
 private:
     void readDeviceUid();
     uint32_t createNonce() const;
@@ -39,6 +43,7 @@ private:
     uint16_t profileId_;
     protocol::FirmwareVersion firmware_;
     storage::FactoryCredentials factoryCredentials_{};
+    bool factoryCredentialsValid_ = false;
 };
 
 }  // namespace node

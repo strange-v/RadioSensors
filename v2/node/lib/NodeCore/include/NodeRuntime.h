@@ -1,5 +1,6 @@
 #pragma once
 
+#include <avr/io.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -54,13 +55,21 @@ public:
     }
 
     void runOnce() {
+        const ButtonGesture gesture = button_.takeGesture();
+        if (gesture == ButtonGesture::LongPress) resetNetwork();
         const uint32_t now = clock_.nowMs();
         profile_.poll(now);
         if (radioReady_) {
             if (commissioning_.active()) {
+#if defined(NODE_DEBUG)
+                if (gesture == ButtonGesture::ShortPress) {
+                    Serial.println(
+                        F("button: command sessions are not implemented"));
+                }
+#endif
                 reportIfDue(now);
             } else {
-                commissionIfDue(now);
+                commissionIfDue(now, gesture == ButtonGesture::ShortPress);
             }
         }
         clock_.sleepUntilInterrupt();
@@ -69,8 +78,25 @@ public:
 private:
     static constexpr uint32_t kJoinRetryIntervalMs = 5UL * 60UL * 1000UL;
 
-    void commissionIfDue(const uint32_t now) {
-        const bool requestedByButton = button_.consumePress();
+    // USERROW and profile EEPROM, including the counter, survive. The restart
+    // brings the node up unconfigured, on its factory commissioning profile.
+    void resetNetwork() {
+        if (!commissioning_.resetNetwork()) {
+#if defined(NODE_DEBUG)
+            Serial.println(
+                F("button: network reset refused, factory credentials missing"));
+#endif
+            return;
+        }
+#if defined(NODE_DEBUG)
+        Serial.println(F("button: network configuration erased, restarting"));
+        Serial.flush();
+#endif
+        _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
+        while (true) {}
+    }
+
+    void commissionIfDue(const uint32_t now, const bool requestedByButton) {
         if (!requestedByButton && joinAttempted_ &&
             !intervalElapsed(now, lastJoinAttempt_, kJoinRetryIntervalMs)) {
             return;
