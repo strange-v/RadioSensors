@@ -46,6 +46,155 @@ void test_command_session_known_vectors() {
     TEST_ASSERT_EQUAL_HEX32(0x89ABCDEFUL, nonce);
 }
 
+void test_command_known_vectors() {
+    const uint8_t powerExpected[] = {
+        0x44, 0xEF, 0xCD, 0xAB, 0x89, 0x34, 0x12, 0x01, 0x10};
+    const uint8_t countExpected[] = {
+        0x44, 0xEF, 0xCD, 0xAB, 0x89, 0x35, 0x12, 0x02,
+        0x78, 0x56, 0x34, 0x12};
+    uint8_t encoded[kMaxCommandSize]{};
+
+    const Command power{0x89ABCDEFUL, 0x1234, 1, 1, {0x10}};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::Ok),
+        static_cast<int>(encodeCommand(power, encoded, sizeof(encoded))));
+    TEST_ASSERT_EQUAL_UINT32(sizeof(powerExpected), commandFrameSize(power));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(powerExpected, encoded, sizeof(powerExpected));
+
+    Command decoded{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::Ok),
+        static_cast<int>(decodeCommand(
+            countExpected, sizeof(countExpected), decoded)));
+    TEST_ASSERT_EQUAL_HEX32(0x89ABCDEFUL, decoded.sessionNonce);
+    TEST_ASSERT_EQUAL_HEX16(0x1235, decoded.commandId);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(CommandType::SetCount), decoded.type);
+    TEST_ASSERT_EQUAL_UINT8(kSetCountArgumentSize, decoded.argumentSize);
+    TEST_ASSERT_EQUAL_HEX32(0x12345678UL, readUint32Le(decoded.arguments));
+
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::Ok),
+        static_cast<int>(encodeCommand(decoded, encoded, sizeof(encoded))));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(countExpected, encoded, sizeof(countExpected));
+}
+
+void test_command_result_known_vectors() {
+    const uint8_t appliedExpected[] = {
+        0x45, 0xEF, 0xCD, 0xAB, 0x89, 0x35, 0x12, 0x00,
+        0x10, 0x00, 0x00, 0x00, 0x78, 0x56, 0x34, 0x12};
+    const uint8_t rejectedExpected[] = {
+        0x45, 0xEF, 0xCD, 0xAB, 0x89, 0x34, 0x12, 0x02};
+    uint8_t encoded[kMaxCommandResultSize]{};
+
+    CommandResult applied{
+        0x89ABCDEFUL, 0x1235, CommandStatus::Applied, kSetCountResultSize, {}};
+    writeUint32Le(applied.data, 16);
+    writeUint32Le(applied.data + 4, 0x12345678UL);
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::Ok),
+        static_cast<int>(encodeCommandResult(applied, encoded, sizeof(encoded))));
+    TEST_ASSERT_EQUAL_UINT32(
+        sizeof(appliedExpected), commandResultFrameSize(applied));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(
+        appliedExpected, encoded, sizeof(appliedExpected));
+
+    CommandResult decoded{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::Ok),
+        static_cast<int>(decodeCommandResult(
+            rejectedExpected, sizeof(rejectedExpected), decoded)));
+    TEST_ASSERT_EQUAL_HEX32(0x89ABCDEFUL, decoded.sessionNonce);
+    TEST_ASSERT_EQUAL_HEX16(0x1234, decoded.commandId);
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandStatus::InvalidArgument),
+        static_cast<int>(decoded.status));
+    TEST_ASSERT_EQUAL_UINT8(0, decoded.dataSize);
+}
+
+void test_command_frames_reject_invalid_envelopes() {
+    Command command{};
+    CommandResult result{};
+    const uint8_t zeroId[] = {0x44, 1, 2, 3, 4, 0x00, 0x00, 0x01, 0x10};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::InvalidCommandId),
+        static_cast<int>(decodeCommand(zeroId, sizeof(zeroId), command)));
+
+    const uint8_t tooShort[] = {0x44, 1, 2, 3, 4, 0x01, 0x00};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::WrongLength),
+        static_cast<int>(decodeCommand(tooShort, sizeof(tooShort), command)));
+
+    uint8_t tooLong[kMaxCommandSize + 1] = {0x44, 1, 2, 3, 4, 0x01, 0x00, 0x02};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::WrongLength),
+        static_cast<int>(decodeCommand(tooLong, sizeof(tooLong), command)));
+
+    const uint8_t wrongKind[] = {0x45, 1, 2, 3, 4, 0x01, 0x00, 0x00};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::WrongFrameKind),
+        static_cast<int>(decodeCommand(wrongKind, sizeof(wrongKind), command)));
+
+    const uint8_t badStatus[] = {0x45, 1, 2, 3, 4, 0x01, 0x00, 0x04};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::InvalidStatus),
+        static_cast<int>(decodeCommandResult(
+            badStatus, sizeof(badStatus), result)));
+
+    const Command unassigned{1, 0, 1, 1, {0x10}};
+    uint8_t encoded[kMaxCommandSize]{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::InvalidCommandId),
+        static_cast<int>(encodeCommand(unassigned, encoded, sizeof(encoded))));
+}
+
+void test_unknown_command_type_decodes_for_an_unsupported_reply() {
+    const uint8_t bytes[] = {0x44, 1, 2, 3, 4, 0x07, 0x00, 0x7F, 0xAA, 0xBB};
+    Command command{};
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(CommandSessionCodecStatus::Ok),
+        static_cast<int>(decodeCommand(bytes, sizeof(bytes), command)));
+    TEST_ASSERT_EQUAL_UINT8(0x7F, command.type);
+    TEST_ASSERT_EQUAL_UINT8(2, command.argumentSize);
+    size_t size = 0;
+    TEST_ASSERT_FALSE(commandArgumentSize(command.type, size));
+}
+
+void test_command_catalogue() {
+    size_t size = 0;
+    TEST_ASSERT_TRUE(commandArgumentSize(
+        static_cast<uint8_t>(CommandType::SetRadioPower), size));
+    TEST_ASSERT_EQUAL_UINT32(1, size);
+    TEST_ASSERT_TRUE(commandArgumentSize(
+        static_cast<uint8_t>(CommandType::SetCount), size));
+    TEST_ASSERT_EQUAL_UINT32(4, size);
+    TEST_ASSERT_EQUAL_UINT32(8, commandResultDataSize(
+        CommandType::SetCount, CommandStatus::Applied));
+    TEST_ASSERT_EQUAL_UINT32(0, commandResultDataSize(
+        CommandType::SetCount, CommandStatus::InvalidArgument));
+    TEST_ASSERT_EQUAL_UINT32(0, commandResultDataSize(
+        CommandType::SetRadioPower, CommandStatus::Applied));
+
+    for (uint16_t profile = 1; profile <= 8; ++profile) {
+        TEST_ASSERT_TRUE(
+            profileSupportsCommand(profile, CommandType::SetRadioPower));
+        TEST_ASSERT_EQUAL(
+            profile == 6,
+            profileSupportsCommand(profile, CommandType::SetCount));
+    }
+    TEST_ASSERT_FALSE(profileSupportsCommand(0, CommandType::SetRadioPower));
+    TEST_ASSERT_FALSE(profileSupportsCommand(9, CommandType::SetRadioPower));
+}
+
+void test_telemetry_ack_command_hint() {
+    const uint8_t pending[] = {0x01};
+    const uint8_t reserved[] = {0x02};
+    TEST_ASSERT_FALSE(telemetryAckCommandPending(nullptr, 0));
+    TEST_ASSERT_FALSE(telemetryAckCommandPending(pending, 0));
+    TEST_ASSERT_TRUE(telemetryAckCommandPending(pending, sizeof(pending)));
+    TEST_ASSERT_FALSE(telemetryAckCommandPending(reserved, sizeof(reserved)));
+}
+
 void test_initial_profile_ids_are_stable() {
     TEST_ASSERT_EQUAL_UINT16(1, profileIdValue(ProfileId::Voltage));
     TEST_ASSERT_EQUAL_UINT16(2, profileIdValue(ProfileId::Temperature));
@@ -391,6 +540,12 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_header_bit_layout);
     RUN_TEST(test_command_session_known_vectors);
+    RUN_TEST(test_command_known_vectors);
+    RUN_TEST(test_command_result_known_vectors);
+    RUN_TEST(test_command_frames_reject_invalid_envelopes);
+    RUN_TEST(test_unknown_command_type_decodes_for_an_unsupported_reply);
+    RUN_TEST(test_command_catalogue);
+    RUN_TEST(test_telemetry_ack_command_hint);
     RUN_TEST(test_initial_profile_ids_are_stable);
     RUN_TEST(test_decodes_opaque_telemetry);
     RUN_TEST(test_profile_1_known_vector);

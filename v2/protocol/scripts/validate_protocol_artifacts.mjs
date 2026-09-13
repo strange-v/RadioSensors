@@ -159,6 +159,83 @@ for (const profile of telemetry.profiles) {
     `profile ${profile.id} has no golden vector`)
 }
 
+const frameKinds = new Map(manifest.radio.frame_kinds.map((kind) => [kind.name, kind]))
+const ackFlags = manifest.radio.telemetry_ack_flags
+unique(ackFlags.map((flag) => flag.mask), 'telemetry ACK flag masks')
+unique(ackFlags.map((flag) => flag.name), 'telemetry ACK flag names')
+
+const commands = manifest.commands
+assert.equal(commands.command.header, frameKinds.get('command').header)
+assert.equal(commands.result.header, frameKinds.get('command_result').header)
+unique(commands.statuses.map((status) => status.value), 'command status values')
+unique(commands.statuses.map((status) => status.name), 'command status names')
+const appliedStatus = commands.statuses.find((status) => status.name === 'applied')
+assert(appliedStatus, 'command statuses must define applied')
+const commandTypes = new Map(commands.types.map((type) => [type.type, type]))
+unique([...commandTypes.keys()], 'command types')
+unique(commands.types.map((type) => type.name), 'command type names')
+
+const layoutSize = (fields) => fields.reduce((size, field) => size + byteLength(field), 0)
+for (const frame of [commands.command, commands.result]) {
+  validateLayout(frame.fields, commands.envelope_size, 1)
+  assert.equal(layoutSize(frame.fields) + 1, commands.envelope_size,
+    'command envelope fields must fill the envelope')
+}
+for (const type of commands.types) {
+  for (const [frame, fields] of [[commands.command, type.arguments], [commands.result, type.result]]) {
+    for (const field of fields) {
+      assert(field.offset >= commands.envelope_size, `${type.name}.${field.name} overlaps the envelope`)
+    }
+    validateLayout([...frame.fields, ...fields], commands.envelope_size + layoutSize(fields), 1)
+  }
+}
+for (const profile of telemetry.profiles) {
+  unique(profile.commands, `profile ${profile.id} commands`)
+  for (const type of profile.commands) {
+    assert(commandTypes.has(type), `profile ${profile.id} references unknown command ${type}`)
+  }
+}
+
+function decodeCommandFrame(vector) {
+  const type = commandTypes.get(vector.command_type)
+  assert(type, `${vector.name} names unknown command type ${vector.command_type}`)
+  const frame = vector.frame === 'command' ? commands.command : commands.result
+  const buffer = Buffer.from(vector.hex, 'hex')
+  assert.equal(buffer[0], frame.header, `${vector.name} has the wrong header`)
+  const decoded = {}
+  for (const field of frame.fields) {
+    decoded[field.name] = readField(buffer, field, decoded)
+    fieldValue(decoded[field.name], field)
+  }
+  let payload
+  if (vector.frame === 'command') {
+    assert.equal(decoded.command_type, type.type, `${vector.name} has the wrong command type`)
+    payload = type.arguments
+  } else {
+    assert(commands.statuses.some((status) => status.value === decoded.status),
+      `${vector.name} has an unknown status`)
+    payload = decoded.status === appliedStatus.value ? type.result : []
+  }
+  assert.equal(buffer.length, commands.envelope_size + layoutSize(payload),
+    `${vector.name} has the wrong size`)
+  for (const field of payload) {
+    decoded[field.name] = readField(buffer, field, decoded)
+    fieldValue(decoded[field.name], field)
+  }
+  return decoded
+}
+
+for (const vector of vectors.commands) {
+  assert.deepEqual(decodeCommandFrame(vector), vector.decoded, vector.name)
+}
+for (const type of commands.types) {
+  for (const frame of ['command', 'command_result']) {
+    assert(vectors.commands.some((vector) =>
+      vector.command_type === type.type && vector.frame === frame),
+    `${type.name} has no golden ${frame} vector`)
+  }
+}
+
 const stream = manifest.gateway_stream
 const messages = new Map(stream.messages.map((message) => [message.kind, message]))
 unique([...messages.keys()], 'stream message kinds')
@@ -191,4 +268,4 @@ for (const message of stream.messages) {
     `${message.name} has no golden vector`)
 }
 
-console.log(`Validated ${profiles.size} profiles, ${vectors.telemetry.length} telemetry vectors, and ${messages.size} stream messages.`)
+console.log(`Validated ${profiles.size} profiles, ${vectors.telemetry.length} telemetry vectors, ${commandTypes.size} command types, and ${messages.size} stream messages.`)

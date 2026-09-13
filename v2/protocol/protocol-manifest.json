@@ -22,6 +22,76 @@
       { "value": 7, "header": 71, "name": "join_complete" },
       { "value": 8, "header": 72, "name": "command_ready" },
       { "value": 9, "header": 73, "name": "no_command" }
+    ],
+    "telemetry_ack_flags": [
+      { "mask": 1, "name": "command_pending" }
+    ]
+  },
+  "commands": {
+    "offset_base": "application_frame",
+    "envelope_size": 8,
+    "command": {
+      "header": 68,
+      "fields": [
+        { "name": "session_nonce", "offset": 1, "encoding": "uint32_le" },
+        {
+          "name": "command_id",
+          "offset": 5,
+          "encoding": "uint16_le",
+          "valid_raw": { "min": 1, "max": 65535 }
+        },
+        {
+          "name": "command_type",
+          "offset": 7,
+          "encoding": "uint8",
+          "valid_raw": { "min": 1, "max": 255 }
+        }
+      ]
+    },
+    "result": {
+      "header": 69,
+      "fields": [
+        { "name": "session_nonce", "offset": 1, "encoding": "uint32_le" },
+        {
+          "name": "command_id",
+          "offset": 5,
+          "encoding": "uint16_le",
+          "valid_raw": { "min": 1, "max": 65535 }
+        },
+        { "name": "status", "offset": 7, "encoding": "uint8" }
+      ]
+    },
+    "statuses": [
+      { "value": 0, "name": "applied" },
+      { "value": 1, "name": "unsupported" },
+      { "value": 2, "name": "invalid_argument" },
+      { "value": 3, "name": "storage_failure" }
+    ],
+    "types": [
+      {
+        "type": 1,
+        "name": "set_radio_power",
+        "arguments": [
+          {
+            "name": "power_level",
+            "offset": 8,
+            "encoding": "uint8",
+            "valid_raw": { "min": 0, "max": 31 }
+          }
+        ],
+        "result": []
+      },
+      {
+        "type": 2,
+        "name": "set_count",
+        "arguments": [
+          { "name": "count", "offset": 8, "encoding": "uint32_le" }
+        ],
+        "result": [
+          { "name": "previous_count", "offset": 8, "encoding": "uint32_le" },
+          { "name": "count", "offset": 12, "encoding": "uint32_le" }
+        ]
+      }
     ]
   },
   "gateway_stream": {
@@ -175,12 +245,14 @@
         "id": 1,
         "name": "voltage",
         "frame_size": 3,
+        "commands": [1],
         "fields": []
       },
       {
         "id": 2,
         "name": "temperature",
         "frame_size": 5,
+        "commands": [1],
         "fields": [
           {
             "name": "temperature",
@@ -198,6 +270,7 @@
         "id": 3,
         "name": "climate_th",
         "frame_size": 7,
+        "commands": [1],
         "fields": [
           {
             "name": "temperature",
@@ -225,6 +298,7 @@
         "id": 4,
         "name": "climate_thp",
         "frame_size": 9,
+        "commands": [1],
         "fields": [
           {
             "name": "temperature",
@@ -262,6 +336,7 @@
         "id": 5,
         "name": "binary_input",
         "frame_size": 4,
+        "commands": [1],
         "fields": [
           {
             "name": "state",
@@ -276,6 +351,7 @@
         "id": 6,
         "name": "pulse_counter",
         "frame_size": 7,
+        "commands": [1, 2],
         "fields": [
           {
             "name": "count",
@@ -289,6 +365,7 @@
         "id": 7,
         "name": "binary_climate_th",
         "frame_size": 8,
+        "commands": [1],
         "fields": [
           {
             "name": "state",
@@ -323,6 +400,7 @@
         "id": 8,
         "name": "binary_temperature",
         "frame_size": 6,
+        "commands": [1],
         "fields": [
           {
             "name": "state",
