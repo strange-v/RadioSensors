@@ -70,6 +70,8 @@ struct Snapshot {
     int16_t lastRssi;
 };
 
+// Returns true once the radio task runs. Without an installation key the radio
+// sleeps in EncryptionKeyMissing until applyInstallation() provides one.
 bool begin();
 bool receive(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool receiveTelemetry(ReceivedFrame& frame, TickType_t waitTicks = 0);
@@ -77,6 +79,9 @@ bool receiveTelemetry(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool receiveSessionFrame(ReceivedFrame& frame, TickType_t waitTicks = 0);
 bool requestProfile(Profile profile);
 bool beginCommissioning(const uint8_t key[16]);
+// Switches the radio to this operational network and key and starts receiving;
+// initial setup uses it to hand over the first installation key.
+bool applyInstallation(uint8_t networkId, const uint8_t key[16]);
 bool send(uint16_t targetId, const uint8_t* data, size_t size, bool requestAck = false);
 bool sendThenSwitchProfile(
     uint16_t targetId,

@@ -132,6 +132,10 @@ Success creates the first browser session and returns the same body and cookie a
 
 Secrets and settings commit before authentication. The first enabled admin record is the final commit that changes the gateway to configured.
 
+A gateway that has never been set up boots without an installation key, so its radio sleeps and `/ui/status` reports radio state `encryption_key_missing`. Setup hands the saved key and network ID to the running radio, which starts receiving at once: pairing needs no restart.
+
+`500 setup_storage_failed` while `setup_required` is true usually means the gateway's storage did not load. NVS holds data that no store can decode, so the gateway runs on defaults, which report no admin, and refuses every write. Recover it by erasing NVS; see the README.
+
 ## Browser session
 
 ### `POST /ui/session`
@@ -301,7 +305,7 @@ The UID is exactly 10 bytes and the factory key exactly 16 bytes, both encoded a
 
 A value from 1 to 255 is applied as given; omit the field to have the gateway generate one. Zero or a non-integer returns `422 invalid_operational_network_id`.
 
-The operation clears the node registry, the command book, and cached telemetry before writing the new secrets, because every registered node is bound to the previous network and key. It answers `202` with the applied ID and the number of removed records, then restarts: the radio reads its profile once at boot, so a running gateway cannot switch networks in place.
+The operation clears the node registry, the command book, and cached telemetry before writing the new secrets, because every registered node is bound to the previous network and key. It answers `202` with the applied ID and the number of removed records, then restarts. Only initial setup hands a profile to the running radio, because before setup it has none.
 
 ```json
 {"operational_network_id":42,"removed_nodes":6,"restarting":true}

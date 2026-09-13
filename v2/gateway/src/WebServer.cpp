@@ -368,6 +368,12 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
         sendError(request, 500, "setup_storage_failed");
         return;
     }
+    // A gateway set up for the first time booted without an installation key,
+    // so its radio sleeps until it receives the key just saved.
+    if (!radio::applyInstallation(
+            secrets.operationalNetworkId, secrets.installationKey)) {
+        Serial.println("Initial setup: radio did not take the installation key");
+    }
 
     status::closeSetup();
     xSemaphoreGive(setupMutex);
