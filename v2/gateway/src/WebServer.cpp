@@ -306,13 +306,6 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
         esp_fill_random(secrets.installationKey,
                         radiosensors::gateway_storage::kRadioKeySize);
     }
-    // Zero is not a usable network id, so generate one whenever the stored
-    // value is unset rather than only alongside a fresh installation key. A
-    // record that already carried a key but no id would otherwise keep zero
-    // for good, because setup runs exactly once.
-    if (secrets.operationalNetworkId == 0) {
-        secrets.operationalNetworkId = randomOperationalNetworkId();
-    }
     if (object["operational_network_id"].is<uint8_t>()) {
         const uint8_t requested = object["operational_network_id"].as<uint8_t>();
         if (requested == 0) {

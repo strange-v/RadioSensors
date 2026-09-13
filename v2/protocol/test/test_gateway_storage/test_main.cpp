@@ -185,6 +185,37 @@ void test_authentication_and_secrets_round_trip() {
     TEST_ASSERT_TRUE(secretsEqual(secrets, decodedSecrets));
 }
 
+void test_secrets_known_layout() {
+    const InstallationSecrets source = populatedSecrets();
+    uint8_t bytes[kSecretsSnapshotSize]{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(encodeSecrets(source, 8, bytes, sizeof(bytes))));
+    TEST_ASSERT_EQUAL_UINT8(67, bytes[10]);
+    TEST_ASSERT_EQUAL_UINT8(0, bytes[11]);
+    TEST_ASSERT_EQUAL_HEX8(0x03, bytes[12]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, bytes[13]);
+    TEST_ASSERT_EQUAL_UINT8(128, bytes[14]);
+    TEST_ASSERT_EQUAL_MEMORY(source.installationKey, bytes + 15, kRadioKeySize);
+    TEST_ASSERT_EQUAL_MEMORY(source.deviceSecret, bytes + 31, kDeviceSecretSize);
+}
+
+// Before setup the gateway holds a network ID but no installation key, and
+// that record must save; network 0 is refused with or without a key.
+void test_secrets_network_id_is_never_zero() {
+    uint8_t bytes[kSecretsSnapshotSize]{};
+    InstallationSecrets bootstrap{};
+    bootstrap.deviceSecretPresent = true;
+    bootstrap.deviceSecret[0] = 1;
+    bootstrap.operationalNetworkId = 42;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(encodeSecrets(bootstrap, 1, bytes, sizeof(bytes))));
+    InstallationSecrets decoded{};
+    uint32_t generation = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok), static_cast<int>(decodeSecrets(bytes, sizeof(bytes), decoded, generation)));
+    TEST_ASSERT_TRUE(secretsEqual(bootstrap, decoded));
+
+    bootstrap.operationalNetworkId = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::InvalidValue), static_cast<int>(encodeSecrets(bootstrap, 1, bytes, sizeof(bytes))));
+}
+
 void test_validation_rejects_invalid_relationships() {
     uint8_t buffer[kAuthSnapshotSize]{};
     AuthenticationData auth = populatedAuthentication();
@@ -336,6 +367,8 @@ int main(int, char**) {
     RUN_TEST(test_settings_known_layout_and_round_trip);
     RUN_TEST(test_settings_reject_names_dns_cannot_carry);
     RUN_TEST(test_authentication_and_secrets_round_trip);
+    RUN_TEST(test_secrets_known_layout);
+    RUN_TEST(test_secrets_network_id_is_never_zero);
     RUN_TEST(test_validation_rejects_invalid_relationships);
     RUN_TEST(test_crc_corruption_is_rejected);
     RUN_TEST(test_store_distinguishes_empty_from_existing_corrupt_slots);
