@@ -1,8 +1,8 @@
 # Gateway persistent storage layouts
 
-This document is the byte-level source of truth for gateway settings, authentication, node registry, and installation-secret persistence. Schema 1 is frozen by the portable codecs in `../shared/RadioProtocol` and their native known-layout, round-trip, validation, corruption-recovery, and interrupted-write tests. ESP32 NVS adapters and runtime ownership are implemented by `ConfigurationStore` and `NodeRegistryStore`.
+This document is the byte-level source of truth for gateway settings, authentication, node registry, and installation-secret persistence. The settings, authentication, installation-secret, and command-book snapshots share storage schema version 2; the node registry carries its own schema version. Schema 2 is frozen by the portable codecs in `../shared/RadioProtocol` and their native known-layout, round-trip, validation, corruption-recovery, and interrupted-write tests. ESP32 NVS adapters and runtime ownership are implemented by `ConfigurationStore` and `NodeRegistryStore`.
 
-All multi-byte integers are unsigned little-endian unless stated otherwise. No compiler structs are persisted directly. Reserved bytes and unused fixed records are encoded as zero and must be zero when decoding schema version 1.
+All multi-byte integers are unsigned little-endian unless stated otherwise. No compiler structs are persisted directly. Reserved bytes and unused fixed records are encoded as zero and must be zero when decoding schema version 2.
 
 ## Common dual-slot rules
 
@@ -13,7 +13,7 @@ Every snapshot begins with:
 | Offset | Bytes | Field |
 | ---: | ---: | --- |
 | 0 | 4 | Store-specific ASCII magic |
-| 4 | 2 | Storage schema version, initially `1` |
+| 4 | 2 | Storage schema version, currently `2` |
 | 6 | 4 | Wrapping generation |
 | 10 | 2 | Exact total encoded size including CRC |
 
@@ -23,7 +23,7 @@ Generation advances only after a durable semantic change. Re-saving identical co
 
 ## Gateway settings snapshot
 
-NVS namespace: `gateway-config`; slot keys: `config_a`, `config_b`; magic: `RSGC`; exact schema-1 size: 248 bytes.
+NVS namespace: `gateway-config`; slot keys: `config_a`, `config_b`; magic: `RSGC`; exact schema-2 size: 248 bytes.
 
 | Offset | Bytes | Field |
 | ---: | ---: | --- |
@@ -46,7 +46,7 @@ Generation-zero defaults are an empty hostname, enabled mDNS and NTP, NTP server
 
 ## Authentication snapshot
 
-NVS namespace: `gateway-auth`; slot keys: `auth_a`, `auth_b`; magic: `RSAU`; exact schema-1 size: 1036 bytes.
+NVS namespace: `gateway-auth`; slot keys: `auth_a`, `auth_b`; magic: `RSAU`; exact schema-2 size: 1036 bytes.
 
 It contains four fixed user slots and eight fixed API-token slots. Active records occupy the first counted slots; every remaining slot is zero.
 
@@ -98,38 +98,36 @@ Exact size: 80 bytes.
 | 40 | 8 | Creation time, UTC Unix milliseconds or zero |
 | 48 | 32 | SHA-256 of the raw token |
 
-Flag bit 0 means enabled. Scope bits 0, 1, and 2 mean `gateway:read`, `registry:read`, and `telemetry:read`; all other flag and scope bits are zero. The raw token is 32 cryptographically random bytes shown once as unpadded base64url. Only its digest is stored and verification uses constant-time comparison.
+Flag bit 0 means enabled. Scope bit 0 means `telemetry:read`, the only scope: it covers both the node registry and the telemetry stream. An active record carries at least one scope; all other flag and scope bits are zero. The raw token is 32 cryptographically random bytes shown once as unpadded base64url. Only its digest is stored and verification uses constant-time comparison.
 
 `last_used_at` is deliberately runtime-only because persisting it on requests would cause high-frequency flash wear. Login sessions, failed-login counters, rate-limit state, and CSRF material are runtime state too.
 
 ## Installation secrets snapshot
 
-NVS namespace: `gateway-secrets`; slot keys: `secret_a`, `secret_b`; magic: `RSGS`; exact schema-1 size: 84 bytes.
+NVS namespace: `gateway-secrets`; slot keys: `secret_a`, `secret_b`; magic: `RSGS`; exact schema-2 size: 67 bytes.
 
 | Offset | Bytes | Field |
 | ---: | ---: | --- |
 | 0 | 12 | Common snapshot header |
 | 12 | 2 | Presence flags |
-| 14 | 1 | Operational RFM69 network ID |
-| 15 | 1 | Commissioning RFM69 network ID |
-| 16 | 16 | Installation AES key |
-| 32 | 16 | Commissioning AES key |
-| 48 | 32 | Gateway device secret |
-| 80 | 4 | CRC32 |
+| 14 | 1 | Operational RFM69 network ID, `1..255` |
+| 15 | 16 | Installation AES key |
+| 31 | 32 | Gateway device secret |
+| 63 | 4 | CRC32 |
 
-Presence bits 0, 1, and 2 correspond to installation key, commissioning key, and device secret. Other bits are zero. Bytes for an absent value are zero. AES keys are raw and may contain zeros. Operational and commissioning network IDs must differ when both profiles are configured.
+Presence bit 0 marks the installation key and bit 1 the device secret; other bits are zero. Bytes for an absent value are zero. The installation key is raw and may contain zeros.
 
-During initial installation, the operational network ID is generated randomly from `1..255` and presented as an editable advanced value before confirmation. The confirmed ID and installation key are committed together in this snapshot. Ordinary edits are rejected after the registry contains an active node; later changes require a staged migration protocol rather than an immediate update.
+The operational network ID is always `1..255`. Zero is never stored, because network 0 is the commissioning network that unprovisioned nodes use. On first boot the gateway stores a random ID; initial setup may replace it with a user-chosen value, generates the installation key, and commits both together in this snapshot. Ordinary edits are rejected while the registry contains an active node. A radio network reset clears the registry first, then generates a new installation key and network ID.
 
-When the installation profile is absent, its network ID and key bytes are zero; when present, its network ID is nonzero. When the commissioning profile is absent, its network ID and key bytes are zero. A present commissioning network ID may be zero, as in the current commissioning profile.
+When the installation key is absent, its bytes are zero; the network ID is still nonzero. When the device secret is absent, its bytes are zero.
 
 The device secret comes from the ESP32 hardware RNG, is not the public stable gateway ID, survives ordinary settings/auth/network reset, and is reserved for local secret derivation and authenticated export.
 
 CRC32 provides neither confidentiality nor authenticity. Without ESP32 NVS or flash encryption, physical flash access can recover keys and authentication material. Enabling flash encryption and secure boot, or accepting this physical attack, remains a production threat-model decision.
 
-An empty secrets namespace is initialized only with a hardware-random device secret. Initial setup generates and durably stores the operational network ID and installation key; radio keys are never imported from build-time headers. Existing but invalid slot data is reported as corruption and is never treated as an empty store or automatically overwritten.
+An empty secrets namespace is initialized with a hardware-random device secret and a random operational network ID, without an installation key. Initial setup generates and durably stores the installation key; radio keys are never imported from build-time headers. Existing but invalid slot data is reported as corruption and is never treated as an empty store or automatically overwritten.
 
-The schema-1 commissioning-key field is reserved and remains absent in the production flow. Every node has a unique factory commissioning key supplied with its UID. The user currently enters both values manually; future QR scanning may populate the same request. The key is held only in RAM for one pairing transaction and is never added to this snapshot or the registry. Commissioning network ID is zero. After durable `JOIN_COMPLETE`, explicit close, or timeout, the gateway wipes the temporary key.
+This snapshot holds no commissioning profile. Every node has a unique factory commissioning key supplied with its UID, entered by hand or scanned from the node's QR code. The radio task holds the key only in RAM for one pairing transaction; it is never added to this snapshot or the registry. The commissioning network ID is a runtime constant of zero and is not stored either. The gateway wipes the key whenever the radio returns from the commissioning profile to the operational one.
 
 ## Node registry snapshot
 

@@ -33,7 +33,10 @@ constexpr size_t kAuthSnapshotSize = 1036;
 
 constexpr size_t kRadioKeySize = 16;
 constexpr size_t kDeviceSecretSize = 32;
-constexpr size_t kSecretsSnapshotSize = 84;
+constexpr size_t kSecretsSnapshotSize = 67;
+static_assert(kSecretsSnapshotSize ==
+                  15 + kRadioKeySize + kDeviceSecretSize + kSnapshotCrcSize,
+              "installation secrets snapshot layout changed");
 
 // The 20 KiB NVS partition also holds a registry of up to ~9 KiB, so the book
 // keeps pending commands and recent results within 2 x 820 bytes.
