@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <string.h>
 
+#include "DebugLog.h"
+
 namespace radiosensors {
 namespace node {
 
@@ -32,13 +34,12 @@ bool CommissioningService::begin() {
     factoryCredentialsValid_ = factoryStore_.load(factoryCredentials_);
     if (!hasConfig && !factoryCredentialsValid_) {
 #if defined(NODE_DEBUG)
-        Serial.println(F("commissioning: factory credentials missing or corrupt"));
+        debugLine(F("join no fcred"));
 #endif
         return false;
     }
 #if defined(NODE_DEBUG)
-    Serial.print(F("commissioning: EEPROM "));
-    Serial.println(hasConfig ? F("configuration found") : F("unconfigured"));
+    debugLine(hasConfig ? F("cfg ok") : F("cfg none"));
 #endif
     const uint8_t nodeId = hasConfig ? config_.nodeId : 0;
     const uint8_t networkId = hasConfig ? config_.networkId : 0;
@@ -104,7 +105,7 @@ bool CommissioningService::advance() {
 
 bool CommissioningService::requestJoin() {
 #if defined(NODE_DEBUG)
-    Serial.println(F("commissioning: sending JOIN_REQUEST"));
+    debugLine(F("join req"));
 #endif
     radio_.useCommissioningProfile(factoryCredentials_.key);
     protocol::JoinRequest request{};
@@ -127,7 +128,7 @@ bool CommissioningService::requestJoin() {
             kAcceptWindowMs, NODE_GATEWAY_ID, acceptBytes,
             sizeof(acceptBytes))) {
 #if defined(NODE_DEBUG)
-        Serial.println(F("commissioning: JOIN_ACCEPT timeout"));
+        debugLine(F("join acc timeout"));
 #endif
         radio_.sleep();
         return false;
@@ -140,7 +141,7 @@ bool CommissioningService::requestJoin() {
         accept.requestNonce != request.requestNonce ||
         accept.gatewayNodeId != NODE_GATEWAY_ID) {
 #if defined(NODE_DEBUG)
-        Serial.println(F("commissioning: invalid JOIN_ACCEPT"));
+        debugLine(F("join acc bad"));
 #endif
         radio_.sleep();
         return false;
@@ -158,14 +159,13 @@ bool CommissioningService::requestJoin() {
     config_.radioFallback = false;
     if (!store_.save(config_)) {
 #if defined(NODE_DEBUG)
-        Serial.println(F("commissioning: provisional EEPROM save failed"));
+        debugLine(F("join acc nosave"));
 #endif
         radio_.sleep();
         return false;
     }
 #if defined(NODE_DEBUG)
-    Serial.print(F("commissioning: JOIN_ACCEPT node="));
-    Serial.println(config_.nodeId);
+    debugValue(F("join acc node="), config_.nodeId);
 #endif
     radio_.useOperationalProfile(config_);
     return confirmJoin();
@@ -186,8 +186,7 @@ bool CommissioningService::confirmJoin() {
 
     for (uint8_t attempt = 0; attempt < kConfirmAttempts; ++attempt) {
 #if defined(NODE_DEBUG)
-        Serial.print(F("commissioning: sending JOIN_CONFIRM attempt "));
-        Serial.println(attempt + 1U);
+        debugValue(F("join cfm "), attempt + 1U);
 #endif
         radio_.send(config_.gatewayId, confirmBytes, sizeof(confirmBytes));
         uint8_t completeBytes[protocol::kJoinCompleteSize];
@@ -205,16 +204,14 @@ bool CommissioningService::confirmJoin() {
             config_.state = storage::ProvisioningState::Active;
             const bool saved = store_.save(config_);
 #if defined(NODE_DEBUG)
-            Serial.println(saved
-                ? F("commissioning: active")
-                : F("commissioning: active EEPROM save failed"));
+            debugLine(saved ? F("join ok") : F("join ok nosave"));
 #endif
             radio_.sleep();
             return saved;
         }
     }
 #if defined(NODE_DEBUG)
-    Serial.println(F("commissioning: JOIN_COMPLETE timeout"));
+    debugLine(F("join cmpl timeout"));
 #endif
     radio_.sleep();
     return false;

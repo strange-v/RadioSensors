@@ -38,7 +38,7 @@ node::NodeRuntime<Profile> runtime(
 void setup() {
 #if defined(NODE_DEBUG)
     Serial.begin(9600);
-    Serial.println(F("node: startup"));
+    Serial.println(F("boot"));
 #endif
     node::disableUnusedPins(kUnusedPins);
     runtime.begin();

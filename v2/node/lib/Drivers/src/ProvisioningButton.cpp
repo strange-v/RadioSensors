@@ -2,6 +2,8 @@
 
 #include <avr/interrupt.h>
 
+#include "DebugLog.h"
+
 namespace radiosensors {
 namespace node {
 
@@ -28,25 +30,18 @@ ButtonGesture ProvisioningButton::takeGesture() {
     SREG = status;
     if (!edgePending || !settledAt(LOW)) return ButtonGesture::None;
 
-#if defined(NODE_DEBUG)
-    Serial.println(F("button: pressed"));
-#endif
     const uint32_t pressedAt = millis();
     while (true) {
         const uint32_t heldMs = millis() - pressedAt;
         if (heldMs >= kLongPressMs) {
 #if defined(NODE_DEBUG)
-            Serial.print(F("button: held for "));
-            Serial.print(kLongPressMs / 1000UL);
-            Serial.println(F(" s"));
+            debugLine(F("btn long"));
 #endif
             return ButtonGesture::LongPress;
         }
         if (digitalRead(pin_) != LOW && settledAt(HIGH)) {
 #if defined(NODE_DEBUG)
-            Serial.print(F("button: released after "));
-            Serial.print(heldMs);
-            Serial.println(F(" ms"));
+            debugValue(F("btn ms="), heldMs);
 #endif
             return ButtonGesture::ShortPress;
         }
