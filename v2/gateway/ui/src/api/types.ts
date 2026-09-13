@@ -42,6 +42,24 @@ export interface GatewayNode {
   rssi?: number
   has_telemetry?: boolean
 }
+// The command types of v2/protocol/protocol-manifest.json.
+export type CommandType = 'set_radio_power' | 'set_count'
+export interface CommandArguments { power_level?: number; count?: number }
+export interface NodeCommand {
+  node_id: number
+  command_id: number
+  type: CommandType
+  arguments: CommandArguments
+  queued_at_ms: number
+  // `delivered` lives in gateway RAM: after a reboot the command reads as
+  // pending again until the node's next session.
+  state: 'pending' | 'delivered' | 'completed'
+  status?: 'applied' | 'unsupported' | 'invalid_argument'
+  completed_at_ms?: number
+  result?: { previous_count: number; count: number }
+}
+export interface CommandList { commands: NodeCommand[] }
+export interface CommandRequest { node_id: number; type: CommandType; arguments: CommandArguments }
 export interface RadioNetworkReset { operational_network_id: number; removed_nodes: number; restarting: boolean }
 export interface RenamedNode { node_id: number; display_name: string; registry_generation: number }
 export interface NodeRegistry { registry_generation: number; nodes: GatewayNode[] }

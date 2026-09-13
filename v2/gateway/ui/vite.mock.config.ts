@@ -33,7 +33,41 @@ const nodes = [
   { node_id: 3, device_uid: '0F1E2D3C4B5A69788796', display_name: 'Гараж', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 40_000, rssi: -74, has_telemetry: true },
   { node_id: 4, device_uid: '112233445566778899AA', display_name: '', profile_id: 2, firmware: '2.0.4', state: 'pending', last_seen_at_ms: now - 5_400_000, rssi: -91, has_telemetry: false },
   { node_id: 5, device_uid: 'BBCCDDEEFF0011223344', display_name: 'Тепличка', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 300_000, rssi: -59, has_telemetry: true },
+  { node_id: 6, device_uid: 'C0FFEE00112233445566', display_name: 'Газ', profile_id: 6, firmware: '0.1.0', state: 'active', last_seen_at_ms: now - 90_000, rssi: -71, has_telemetry: true },
 ]
+
+// The command book with the gateway's one-per-node rule. A queued command is
+// delivered after 3 s and answered after 6 s, standing in for a node whose
+// button was pressed; `set_count` reports the count it replaced.
+type MockCommand = { node_id: number; command_id: number; type: string; arguments: Record<string, number>; queued_at_ms: number; state: string; status?: string; completed_at_ms?: number; result?: { previous_count: number; count: number } }
+const commands: MockCommand[] = []
+let nextCommandId = 4660
+const commandTimers = new Map<number, ReturnType<typeof setTimeout>[]>()
+
+function queueMockCommand(body: Record<string, unknown>) {
+  const node = nodes.find((entry) => entry.node_id === body.node_id && entry.state === 'active')
+  if (!node) return { status: 404, body: { error: 'node_not_found' } }
+  const supported = node.profile_id === 6 ? ['set_radio_power', 'set_count'] : ['set_radio_power']
+  if (!supported.includes(String(body.type))) return { status: 422, body: { error: 'unsupported_command' } }
+  const args = (body.arguments ?? {}) as Record<string, number>
+  const valid = body.type === 'set_radio_power'
+    ? Number.isInteger(args.power_level) && args.power_level >= 0 && args.power_level <= 31
+    : Number.isInteger(args.count) && args.count >= 0 && args.count <= 0xffff_ffff
+  if (!valid) return { status: 422, body: { error: 'invalid_command_arguments' } }
+  const existing = commands.findIndex((entry) => entry.node_id === node.node_id)
+  if (existing >= 0 && commands[existing].state !== 'completed') return { status: 409, body: { error: 'command_pending' } }
+  if (existing >= 0) commands.splice(existing, 1)
+  const command: MockCommand = { node_id: node.node_id, command_id: nextCommandId++, type: String(body.type), arguments: args, queued_at_ms: Date.now(), state: 'pending' }
+  commands.push(command)
+  commandTimers.set(node.node_id, [
+    setTimeout(() => { command.state = 'delivered' }, 3_000),
+    setTimeout(() => {
+      Object.assign(command, { state: 'completed', status: 'applied', completed_at_ms: Date.now() })
+      if (command.type === 'set_count') command.result = { previous_count: 1_207, count: args.count }
+    }, 6_000),
+  ])
+  return { status: 201, body: command }
+}
 
 const routes: Record<string, unknown> = {
   // The public probe is tiny now; everything else the UI shows is behind a
@@ -200,6 +234,26 @@ function mockApi(): Plugin {
               const index = tokens.findIndex((token) => token.id === body.id)
               if (index < 0) return json(res, 404, { error: 'token_not_found' })
               tokens.splice(index, 1)
+              json(res, 204)
+            })
+            return
+          }
+        }
+        if (path === '/ui/commands') {
+          if (req.method === 'GET') return json(res, 200, { commands })
+          if (req.method === 'POST') {
+            readBody(req, (body) => {
+              const result = queueMockCommand(body)
+              json(res, result.status, result.body)
+            })
+            return
+          }
+          if (req.method === 'DELETE') {
+            readBody(req, (body) => {
+              const index = commands.findIndex((entry) => entry.node_id === body.node_id && entry.state !== 'completed')
+              if (index < 0) return json(res, 404, { error: 'command_not_found' })
+              for (const timer of commandTimers.get(commands[index].node_id) ?? []) clearTimeout(timer)
+              commands.splice(index, 1)
               json(res, 204)
             })
             return
