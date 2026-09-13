@@ -150,7 +150,7 @@ Every telemetry frame has a five-byte common prefix:
 | ---: | ---: | --- | --- |
 | 1 | 2 | `supply_voltage` | Unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
 | 3 | 1 | `radio_state` | Bits 0..4 `tx_power_level` `0..31`; bit 5 `radio_fallback`; bit 6 `supply_limited`; bit 7 zero |
-| 4 | 1 | `downlink_rssi` | Signed dBm of the acknowledgement to the node's previous report; `INT8_MIN` means none yet |
+| 4 | 1 | `downlink_rssi` | Signed dBm of the acknowledgement to the node's previous report, measured while its sync word arrives; `INT8_MIN` means not measured |
 
 The node reports its actual radio state in every frame, so each RSSI the gateway measures is paired with the level the frame was sent at ([Radio power](#radio-power)). The gateway may decode the common prefix without knowing the profile. It treats bytes from offset 5 onward as opaque and forwards the complete frame together with the stored profile ID, sender ID, RSSI, and receive time in its WebSocket envelope. Telemetry from an unknown or inactive sender cannot be decoded safely and must be rejected and counted.
 

@@ -1,10 +1,16 @@
 #include "NodeRadio.h"
 
 #include <Arduino.h>
+#include <RFM69registers.h>
 #include <string.h>
 
 namespace radiosensors {
 namespace node {
+
+namespace {
+constexpr uint8_t kTelemetryAttempts = 3;
+constexpr uint32_t kAckWaitMs = 40;
+}
 
 NodeRadio::NodeRadio(const uint8_t chipSelect, const uint8_t interruptPin)
     : radio_(chipSelect, interruptPin, true) {}
@@ -46,17 +52,35 @@ void NodeRadio::setPowerLevel(const uint8_t level) {
 
 bool NodeRadio::sendTelemetry(
     const uint8_t gatewayId, const uint8_t* frame, const uint8_t size,
-    protocol::TelemetryAck& ack, int16_t& ackRssi) {
-    const bool acknowledged =
-        radio_.sendWithRetry(gatewayId, frame, size, 2, 40);
-    // The acknowledgement stays in DATA and RSSI until the radio receives
-    // again.
-    ack = acknowledged
-        ? protocol::decodeTelemetryAck(radio_.DATA, radio_.DATALEN)
-        : protocol::TelemetryAck{false, false, 0};
-    if (acknowledged) ackRssi = radio_.RSSI;
+    protocol::TelemetryAck& ack, int8_t& downlinkRssi) {
+    ack = protocol::TelemetryAck{false, false, 0};
+    // sendWithRetry() without its RSSI: the RFM69 keeps measuring the channel
+    // after a frame ends, so a read after reception sees anything from the
+    // frame to the noise floor. Sample it when the sync word matches, while
+    // the acknowledgement is still arriving.
+    for (uint8_t attempt = 0; attempt < kTelemetryAttempts; ++attempt) {
+        radio_.send(gatewayId, frame, size, true);
+        const uint32_t sent = millis();
+        bool synced = false;
+        int8_t rssi = protocol::kNoDownlinkRssi;
+        while (static_cast<uint32_t>(millis() - sent) < kAckWaitMs) {
+            const bool sync = (radio_.readReg(REG_IRQFLAGS1) &
+                               RF_IRQFLAGS1_SYNCADDRESSMATCH) != 0;
+            if (sync && !synced) {
+                rssi = protocol::downlinkRssiValue(radio_.readRSSI());
+            }
+            synced = sync;
+            if (!radio_.ACKReceived(gatewayId)) continue;
+            // The acknowledgement stays in DATA until the radio receives
+            // again.
+            ack = protocol::decodeTelemetryAck(radio_.DATA, radio_.DATALEN);
+            downlinkRssi = rssi;
+            radio_.sleep();
+            return true;
+        }
+    }
     radio_.sleep();
-    return acknowledged;
+    return false;
 }
 
 bool NodeRadio::sendAcknowledged(
