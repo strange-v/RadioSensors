@@ -5,7 +5,6 @@ OSK Sense is a local, low-power sensor system built around ATtiny1614 nodes, RFM
 ## Repository map
 
 - `v2/node` — production node firmware, one build per telemetry profile.
-- `v2/node_test` — ATtiny1614 bench and commissioning firmware.
 - `v2/gateway` — ESP32 gateway for WT32-ETH01 and Waveshare ESP32-S3-ETH.
 - `v2/shared/RadioProtocol` — portable wire and persistence codecs.
 - `v2/protocol` — canonical radio protocol specification and native tests.
