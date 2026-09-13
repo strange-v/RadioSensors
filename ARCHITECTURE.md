@@ -16,7 +16,7 @@ Each ATtiny1614 image is statically composed for one stable profile. Shared code
 
 An unconfigured production node uses address and commissioning network ID 0 and has a unique 16-byte factory key supplied with its UID in a QR credential. The gateway keeps that key only in RAM during pairing. Successful commissioning assigns a persistent node ID, operational network ID, and installation key. Network configuration and counter state use separate EEPROM domains.
 
-Solar climate nodes use nominal 60/300-second reporting above/below 2500 mV; the 32-second RTC step gives accepted effective intervals of about 64/320 seconds. Battery climate intervals are compile-time settings. Door and counter nodes are event-driven with a rolling one-hour keep-alive. Counter reports may coalesce, but every confirmed pulse is persisted immediately.
+Solar climate nodes use nominal 60/300-second reporting above/below 2500 mV; the 32-second RTC step gives accepted effective intervals of about 64/320 seconds. Battery nodes target at least three years, preferably five, on one cell; their climate intervals are fixed compile-time settings. Binary-input and counter nodes are event-driven with a rolling one-hour keep-alive. Counter reports may coalesce, but every confirmed pulse is persisted immediately.
 
 ## Radio and registry model
 

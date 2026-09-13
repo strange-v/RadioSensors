@@ -33,6 +33,8 @@ public:
         return reportSchedule_.due(now);
     }
 
+    bool takeUrgentReport() { return false; }
+
     size_t encodeTelemetry(
         const uint16_t supplyMillivolts, uint8_t* output,
         const size_t capacity) {
