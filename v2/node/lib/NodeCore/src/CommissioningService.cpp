@@ -24,8 +24,8 @@ CommissioningService::CommissioningService(
 bool CommissioningService::begin() {
     readDeviceUid();
     const bool hasConfig = store_.load(config_);
-    const bool hasFactoryCredentials = factoryStore_.load(factoryCredentials_);
-    if (!hasConfig && !hasFactoryCredentials) {
+    factoryCredentialsValid_ = factoryStore_.load(factoryCredentials_);
+    if (!hasConfig && !factoryCredentialsValid_) {
 #if defined(NODE_DEBUG)
         Serial.println(F("commissioning: factory credentials missing or corrupt"));
 #endif
@@ -54,6 +54,13 @@ bool CommissioningService::active() const {
 
 const storage::NetworkConfig& CommissioningService::config() const {
     return config_;
+}
+
+bool CommissioningService::resetNetwork() {
+    if (!factoryCredentialsValid_) return false;
+    store_.factoryReset();
+    config_ = storage::NetworkConfig{};
+    return true;
 }
 
 void CommissioningService::readDeviceUid() {
