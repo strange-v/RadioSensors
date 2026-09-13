@@ -1,6 +1,7 @@
 #include "GatewayStorage.h"
 
 #include "JoinRequest.h"
+#include "NodeRegistry.h"
 
 namespace radiosensors::gateway_storage {
 namespace {
@@ -471,6 +472,143 @@ CodecStatus decodeSecrets(const uint8_t* data, const size_t size,
     memcpy(candidate.installationKey, data + 16, kRadioKeySize);
     memcpy(candidate.deviceSecret, data + 48, kDeviceSecretSize);
     status = validateSecrets(candidate);
+    if (status == CodecStatus::Ok) value = candidate;
+    return status;
+}
+
+namespace {
+
+constexpr uint8_t kCommandsMagic[4] = {'R', 'S', 'C', 'B'};
+constexpr size_t kCommandRecordsOffset = 16;
+
+bool validCommandRecord(const CommandRecord& record) {
+    if (record.nodeId < registry::kFirstNodeId ||
+        record.nodeId > registry::kLastNodeId || record.commandId == 0 ||
+        !zeroPadded(record.arguments, record.argumentSize,
+                    protocol::kMaxCommandArgumentSize) ||
+        !zeroPadded(record.result, record.resultSize,
+                    protocol::kMaxCommandResultDataSize) ||
+        !protocol::validCommandArguments(
+            record.type, record.arguments, record.argumentSize)) {
+        return false;
+    }
+    switch (record.state) {
+        case CommandState::Pending:
+            return static_cast<uint8_t>(record.status) == 0 &&
+                record.resultSize == 0 && record.completedAtUnixMs == 0;
+        case CommandState::Completed:
+            return protocol::validCommandStatus(static_cast<uint8_t>(record.status)) &&
+                record.status != protocol::CommandStatus::StorageFailure &&
+                record.resultSize == protocol::commandResultDataSize(
+                    static_cast<protocol::CommandType>(record.type), record.status);
+    }
+    return false;
+}
+
+CodecStatus validateCommandBook(const CommandBook& value) {
+    if (value.count > kMaxCommandRecords) return CodecStatus::InvalidCount;
+    if (value.nextCommandId == 0) return CodecStatus::InvalidValue;
+    for (size_t index = 0; index < value.count; ++index) {
+        if (!validCommandRecord(value.records[index])) return CodecStatus::InvalidValue;
+        for (size_t other = 0; other < index; ++other) {
+            if (value.records[other].nodeId == value.records[index].nodeId)
+                return CodecStatus::DuplicateValue;
+        }
+    }
+    return CodecStatus::Ok;
+}
+
+bool commandRecordsEqual(const CommandRecord& left, const CommandRecord& right) {
+    return memcmp(left.deviceUid, right.deviceUid, sizeof(left.deviceUid)) == 0 &&
+        left.nodeId == right.nodeId && left.commandId == right.commandId &&
+        left.type == right.type && left.argumentSize == right.argumentSize &&
+        memcmp(left.arguments, right.arguments, sizeof(left.arguments)) == 0 &&
+        left.state == right.state && left.status == right.status &&
+        left.resultSize == right.resultSize &&
+        memcmp(left.result, right.result, sizeof(left.result)) == 0 &&
+        left.queuedAtUnixMs == right.queuedAtUnixMs &&
+        left.completedAtUnixMs == right.completedAtUnixMs;
+}
+
+}  // namespace
+
+CommandBook defaultCommandBook() {
+    CommandBook value{};
+    value.nextCommandId = 1;
+    return value;
+}
+
+bool commandBooksEqual(const CommandBook& left, const CommandBook& right) {
+    if (left.nextCommandId != right.nextCommandId || left.count != right.count)
+        return false;
+    for (size_t index = 0; index < left.count; ++index) {
+        if (!commandRecordsEqual(left.records[index], right.records[index])) return false;
+    }
+    return true;
+}
+
+CodecStatus encodeCommandBook(const CommandBook& value, const uint32_t generation,
+                              uint8_t* output, const size_t capacity) {
+    if (output == nullptr || capacity < kCommandsSnapshotSize) return CodecStatus::OutputTooSmall;
+    const CodecStatus status = validateCommandBook(value);
+    if (status != CodecStatus::Ok) return status;
+    memset(output, 0, kCommandsSnapshotSize);
+    writeHeader(output, kCommandsMagic, generation, kCommandsSnapshotSize);
+    output[12] = value.count;
+    protocol::writeUint16Le(output + 14, value.nextCommandId);
+    for (size_t index = 0; index < value.count; ++index) {
+        const CommandRecord& record = value.records[index];
+        uint8_t* stored = output + kCommandRecordsOffset + index * kStoredCommandSize;
+        memcpy(stored, record.deviceUid, protocol::kDeviceUidSize);
+        stored[10] = record.nodeId;
+        protocol::writeUint16Le(stored + 11, record.commandId);
+        stored[13] = record.type;
+        stored[14] = record.argumentSize;
+        memcpy(stored + 15, record.arguments, protocol::kMaxCommandArgumentSize);
+        stored[23] = static_cast<uint8_t>(record.state);
+        stored[24] = static_cast<uint8_t>(record.status);
+        stored[25] = record.resultSize;
+        memcpy(stored + 26, record.result, protocol::kMaxCommandResultDataSize);
+        write64(stored + 34, record.queuedAtUnixMs);
+        write64(stored + 42, record.completedAtUnixMs);
+    }
+    protocol::writeUint32Le(output + kCommandsSnapshotSize - kSnapshotCrcSize,
+                            crc32(output, kCommandsSnapshotSize - kSnapshotCrcSize));
+    return CodecStatus::Ok;
+}
+
+CodecStatus decodeCommandBook(const uint8_t* data, const size_t size,
+                              CommandBook& value, uint32_t& generation) {
+    CodecStatus status = validateHeader(data, size, kCommandsMagic,
+                                        kCommandsSnapshotSize, generation);
+    if (status != CodecStatus::Ok) return status;
+    if (data[13] != 0) return CodecStatus::InvalidReservedData;
+    CommandBook candidate{};
+    candidate.count = data[12];
+    if (candidate.count > kMaxCommandRecords) return CodecStatus::InvalidCount;
+    candidate.nextCommandId = protocol::readUint16Le(data + 14);
+    for (size_t index = 0; index < candidate.count; ++index) {
+        const uint8_t* stored = data + kCommandRecordsOffset + index * kStoredCommandSize;
+        CommandRecord& record = candidate.records[index];
+        memcpy(record.deviceUid, stored, protocol::kDeviceUidSize);
+        record.nodeId = stored[10];
+        record.commandId = protocol::readUint16Le(stored + 11);
+        record.type = stored[13];
+        record.argumentSize = stored[14];
+        memcpy(record.arguments, stored + 15, protocol::kMaxCommandArgumentSize);
+        record.state = static_cast<CommandState>(stored[23]);
+        record.status = static_cast<protocol::CommandStatus>(stored[24]);
+        record.resultSize = stored[25];
+        memcpy(record.result, stored + 26, protocol::kMaxCommandResultDataSize);
+        record.queuedAtUnixMs = read64(stored + 34);
+        record.completedAtUnixMs = read64(stored + 42);
+    }
+    for (size_t index = candidate.count; index < kMaxCommandRecords; ++index) {
+        if (!allZero(data + kCommandRecordsOffset + index * kStoredCommandSize,
+                     kStoredCommandSize))
+            return CodecStatus::InvalidReservedData;
+    }
+    status = validateCommandBook(candidate);
     if (status == CodecStatus::Ok) value = candidate;
     return status;
 }

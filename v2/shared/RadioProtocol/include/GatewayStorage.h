@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "CommandSessionFrames.h"
+
 namespace radiosensors::gateway_storage {
 
 constexpr uint16_t kStorageVersion = 2;
@@ -32,6 +34,15 @@ constexpr size_t kAuthSnapshotSize = 1036;
 constexpr size_t kRadioKeySize = 16;
 constexpr size_t kDeviceSecretSize = 32;
 constexpr size_t kSecretsSnapshotSize = 84;
+
+// The 20 KiB NVS partition also holds a registry of up to ~9 KiB, so the book
+// keeps pending commands and recent results within 2 x 820 bytes.
+constexpr size_t kMaxCommandRecords = 16;
+constexpr size_t kStoredCommandSize = 50;
+constexpr size_t kCommandsSnapshotSize = 820;
+static_assert(kCommandsSnapshotSize ==
+                  16 + kMaxCommandRecords * kStoredCommandSize + kSnapshotCrcSize,
+              "command book snapshot layout changed");
 
 constexpr uint32_t kMinimumPbkdf2Iterations = 10000;
 constexpr uint32_t kMaximumPbkdf2Iterations = 2000000;
@@ -105,6 +116,32 @@ struct InstallationSecrets {
     uint8_t deviceSecret[kDeviceSecretSize];
 };
 
+enum class CommandState : uint8_t { Pending = 1, Completed = 2 };
+
+// A node has at most one record: its pending command, or the result of its
+// last one. The UID binds it to one physical node, because node IDs are reused.
+struct CommandRecord {
+    uint8_t deviceUid[protocol::kDeviceUidSize];
+    uint8_t nodeId;
+    uint16_t commandId;
+    uint8_t type;
+    uint8_t argumentSize;
+    uint8_t arguments[protocol::kMaxCommandArgumentSize];
+    CommandState state;
+    protocol::CommandStatus status;  // zero while pending
+    uint8_t resultSize;
+    uint8_t result[protocol::kMaxCommandResultDataSize];
+    uint64_t queuedAtUnixMs;
+    uint64_t completedAtUnixMs;
+};
+
+// Records are kept oldest first.
+struct CommandBook {
+    uint16_t nextCommandId;
+    uint8_t count;
+    CommandRecord records[kMaxCommandRecords];
+};
+
 enum class CodecStatus : uint8_t {
     Ok,
     OutputTooSmall,
@@ -146,6 +183,15 @@ CodecStatus encodeSecrets(
 CodecStatus decodeSecrets(
     const uint8_t* data, size_t size,
     InstallationSecrets& value, uint32_t& generation);
+
+CommandBook defaultCommandBook();
+bool commandBooksEqual(const CommandBook& left, const CommandBook& right);
+CodecStatus encodeCommandBook(
+    const CommandBook& value, uint32_t generation,
+    uint8_t* output, size_t capacity);
+CodecStatus decodeCommandBook(
+    const uint8_t* data, size_t size,
+    CommandBook& value, uint32_t& generation);
 
 class SlotStorage {
 public:
@@ -241,5 +287,7 @@ using AuthenticationStore = DualSlotStore<AuthenticationData, kAuthSnapshotSize,
     encodeAuthentication, decodeAuthentication, authenticationEqual, defaultAuthentication>;
 using SecretsStore = DualSlotStore<InstallationSecrets, kSecretsSnapshotSize,
     encodeSecrets, decodeSecrets, secretsEqual, defaultSecrets>;
+using CommandStore = DualSlotStore<CommandBook, kCommandsSnapshotSize,
+    encodeCommandBook, decodeCommandBook, commandBooksEqual, defaultCommandBook>;
 
 }  // namespace radiosensors::gateway_storage
