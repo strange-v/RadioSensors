@@ -28,12 +28,26 @@ const health = {
   },
 }
 
-const nodes = [
-  { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true },
-  { node_id: 3, device_uid: '0F1E2D3C4B5A69788796', display_name: 'Гараж', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 40_000, rssi: -74, has_telemetry: true },
-  { node_id: 4, device_uid: '112233445566778899AA', display_name: '', profile_id: 2, firmware: '2.0.4', state: 'pending', last_seen_at_ms: now - 5_400_000, rssi: -91, has_telemetry: false },
-  { node_id: 5, device_uid: 'BBCCDDEEFF0011223344', display_name: 'Тепличка', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 300_000, rssi: -59, has_telemetry: true },
-  { node_id: 6, device_uid: 'C0FFEE00112233445566', display_name: 'Газ', profile_id: 6, firmware: '0.1.0', state: 'active', last_seen_at_ms: now - 90_000, rssi: -71, has_telemetry: true },
+// Radio fields as the gateway reports them: the ceiling and policy from the
+// registry, the wanted level from its controller, and what the node's latest
+// report says it uses. Тепличка has fallen back; Газ is still moving to the
+// fixed level just set.
+type MockNode = {
+  node_id: number; device_uid: string; display_name: string; profile_id: number; firmware: string; state: string
+  last_seen_at_ms?: number; rssi?: number; has_telemetry: boolean
+  max_power_level: number; power_policy: string; fixed_power_level?: number; tx_power_target?: number
+  tx_power_level?: number; radio_fallback?: boolean; supply_limited?: boolean; downlink_rssi?: number
+}
+const radio = (level: number, over: Partial<MockNode> = {}) => ({
+  max_power_level: 2, power_policy: 'auto', tx_power_target: level, tx_power_level: level,
+  radio_fallback: false, supply_limited: false, downlink_rssi: -66, ...over,
+})
+const nodes: MockNode[] = [
+  { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true, ...radio(1) },
+  { node_id: 3, device_uid: '0F1E2D3C4B5A69788796', display_name: 'Гараж', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 40_000, rssi: -74, has_telemetry: true, ...radio(2) },
+  { node_id: 4, device_uid: '112233445566778899AA', display_name: '', profile_id: 2, firmware: '2.0.4', state: 'pending', has_telemetry: false, max_power_level: 2, power_policy: 'auto' },
+  { node_id: 5, device_uid: 'BBCCDDEEFF0011223344', display_name: 'Тепличка', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 300_000, rssi: -89, has_telemetry: true, ...radio(2, { radio_fallback: true, downlink_rssi: -93 }) },
+  { node_id: 6, device_uid: 'C0FFEE00112233445566', display_name: 'Газ', profile_id: 6, firmware: '0.1.0', state: 'active', last_seen_at_ms: now - 90_000, rssi: -71, has_telemetry: true, ...radio(2, { power_policy: 'fixed', fixed_power_level: 1, tx_power_target: 1 }) },
 ]
 
 // The command book with the gateway's one-per-node rule. A queued command is
@@ -131,7 +145,7 @@ function openPairingWindow(deviceUid: string, succeed: boolean) {
   health.pairing = { active: true, remaining_seconds: 120, indication: 'pairing' }
   pairingTimer = setTimeout(() => {
     if (succeed) {
-      nodes.push({ node_id: 7 + nodes.length, device_uid: deviceUid, display_name: '', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: Date.now(), rssi: -63, has_telemetry: true })
+      nodes.push({ node_id: 7 + nodes.length, device_uid: deviceUid, display_name: '', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: Date.now(), rssi: -63, has_telemetry: true, ...radio(2) })
       registryGeneration += 1
     }
     health.pairing = { active: false, remaining_seconds: 0, indication: 'idle' }
@@ -282,12 +296,21 @@ function mockApi(): Plugin {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })
           req.on('end', () => {
-            const { node_id: id, display_name: name } = JSON.parse(raw || '{}')
-            const node = nodes.find((entry) => entry.node_id === id)
-            if (node) node.display_name = name
+            const body = JSON.parse(raw || '{}')
+            const node = nodes.find((entry) => entry.node_id === body.node_id)
+            if (!node) return json(res, 404, { error: 'node_not_found' })
+            if (typeof body.display_name === 'string') node.display_name = body.display_name
+            if (body.power_policy === 'auto') {
+              Object.assign(node, { power_policy: 'auto', fixed_power_level: undefined, tx_power_target: node.tx_power_level })
+            } else if (body.power_policy === 'fixed') {
+              const level = body.fixed_power_level
+              if (!Number.isInteger(level) || level < 0 || level > node.max_power_level) return json(res, 422, { error: 'invalid_power_policy' })
+              Object.assign(node, { power_policy: 'fixed', fixed_power_level: level, tx_power_target: level })
+              // The node picks the level up with its next report.
+              setTimeout(() => { node.tx_power_level = level; node.radio_fallback = false }, 5_000)
+            }
             registryGeneration += 1
-            res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ node_id: id, display_name: name, registry_generation: registryGeneration }))
+            json(res, 200, { ...body, registry_generation: registryGeneration })
           })
           return
         }

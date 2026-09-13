@@ -41,7 +41,20 @@ export interface GatewayNode {
   last_seen_at_ms?: number
   rssi?: number
   has_telemetry?: boolean
+  // Radio power: the ceiling the node reported at pairing, the gateway's
+  // policy and wanted level, and what the node's latest report says it uses.
+  max_power_level?: number
+  power_policy?: PowerPolicy
+  fixed_power_level?: number
+  tx_power_target?: number
+  tx_power_level?: number
+  radio_fallback?: boolean
+  supply_limited?: boolean
+  downlink_rssi?: number
 }
+export type PowerPolicy = 'auto' | 'fixed'
+export interface PowerPolicyWrite { power_policy: PowerPolicy; fixed_power_level?: number }
+export interface PatchedNode { node_id: number; display_name?: string; power_policy?: PowerPolicy; fixed_power_level?: number; registry_generation: number }
 // The command types of v2/protocol/protocol-manifest.json.
 export type CommandType = 'set_count'
 export interface CommandArguments { count?: number }
