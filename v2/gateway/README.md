@@ -80,13 +80,28 @@ Firmware and filesystem uploads are deliberately separate. Firmware retains A/B 
 
 Changing a partition table is not part of an application OTA. Existing gateways must therefore receive one cable upload with the new firmware layout before their first LittleFS upload. The NVS location is unchanged, but back up important configuration before repartitioning. Subsequent firmware and UI releases can use OTA normally while the layout remains unchanged.
 
+## Erasing NVS
+
+Erasing the NVS partition returns a gateway to its first-boot state without touching the firmware, OTA state, or Web UI. Use it when storage no longer loads, for example after a storage layout change: the serial log reports `Gateway storage contains data but no valid snapshot`, the UI asks for initial setup, and setup fails with `setup_storage_failed`.
+
+The erase deletes every store: settings, users and API tokens, the installation key and network ID, the device secret, the node registry, and the command book. `gateway_id` derives from the device secret, so clients see a new gateway, and every paired node must be factory-reset and paired again.
+
+Both boards place `nvs` at `0x9000` with size `0x5000` (see `partitions/`). Erase only that region over a cable, with the port `pio device list` shows; `--chip` makes esptool refuse a board of the other type:
+
+```powershell
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM8 erase-region 0x9000 0x5000
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32 --port COM5 erase-region 0x9000 0x5000
+```
+
+The first line is for the Waveshare board, the second for WT32-ETH01, which must be in its ROM bootloader as for any cable upload. esptool resets the board afterwards. It boots as a new gateway, with a fresh device secret and a random network ID, and waits for initial setup. Do not use `pio run -t erase`: it erases the whole flash, including the firmware and the Web UI.
+
 ## Runtime
 
 One priority-11 task owns RFM69 and all FIFO/SPI operations. Active telemetry enters bounded queues and is acknowledged only after acceptance. Commissioning and NVS writes execute outside the radio task. The main loop keeps the latest opaque telemetry frame for each node and publishes it through the binary WebSocket.
 
 The gateway serves two API surfaces: `/api` is the external client contract (`info`, the node registry read) and moves only with `api_version`, while `/ui` is everything the Web UI needs and moves with the firmware. Outside both sit `/health`, an unauthenticated liveness probe carrying only `status` and `boot_id`, and `/ws`. See `API.md`. Persistent settings, authentication, registry, and secrets use independent dual-slot stores. SNTP uses configured NTP servers and reapplies changes without reboot.
 
-Before the first user exists, the Waveshare status LED blinks green and a short BOOT press opens the physical setup window. `POST /ui/setup` creates the first admin and can set the hostname and operational network ID. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
+Before the first user exists, the Waveshare status LED blinks green and a short BOOT press opens the physical setup window. `POST /ui/setup` creates the first admin and can set the hostname and operational network ID. Until then the radio sleeps without an installation key; setup hands it the new key, so nodes can be paired without a restart. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
 
 References:
 
