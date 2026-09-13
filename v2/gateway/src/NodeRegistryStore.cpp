@@ -164,6 +164,22 @@ bool activeIdentity(
     return found;
 }
 
+bool radioPolicy(
+    const uint8_t nodeId, uint8_t& maxPowerLevel, uint8_t& powerPolicy) {
+    if (!initialized || mutex == nullptr) return false;
+    if (xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return false;
+    const radiosensors::registry::NodeRecord* const record =
+        nodes.findByNodeId(nodeId);
+    const bool found = record != nullptr &&
+        record->state == radiosensors::registry::NodeState::Active;
+    if (found) {
+        maxPowerLevel = record->maxPowerLevel;
+        powerPolicy = record->powerPolicy;
+    }
+    xSemaphoreGive(mutex);
+    return found;
+}
+
 bool snapshot(Snapshot& value) {
     if (!initialized || mutex == nullptr ||
         xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) {
@@ -250,6 +266,32 @@ RegistryCommitStatus renameAndSave(
     }
     result = candidate->rename(nodeId, displayName, length);
     if (result != radiosensors::registry::RenameStatus::Renamed) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::NoChange;
+    }
+    if (!store.save(*candidate)) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    nodes = *candidate;
+    publishLockFreeView();
+    xSemaphoreGive(mutex);
+    return RegistryCommitStatus::Ok;
+}
+
+RegistryCommitStatus setPowerPolicyAndSave(
+    const uint8_t nodeId, const uint8_t policy,
+    radiosensors::registry::PowerPolicyStatus& result) {
+    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
+        new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
+    if (!candidate) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    result = candidate->setPowerPolicy(nodeId, policy);
+    if (result != radiosensors::registry::PowerPolicyStatus::Updated) {
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }

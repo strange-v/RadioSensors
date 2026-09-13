@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "RadioPowerControl.h"
+
 namespace radiosensors {
 namespace registry {
 
@@ -131,6 +133,11 @@ ReserveResult NodeRegistry::reserve(const protocol::JoinRequest& request) {
 
         existing->firmware = request.firmware;
         existing->requestNonce = request.requestNonce;
+        existing->maxPowerLevel = request.maxPowerLevel;
+        if (radio_power::isFixedPolicy(existing->powerPolicy) &&
+            radio_power::fixedLevel(existing->powerPolicy) > request.maxPowerLevel) {
+            existing->powerPolicy = radio_power::kPolicyAuto;
+        }
         return ReserveResult{
             ReserveStatus::ExistingPendingUpdated,
             existing->nodeId};
@@ -153,6 +160,8 @@ ReserveResult NodeRegistry::reserve(const protocol::JoinRequest& request) {
     record.firmware = request.firmware;
     record.state = NodeState::Pending;
     record.requestNonce = request.requestNonce;
+    record.maxPowerLevel = request.maxPowerLevel;
+    record.powerPolicy = radio_power::kPolicyAuto;
     return ReserveResult{ReserveStatus::Created, nodeId};
 }
 
@@ -219,6 +228,20 @@ RenameStatus NodeRegistry::rename(
     return RenameStatus::Renamed;
 }
 
+PowerPolicyStatus NodeRegistry::setPowerPolicy(
+    const uint8_t nodeId, const uint8_t policy) {
+    NodeRecord* const record = findMutableByNodeId(nodeId);
+    if (record == nullptr) return PowerPolicyStatus::NotFound;
+    if (!radio_power::validPolicy(policy) ||
+        (radio_power::isFixedPolicy(policy) &&
+         radio_power::fixedLevel(policy) > record->maxPowerLevel)) {
+        return PowerPolicyStatus::InvalidPolicy;
+    }
+    if (record->powerPolicy == policy) return PowerPolicyStatus::NoChange;
+    record->powerPolicy = policy;
+    return PowerPolicyStatus::Updated;
+}
+
 bool NodeRegistry::restore(const NodeRecord* records, const size_t count) {
     if ((records == nullptr && count != 0) || count > kMaxNodes) {
         return false;
@@ -229,6 +252,8 @@ bool NodeRegistry::restore(const NodeRecord* records, const size_t count) {
         if (record.nodeId < kFirstNodeId || record.nodeId > kLastNodeId ||
             record.profileId == protocol::kUnassignedProfileId ||
             !validDisplayName(record.displayName, record.displayNameLength) ||
+            record.maxPowerLevel > protocol::kMaxRadioPowerLevel ||
+            !radio_power::validPolicy(record.powerPolicy) ||
             (record.state != NodeState::Pending &&
              record.state != NodeState::Active &&
              record.state != NodeState::Disabled)) {

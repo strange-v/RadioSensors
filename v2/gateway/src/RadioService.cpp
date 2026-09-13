@@ -8,6 +8,7 @@
 #include <atomic>
 
 #include "CommandService.h"
+#include "PowerControlService.h"
 #include "RadioConfig.h"
 #include "NodeRegistryStore.h"
 #include "ConfigurationStore.h"
@@ -97,6 +98,7 @@ struct TaskStats {
     uint32_t sessionFramesRejected = 0;
     uint32_t commandResultAcksSent = 0;
     uint32_t commandHintsSent = 0;
+    uint32_t powerTargetsSent = 0;
     uint32_t lastPacketMs = 0;
     uint16_t lastSenderId = 0;
     int16_t lastRssi = 0;
@@ -204,6 +206,11 @@ void drainReceivedFrame() {
                 radiosensors::protocol::TelemetryAck ack{};
                 ack.commandPending =
                     commands::hasPending(static_cast<uint8_t>(senderId));
+                if (dataLength >= radiosensors::protocol::kTelemetryPrefixSize) {
+                    ack.hasPowerTarget = power_control::target(
+                        static_cast<uint8_t>(senderId), received.data[3],
+                        ack.powerTarget);
+                }
                 uint8_t payload[radiosensors::protocol::kMaxTelemetryAckSize];
                 const size_t payloadSize =
                     radiosensors::protocol::encodeTelemetryAck(
@@ -212,6 +219,7 @@ void drainReceivedFrame() {
                 portENTER_CRITICAL(&statsMux);
                 ++taskStats.telemetryAcksSent;
                 if (ack.commandPending) ++taskStats.commandHintsSent;
+                if (ack.hasPowerTarget) ++taskStats.powerTargetsSent;
                 portEXIT_CRITICAL(&statsMux);
             } else if (ackRequested) {
                 portENTER_CRITICAL(&statsMux);
@@ -677,6 +685,7 @@ Snapshot snapshot() {
     result.sessionFramesRejected = taskStats.sessionFramesRejected;
     result.commandResultAcksSent = taskStats.commandResultAcksSent;
     result.commandHintsSent = taskStats.commandHintsSent;
+    result.powerTargetsSent = taskStats.powerTargetsSent;
     result.profile = currentProfile.load();
     result.currentNetworkId = currentNetworkId.load();
     result.lastPacketMs = taskStats.lastPacketMs;

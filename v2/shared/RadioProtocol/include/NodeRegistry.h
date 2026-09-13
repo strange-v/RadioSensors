@@ -31,6 +31,16 @@ struct NodeRecord {
     uint32_t requestNonce;
     uint8_t displayNameLength;
     char displayName[kNodeDisplayNameSize];
+    // Transmit power ceiling from Join request, and the radio_power policy.
+    uint8_t maxPowerLevel;
+    uint8_t powerPolicy;
+};
+
+enum class PowerPolicyStatus : uint8_t {
+    Updated,
+    NoChange,
+    NotFound,
+    InvalidPolicy,
 };
 
 enum class RenameStatus : uint8_t {
@@ -81,6 +91,8 @@ public:
     bool disable(uint8_t nodeId);
     bool remove(uint8_t nodeId);
     RenameStatus rename(uint8_t nodeId, const char* displayName, size_t length);
+    // A fixed level must be within the node's ceiling.
+    PowerPolicyStatus setPowerPolicy(uint8_t nodeId, uint8_t policy);
 
     bool restore(const NodeRecord* records, size_t count);
 

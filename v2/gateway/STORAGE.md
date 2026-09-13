@@ -133,7 +133,7 @@ The schema-1 commissioning-key field is reserved and remains absent in the produ
 
 ## Node registry snapshot
 
-NVS namespace: `node-reg`; slot keys: `registry_a`, `registry_b`; magic: `RSNR`; schema version 1; maximum size 1360 bytes. The registry has a fixed capacity of 64 records and does not allocate dynamically.
+NVS namespace: `node-reg`; slot keys: `registry_a`, `registry_b`; magic: `RSNR`; schema version 3; maximum size 4624 bytes. The registry has a fixed capacity of 64 records and does not allocate dynamically.
 
 | ID | Use |
 | ---: | --- |
@@ -145,7 +145,7 @@ NVS namespace: `node-reg`; slot keys: `registry_a`, `registry_b`; magic: `RSNR`;
 
 Pending, active, and disabled records retain their ID. Only explicit removal releases it.
 
-Each stored record is 21 bytes:
+Each stored record is 72 bytes:
 
 | Relative offset | Bytes | Field |
 | ---: | ---: | --- |
@@ -155,8 +155,12 @@ Each stored record is 21 bytes:
 | 13 | 3 | Firmware major, minor, patch |
 | 16 | 1 | State: 1 pending, 2 active, 3 disabled |
 | 17 | 4 | Latest commissioning request nonce, little-endian |
+| 21 | 1 | Display-name byte length, `0..48` |
+| 22 | 48 | Display name, UTF-8, zero-padded |
+| 70 | 1 | Transmit power ceiling from Join request, `0..31` |
+| 71 | 1 | Power policy: 0 automatic; `N + 1` fixed level `N` |
 
-Runtime last-seen time, RSSI, telemetry, and counters are not persisted.
+Runtime last-seen time, RSSI, telemetry, radio power control state, and counters are not persisted.
 
 | Snapshot offset | Bytes | Field |
 | ---: | ---: | --- |
