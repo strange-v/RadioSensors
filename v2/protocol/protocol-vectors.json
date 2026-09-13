@@ -139,6 +139,56 @@
       "error": "invalid_value"
     }
   ],
+  "commands": [
+    {
+      "name": "set_radio_power",
+      "frame": "command",
+      "command_type": 1,
+      "hex": "44EFCDAB8934120110",
+      "decoded": {
+        "session_nonce": 2309737967,
+        "command_id": 4660,
+        "command_type": 1,
+        "power_level": 16
+      }
+    },
+    {
+      "name": "set_radio_power_invalid_argument",
+      "frame": "command_result",
+      "command_type": 1,
+      "hex": "45EFCDAB89341202",
+      "decoded": {
+        "session_nonce": 2309737967,
+        "command_id": 4660,
+        "status": 2
+      }
+    },
+    {
+      "name": "set_count",
+      "frame": "command",
+      "command_type": 2,
+      "hex": "44EFCDAB8935120278563412",
+      "decoded": {
+        "session_nonce": 2309737967,
+        "command_id": 4661,
+        "command_type": 2,
+        "count": 305419896
+      }
+    },
+    {
+      "name": "set_count_applied",
+      "frame": "command_result",
+      "command_type": 2,
+      "hex": "45EFCDAB893512001000000078563412",
+      "decoded": {
+        "session_nonce": 2309737967,
+        "command_id": 4661,
+        "status": 0,
+        "previous_count": 16,
+        "count": 305419896
+      }
+    }
+  ],
   "gateway_stream": [
     {
       "name": "hello",

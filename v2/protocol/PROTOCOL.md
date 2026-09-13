@@ -52,24 +52,87 @@ Unknown versions and reserved kinds are rejected. Payload length and field valid
 | 9 | `0x49` | No command | Gateway closes an empty command session |
 | 10..31 | — | Reserved | Must not be transmitted in protocol major 2 |
 
-Join request, Join accept, Join confirm, and Join complete are frozen below. Command ready and No command are frozen below. Command, command result, and error payload layouts remain unassigned; reserving their kind values does not freeze an incomplete payload design.
+The commissioning and command-session kinds are frozen below. The Error payload layout remains unassigned; reserving its kind value does not freeze an incomplete payload design.
 
 ## Sleeping-node command session
 
-Normal telemetry opens only the short RFM69 acknowledgement period. A gateway never attempts to push an application command to a sleeping node. The user first queues one persistent state-changing command for a selected node in the gateway UI, then physically short-presses the node button.
+Normal telemetry opens only the short RFM69 acknowledgement period. A gateway never pushes an application command to a sleeping node; the node pulls it in an explicit session. The user queues one persistent state-changing command for a selected node in the gateway UI. The node opens a session when its button is short-pressed or when a telemetry acknowledgement announces a pending command.
 
-After button release, the node sends Command ready from its operational node ID and radio profile, then listens for a bounded command window. The frame is exactly five bytes:
+```text
+node                                   gateway
+  |-- Command ready (nonce) ------------->|
+  |<----------- Command (nonce, id) ------|   or No command (nonce)
+  |   apply durably                       |
+  |-- Command result (nonce, id) -------->|   RFM69 ACK requested
+  |<------------------------------ ACK ---|   record durably
+```
+
+### Command ready and No command
+
+The node sends Command ready from its operational node ID and radio profile, then listens for a bounded command window. The frame is exactly five bytes:
 
 | Offset | Bytes | Field | Encoding |
 | ---: | ---: | --- | --- |
 | 0 | 1 | Common header | `0x48` |
 | 1 | 4 | `session_nonce` | Node-generated unsigned little-endian value |
 
-The gateway uses the RFM69 sender ID to select that node's pending command. A delivered Command must echo the session nonce so a delayed response from an old button session cannot be accepted. Only one state-changing command may be pending for a node and only one is delivered per button session.
+The gateway uses the RFM69 sender ID to select that node's pending command. A delivered Command must echo the session nonce so a delayed response from an old session cannot be accepted. Only one state-changing command may be pending for a node and only one is delivered per session.
 
 If no command is pending, the gateway immediately sends No command. Its layout is identical except for header `0x49`; it echoes the same session nonce. This lets the node close its receive window without waiting for timeout.
 
-The node durably applies a command and records its command ID before sending Command result. The gateway marks the pending command complete only after a matching result is durably recorded. If the result is lost, a later button session delivers the same command ID and payload. The node recognizes the duplicate, does not reapply it, and resends the stored result with the new session nonce.
+### Command
+
+| Offset | Bytes | Field | Encoding |
+| ---: | ---: | --- | --- |
+| 0 | 1 | Common header | `0x44` |
+| 1 | 4 | `session_nonce` | Echoed from Command ready |
+| 5 | 2 | `command_id` | Unsigned little-endian; zero is invalid |
+| 7 | 1 | `command_type` | See command types |
+| 8 | 0..8 | Arguments | Layout fixed by the command type |
+
+The frame length is the envelope plus the argument length of its type. A node answers a type it does not implement with `unsupported`, so it decodes any type whose arguments fit.
+
+### Command result
+
+| Offset | Bytes | Field | Encoding |
+| ---: | ---: | --- | --- |
+| 0 | 1 | Common header | `0x45` |
+| 1 | 4 | `session_nonce` | Echoed from the Command |
+| 5 | 2 | `command_id` | Echoed from the Command |
+| 7 | 1 | `status` | See below |
+| 8 | 0..8 | Result data | Only for `applied`; layout fixed by the command type |
+
+| Status | Name | Meaning |
+| ---: | --- | --- |
+| 0 | `applied` | The command's effect is durable |
+| 1 | `unsupported` | This node's firmware does not implement the type |
+| 2 | `invalid_argument` | Wrong argument length or a value out of range |
+| 3 | `storage_failure` | Nothing was applied; the same command may be delivered again |
+
+Every status except `storage_failure` completes the command. The node sends Command result with an RFM69 ACK request; the gateway acknowledges it once the frame is queued for recording. The gateway accepts a result only from the node the command is queued for, with the command ID and session nonce of the latest delivery.
+
+### Command types
+
+| Type | Name | Profiles | Arguments | Result data |
+| ---: | --- | --- | --- | --- |
+| 1 | `set_radio_power` | all | `power_level`: uint8, `0..31` | none |
+| 2 | `set_count` | 6 | `count`: uint32 LE | `previous_count`: uint32 LE, `count`: uint32 LE |
+
+`set_radio_power` stores the RFM69 power level with the node's network configuration. The node sends the result at its previous level and switches afterwards. A level too low to reach the gateway strands the node until a network reset and new pairing.
+
+`set_count` replaces the cumulative pulse count. `previous_count` is the count immediately before the command.
+
+### Command IDs and redelivery
+
+The gateway allocates command IDs from one wrapping 16-bit sequence per installation and never issues zero. The node records the ID of the last applied command of each type in the same atomic write as its effect ([EEPROM.md](../node/EEPROM.md)). A command whose ID equals the recorded one is a redelivery: the node does not apply it again and resends the stored result with the new session nonce. Commissioning clears the recorded IDs, so a reinstalled gateway's sequence cannot collide with them.
+
+The gateway marks the pending command complete only after a matching result is durably recorded. If the result is lost, a later session delivers the same command ID and payload.
+
+### Telemetry acknowledgement
+
+The RFM69 ACK that answers telemetry carries zero or one payload byte. With one byte, bit 0 `command_pending` means a command is queued for this node; bits 1..7 are zero when sent and ignored when received. The byte does not change the meaning of the acknowledgement. RFM69 AES pads both forms to one 16-byte block, so the flag costs no airtime.
+
+A node that sees the flag opens a command session in the same wake-up. It limits sessions that the flag starts but that do not end cleanly; the node README specifies the back-off.
 
 ## Telemetry
 
@@ -173,6 +236,7 @@ Each profile added to the manifest and described below must define all of the fo
 | Fields | Byte offset, byte count, signedness, and byte order |
 | Meaning | Scale, unit, valid range, and sentinel values |
 | Test vector | Complete application frame in hexadecimal and expected values |
+| Commands | Supported command types |
 
 `field.name` is a stable machine identifier, not a display label. It must be unique across the common and profile-specific fields of a complete telemetry frame. Once released, it must not be renamed or reused for another quantity. The same name in different profiles represents the same logical entity and must have the same `quantity` and `unit`; offsets and wire encodings may differ. A profile containing multiple measurements of one quantity gives each a distinct semantic name. User-facing labels come from the consumer's translations.
 
@@ -216,7 +280,7 @@ The application frame is exactly four bytes: the common telemetry prefix followe
 
 The application frame is exactly seven bytes: the common telemetry prefix followed by an unsigned 32-bit little-endian cumulative pulse count. Example for 3300 mV and count `0x12345678`: `40 E4 0C 78 56 34 12`.
 
-Gas/water meaning, units per pulse, and display unit are installation metadata. They are not part of this telemetry frame. The `SET_COUNT` command is part of this profile, but its command envelope remains unfrozen.
+Gas/water meaning, units per pulse, and display unit are installation metadata. They are not part of this telemetry frame. This profile additionally supports `set_count`.
 
 ### Profile 7: binary input with SHT40 climate data
 

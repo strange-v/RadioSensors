@@ -132,12 +132,17 @@
         "id": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "frame_size": { "type": "integer", "minimum": 3, "maximum": 255 },
+        "commands": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 255 },
+          "uniqueItems": true
+        },
         "fields": {
           "type": "array",
           "items": { "$ref": "#/$defs/field" }
         }
       },
-      "required": ["id", "name", "frame_size", "fields"],
+      "required": ["id", "name", "frame_size", "commands", "fields"],
       "additionalProperties": false
     },
     "frame_kind": {
@@ -176,9 +181,87 @@
           "type": "array",
           "items": { "$ref": "#/$defs/frame_kind" },
           "minItems": 1
+        },
+        "telemetry_ack_flags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mask": { "enum": [1, 2, 4, 8, 16, 32, 64, 128] },
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+            },
+            "required": ["mask", "name"],
+            "additionalProperties": false
+          }
         }
       },
-      "required": ["protocol_major", "header", "frame_kinds"],
+      "required": ["protocol_major", "header", "frame_kinds", "telemetry_ack_flags"],
+      "additionalProperties": false
+    },
+    "command_frame": {
+      "type": "object",
+      "properties": {
+        "header": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" },
+          "minItems": 1
+        }
+      },
+      "required": ["header", "fields"],
+      "additionalProperties": false
+    },
+    "command_type": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "integer", "minimum": 1, "maximum": 255 },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "arguments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        },
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "required": ["type", "name", "arguments", "result"],
+      "additionalProperties": false
+    },
+    "commands": {
+      "type": "object",
+      "properties": {
+        "offset_base": { "const": "application_frame" },
+        "envelope_size": { "type": "integer", "minimum": 1 },
+        "command": { "$ref": "#/$defs/command_frame" },
+        "result": { "$ref": "#/$defs/command_frame" },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": { "type": "integer", "minimum": 0, "maximum": 255 },
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+            },
+            "required": ["value", "name"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "types": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/command_type" },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "offset_base",
+        "envelope_size",
+        "command",
+        "result",
+        "statuses",
+        "types"
+      ],
       "additionalProperties": false
     },
     "gateway_stream": {
@@ -243,6 +326,7 @@
             "schema_version": { "const": 1 },
             "scope": { "const": "gateway_client_telemetry" },
             "radio": { "$ref": "#/$defs/radio" },
+            "commands": { "$ref": "#/$defs/commands" },
             "gateway_stream": { "$ref": "#/$defs/gateway_stream" },
             "telemetry": { "$ref": "#/$defs/telemetry" }
           },
@@ -251,6 +335,7 @@
             "schema_version",
             "scope",
             "radio",
+            "commands",
             "gateway_stream",
             "telemetry"
           ],
@@ -283,6 +368,18 @@
       "required": ["name", "profile_id", "hex", "error"],
       "additionalProperties": false
     },
+    "command_vector": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "frame": { "enum": ["command", "command_result"] },
+        "command_type": { "type": "integer", "minimum": 1, "maximum": 255 },
+        "hex": { "type": "string", "pattern": "^(?:[0-9A-F]{2})+$" },
+        "decoded": { "type": "object" }
+      },
+      "required": ["name", "frame", "command_type", "hex", "decoded"],
+      "additionalProperties": false
+    },
     "stream_vector": {
       "type": "object",
       "properties": {
@@ -311,6 +408,10 @@
               "type": "array",
               "items": { "$ref": "#/$defs/invalid_telemetry_vector" }
             },
+            "commands": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/command_vector" }
+            },
             "gateway_stream": {
               "type": "array",
               "items": { "$ref": "#/$defs/stream_vector" }
@@ -322,6 +423,7 @@
             "scope",
             "telemetry",
             "invalid_telemetry",
+            "commands",
             "gateway_stream"
           ],
           "additionalProperties": false
