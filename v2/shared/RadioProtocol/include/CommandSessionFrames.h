@@ -263,6 +263,17 @@ inline bool commandArgumentSize(const uint8_t type, size_t& size) {
     return false;
 }
 
+inline bool validCommandArguments(
+    const uint8_t type, const uint8_t* const arguments, const size_t size) {
+    size_t expected = 0;
+    if (!commandArgumentSize(type, expected) || size != expected ||
+        arguments == nullptr) {
+        return false;
+    }
+    return static_cast<CommandType>(type) != CommandType::SetRadioPower ||
+        arguments[0] <= kMaxRadioPowerLevel;
+}
+
 // Result data accompanies only an applied command.
 inline size_t commandResultDataSize(
     const CommandType type, const CommandStatus status) {

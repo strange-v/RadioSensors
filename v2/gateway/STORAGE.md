@@ -172,9 +172,48 @@ The state flow is `absent -> pending -> active`; explicit management may set `di
 
 NVS work never runs in the radio-owner task. Commissioning persists a reservation before queuing `JOIN_ACCEPT`; synchronized store APIs own all registry access.
 
+## Command book snapshot
+
+NVS namespace: `node-cmd`; slot keys: `commands_a`, `commands_b`; magic: `RSCB`; exact size: 820 bytes.
+
+The book holds at most 16 records, one per node: its pending command, or the result of its last command. Queuing replaces the node's record; when the book is full, the oldest result is evicted, and a book of 16 pending commands refuses another. The limit keeps both slots under 2 KiB, because the 20 KiB NVS partition also holds a registry of up to about 9 KiB.
+
+| Offset | Bytes | Field |
+| ---: | ---: | --- |
+| 0 | 12 | Common snapshot header |
+| 12 | 1 | Record count, `0..16` |
+| 13 | 1 | Reserved, zero |
+| 14 | 2 | Next command ID, nonzero |
+| 16 | 800 | Sixteen fixed 50-byte records, oldest first |
+| 816 | 4 | CRC32 |
+
+Each record:
+
+| Relative offset | Bytes | Field |
+| ---: | ---: | --- |
+| 0 | 10 | Factory UID of the node the command is for |
+| 10 | 1 | Node ID, `1..99`, unique in the book |
+| 11 | 2 | Command ID, nonzero |
+| 13 | 1 | Command type |
+| 14 | 1 | Argument length |
+| 15 | 8 | Arguments, zero-padded |
+| 23 | 1 | State: 1 pending, 2 completed |
+| 24 | 1 | Result status; zero while pending |
+| 25 | 1 | Result data length; zero while pending |
+| 26 | 8 | Result data, zero-padded |
+| 34 | 8 | Queued at, UTC Unix milliseconds or zero |
+| 42 | 8 | Completed at, UTC Unix milliseconds or zero |
+
+Types, argument layouts, statuses, and result lengths follow [PROTOCOL.md](../protocol/PROTOCOL.md); a completed record never holds `storage_failure`. Records after the count are entirely zero. The UID binds a command to one physical node: a record whose UID differs from the node's current registration is never delivered and is replaced by the next command for that node ID.
+
+An absent or corrupt store starts empty with a hardware-random next command ID. The sequence wraps from 65535 to 1.
+
 ## Atomic operations and reset boundaries
 
-There is no transaction across namespaces. Settings touch only `gateway-config`; users/tokens touch only `gateway-auth`; commissioning touches only `node-reg`; installation-key rotation touches only `gateway-secrets` and needs a separate recovery workflow.
+There is no transaction across namespaces. Settings touch only `gateway-config`; users/tokens touch only `gateway-auth`; commissioning touches only `node-reg`; commands touch only `node-cmd`; installation-key rotation touches only `gateway-secrets` and needs a separate recovery workflow.
+
+- Deleting a node removes its command record after the registry commit.
+- A radio network reset clears the command book but keeps its command ID sequence.
 
 - Settings reset restores `gateway-config` defaults.
 - Authentication reset requires a physical setup action and clears auth records plus runtime sessions.
