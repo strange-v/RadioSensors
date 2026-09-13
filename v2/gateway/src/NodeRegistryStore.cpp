@@ -148,6 +148,22 @@ bool activeProfileId(const uint8_t nodeId, uint16_t& profileId) {
     return found;
 }
 
+bool activeIdentity(
+    const uint8_t nodeId, uint8_t* const deviceUid, uint16_t& profileId) {
+    if (!initialized || mutex == nullptr || deviceUid == nullptr) return false;
+    if (xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) return false;
+    const radiosensors::registry::NodeRecord* const record =
+        nodes.findByNodeId(nodeId);
+    const bool found = record != nullptr &&
+        record->state == radiosensors::registry::NodeState::Active;
+    if (found) {
+        memcpy(deviceUid, record->deviceUid, sizeof(record->deviceUid));
+        profileId = record->profileId;
+    }
+    xSemaphoreGive(mutex);
+    return found;
+}
+
 bool snapshot(Snapshot& value) {
     if (!initialized || mutex == nullptr ||
         xSemaphoreTake(mutex, portMAX_DELAY) != pdTRUE) {

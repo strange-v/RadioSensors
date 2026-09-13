@@ -18,6 +18,7 @@
 #include "ApiVersion.h"
 #include "AuthenticationService.h"
 #include "BoardProfile.h"
+#include "CommandService.h"
 #include "CommissioningService.h"
 #include "ConfigurationStore.h"
 #include "Diagnostics.h"
@@ -544,7 +545,187 @@ void handleDeleteNode(AsyncWebServerRequest* request, JsonVariant& json) {
         sendError(request, 404, "node_not_found");
     } else {
         telemetry_store::erase(nodeId);
+        // Best effort: a record left behind is bound to the deleted node's UID
+        // and is never delivered to a node that reuses the ID.
+        commands::removeNode(nodeId);
         request->send(204);
+    }
+}
+
+using radiosensors::protocol::CommandStatus;
+using radiosensors::protocol::CommandType;
+
+const char* commandTypeName(const uint8_t type) {
+    switch (static_cast<CommandType>(type)) {
+        case CommandType::SetRadioPower:
+            return "set_radio_power";
+        case CommandType::SetCount:
+            return "set_count";
+    }
+    return "unknown";
+}
+
+bool parseCommandType(const char* const name, CommandType& type) {
+    if (strcmp(name, "set_radio_power") == 0) {
+        type = CommandType::SetRadioPower;
+    } else if (strcmp(name, "set_count") == 0) {
+        type = CommandType::SetCount;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+const char* commandStatusName(const CommandStatus status) {
+    switch (status) {
+        case CommandStatus::Applied:
+            return "applied";
+        case CommandStatus::Unsupported:
+            return "unsupported";
+        case CommandStatus::InvalidArgument:
+            return "invalid_argument";
+        case CommandStatus::StorageFailure:
+            return "storage_failure";
+    }
+    return "unknown";
+}
+
+void writeCommand(JsonObject object, const commands::Entry& entry) {
+    const radiosensors::gateway_storage::CommandRecord& record = entry.record;
+    const CommandType type = static_cast<CommandType>(record.type);
+    object["node_id"] = record.nodeId;
+    object["command_id"] = record.commandId;
+    object["type"] = commandTypeName(record.type);
+    JsonObject arguments = object["arguments"].to<JsonObject>();
+    if (type == CommandType::SetRadioPower) {
+        arguments["power_level"] = record.arguments[0];
+    } else if (type == CommandType::SetCount) {
+        arguments["count"] = radiosensors::protocol::readUint32Le(record.arguments);
+    }
+    object["queued_at_ms"] = record.queuedAtUnixMs;
+    if (record.state == radiosensors::gateway_storage::CommandState::Pending) {
+        object["state"] = entry.delivered ? "delivered" : "pending";
+        return;
+    }
+    object["state"] = "completed";
+    object["status"] = commandStatusName(record.status);
+    object["completed_at_ms"] = record.completedAtUnixMs;
+    if (type == CommandType::SetCount && record.status == CommandStatus::Applied) {
+        JsonObject result = object["result"].to<JsonObject>();
+        result["previous_count"] = radiosensors::protocol::readUint32Le(record.result);
+        result["count"] = radiosensors::protocol::readUint32Le(record.result + 4);
+    }
+}
+
+void handleCommands(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeSession(request, principal, false)) return;
+    const std::unique_ptr<commands::Listing> listing(
+        new (std::nothrow) commands::Listing());
+    if (!listing || !commands::list(*listing)) {
+        sendError(request, 503, "commands_unavailable");
+        return;
+    }
+    JsonDocument document;
+    JsonArray array = document["commands"].to<JsonArray>();
+    for (size_t index = 0; index < listing->count; ++index) {
+        writeCommand(array.add<JsonObject>(), listing->entries[index]);
+    }
+    String body;
+    serializeJson(document, body);
+    AsyncWebServerResponse* response =
+        request->beginResponse(200, "application/json", body);
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+}
+
+void handleQueueCommand(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    const JsonObjectConst object = json.as<JsonObjectConst>();
+    if (!object["node_id"].is<uint8_t>() || !object["type"].is<const char*>() ||
+        !object["arguments"].is<JsonObjectConst>()) {
+        sendError(request, 422, "invalid_command_values");
+        return;
+    }
+    CommandType type{};
+    if (!parseCommandType(object["type"].as<const char*>(), type)) {
+        sendError(request, 422, "unsupported_command");
+        return;
+    }
+    const JsonObjectConst arguments = object["arguments"].as<JsonObjectConst>();
+    uint8_t encoded[radiosensors::protocol::kMaxCommandArgumentSize]{};
+    size_t size = 0;
+    if (type == CommandType::SetRadioPower && arguments["power_level"].is<uint8_t>()) {
+        encoded[0] = arguments["power_level"].as<uint8_t>();
+        size = radiosensors::protocol::kSetRadioPowerArgumentSize;
+    } else if (type == CommandType::SetCount && arguments["count"].is<uint32_t>()) {
+        radiosensors::protocol::writeUint32Le(encoded, arguments["count"].as<uint32_t>());
+        size = radiosensors::protocol::kSetCountArgumentSize;
+    } else {
+        sendError(request, 422, "invalid_command_arguments");
+        return;
+    }
+
+    commands::Entry queued{};
+    switch (commands::queue(object["node_id"].as<uint8_t>(), type, encoded, size, queued)) {
+        case commands::QueueResult::Queued: {
+            JsonDocument document;
+            writeCommand(document.to<JsonObject>(), queued);
+            String body;
+            serializeJson(document, body);
+            request->send(201, "application/json", body);
+            return;
+        }
+        case commands::QueueResult::NodeNotFound:
+            sendError(request, 404, "node_not_found");
+            return;
+        case commands::QueueResult::Unsupported:
+            sendError(request, 422, "unsupported_command");
+            return;
+        case commands::QueueResult::InvalidArguments:
+            sendError(request, 422, "invalid_command_arguments");
+            return;
+        case commands::QueueResult::Busy:
+            sendError(request, 409, "command_pending");
+            return;
+        case commands::QueueResult::CapacityReached:
+            sendError(request, 409, "command_capacity_reached");
+            return;
+        case commands::QueueResult::StorageError:
+            sendError(request, 500, "command_storage_failed");
+            return;
+        case commands::QueueResult::NotInitialized:
+            sendError(request, 503, "commands_unavailable");
+            return;
+    }
+}
+
+void handleCancelCommand(AsyncWebServerRequest* request, JsonVariant& json) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!json.is<JsonObject>() ||
+        !json.as<JsonObjectConst>()["node_id"].is<uint8_t>()) {
+        sendError(request, 400, "invalid_request");
+        return;
+    }
+    switch (commands::cancel(json.as<JsonObjectConst>()["node_id"].as<uint8_t>())) {
+        case commands::CancelResult::Cancelled:
+            request->send(204);
+            return;
+        case commands::CancelResult::NotFound:
+            sendError(request, 404, "command_not_found");
+            return;
+        case commands::CancelResult::StorageError:
+            sendError(request, 500, "command_storage_failed");
+            return;
+        case commands::CancelResult::NotInitialized:
+            sendError(request, 503, "commands_unavailable");
+            return;
     }
 }
 
@@ -585,6 +766,7 @@ void handleResetRadioNetwork(AsyncWebServerRequest* request, JsonVariant& json) 
         return;
     }
     telemetry_store::clear();
+    commands::clear();
 
     auto secrets = configuration_store::secrets();
     secrets.installationKeyPresent = true;
@@ -1351,6 +1533,7 @@ void handleStatus(AsyncWebServerRequest* request) {
     const radio::Snapshot radioSnapshot = radio::snapshot();
     const commissioning::Snapshot commissioningSnapshot = commissioning::snapshot();
     const telemetry_store::Snapshot telemetrySnapshot = telemetry_store::snapshot();
+    const commands::Snapshot commandSnapshot = commands::snapshot();
     AsyncResponseStream* response = request->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-store");
     response->printf(
@@ -1366,6 +1549,11 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"join_confirms\":%lu,\"join_completes_queued\":%lu,"
         "\"nodes_activated\":%lu,\"rejected_frames\":%lu,"
         "\"storage_errors\":%lu,\"confirm_timeouts\":%lu},"
+        "\"commands\":{\"ready\":%s,\"generation\":%lu,\"records\":%u,"
+        "\"pending\":%u,\"sessions\":%lu,\"delivered\":%lu,"
+        "\"no_command_replies\":%lu,\"results_recorded\":%lu,"
+        "\"duplicate_results\":%lu,\"rejected_frames\":%lu,"
+        "\"storage_errors\":%lu},"
         "\"ethernet\":{\"state\":\"%s\",\"has_ip\":%s,\"ip\":\"%s\","
         "\"mac\":\"%s\"},\"ota\":{\"enabled\":%s,\"state\":\"%s\",\"progress\":%u},"
         "\"web_ui\":{\"state\":\"%s\",\"version\":\"%s\","
@@ -1391,6 +1579,9 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"unsupported_protocol_versions\":%lu,"
         "\"unsupported_frame_kinds\":%lu,"
         "\"rx_frames_queued\":%lu,\"rx_frames_dropped\":%lu,"
+        "\"session_frames_queued\":%lu,\"session_frames_dropped\":%lu,"
+        "\"session_frames_rejected\":%lu,"
+        "\"command_result_acks_sent\":%lu,\"command_hints_sent\":%lu,"
         "\"commands_queued\":%lu,\"commands_dropped\":%lu,"
         "\"commands_processed\":%lu},"
         "\"last_packet\":{\"at_ms\":%lu,\"sender_id\":%u,\"rssi\":%d}}}",
@@ -1423,6 +1614,17 @@ void handleStatus(AsyncWebServerRequest* request) {
         commissioningSnapshot.rejectedFrames,
         commissioningSnapshot.storageErrors,
         commissioningSnapshot.confirmTimeouts,
+        commandSnapshot.ready ? "true" : "false",
+        static_cast<unsigned long>(commandSnapshot.generation),
+        static_cast<unsigned>(commandSnapshot.records),
+        static_cast<unsigned>(commandSnapshot.pending),
+        static_cast<unsigned long>(commandSnapshot.sessions),
+        static_cast<unsigned long>(commandSnapshot.delivered),
+        static_cast<unsigned long>(commandSnapshot.noCommandReplies),
+        static_cast<unsigned long>(commandSnapshot.resultsRecorded),
+        static_cast<unsigned long>(commandSnapshot.duplicateResults),
+        static_cast<unsigned long>(commandSnapshot.rejectedFrames),
+        static_cast<unsigned long>(commandSnapshot.storageErrors),
         ethernet::stateName(),
         ethernet::hasIp() ? "true" : "false",
         ethernet::ipAddress().c_str(),
@@ -1479,6 +1681,11 @@ void handleStatus(AsyncWebServerRequest* request) {
         radioSnapshot.unsupportedFrameKinds,
         radioSnapshot.rxFramesQueued,
         radioSnapshot.rxFramesDropped,
+        radioSnapshot.sessionFramesQueued,
+        radioSnapshot.sessionFramesDropped,
+        radioSnapshot.sessionFramesRejected,
+        radioSnapshot.commandResultAcksSent,
+        radioSnapshot.commandHintsSent,
         radioSnapshot.commandsQueued,
         radioSnapshot.commandsDropped,
         radioSnapshot.commandsProcessed,
@@ -1622,6 +1829,13 @@ void begin() {
         "/ui/pairing/open", HTTP_POST, handleOpenPairing);
     openPairingHandler.setMaxContentLength(256);
     server.on("/ui/pairing/close", HTTP_POST, handleClosePairing);
+    server.on("/ui/commands", HTTP_GET, handleCommands);
+    auto& queueCommandHandler = server.on(
+        "/ui/commands", HTTP_POST, handleQueueCommand);
+    queueCommandHandler.setMaxContentLength(256);
+    auto& cancelCommandHandler = server.on(
+        "/ui/commands", HTTP_DELETE, handleCancelCommand);
+    cancelCommandHandler.setMaxContentLength(128);
     server.on("/ui/telemetry/last", HTTP_GET, handleLastTelemetry);
     web_ui::addRoutes(server);
     // A mistyped API path must answer with JSON, not with the single-page

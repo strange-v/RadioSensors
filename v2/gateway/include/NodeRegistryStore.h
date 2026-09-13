@@ -23,6 +23,7 @@ size_t recordCount();
 bool isActiveNode(uint8_t nodeId);
 bool hasActiveNodes();
 bool activeProfileId(uint8_t nodeId, uint16_t& profileId);
+bool activeIdentity(uint8_t nodeId, uint8_t* deviceUid, uint16_t& profileId);
 bool snapshot(Snapshot& value);
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
