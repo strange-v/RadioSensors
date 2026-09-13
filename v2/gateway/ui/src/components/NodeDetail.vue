@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { api, errorCode, isAdmin } from '../api/client'
 import type { GatewayNode } from '../api/types'
 import Modal from './Modal.vue'
+import NodeCommands from './NodeCommands.vue'
 import SignalBars from './SignalBars.vue'
 import { byteLength, lastSeen, nodeName, signal } from '../utils/format'
 
@@ -81,6 +82,8 @@ async function remove() {
         </dd></div>
         <div><dt>{{ $t('nodes.columnLastSeen') }}</dt><dd>{{ lastSeen(t, node.last_seen_at_ms) }}</dd></div>
       </dl>
+
+      <NodeCommands v-if="node.state === 'active'" :key="node.node_id" :node="node" />
 
       <template v-if="isAdmin">
         <label>
