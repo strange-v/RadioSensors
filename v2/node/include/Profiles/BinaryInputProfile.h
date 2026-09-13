@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "ConfirmedInput.h"
+#include "DebugLog.h"
 #include "PolledReedInput.h"
 #include "TelemetrySchedule.h"
 
@@ -29,8 +30,7 @@ public:
         if (!input_.sample(high)) high = input_.readOnce();
         contact_ = ConfirmedInput(high);
 #if defined(NODE_DEBUG)
-        Serial.print(F("input: initially "));
-        Serial.println(high ? F("open") : F("closed"));
+        debugLine(high ? F("in open") : F("in shut"));
 #endif
     }
 
@@ -39,10 +39,9 @@ public:
         if (change == InputChange::None) return;
         reportSchedule_.stateChanged();
 #if defined(NODE_DEBUG)
-        Serial.print(change == InputChange::Rose
-            ? F("input: open at ")
-            : F("input: closed at "));
-        Serial.println(now);
+        debugValue(change == InputChange::Rose
+            ? F("in open @")
+            : F("in shut @"), now);
 #else
         (void)now;
 #endif

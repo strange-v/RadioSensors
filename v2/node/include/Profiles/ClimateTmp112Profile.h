@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "DebugLog.h"
 #include "TelemetrySchedule.h"
 #include "Tmp112Sensor.h"
 
@@ -55,9 +56,7 @@ public:
         reportSchedule_.setInterval(nextInterval);
         reportSchedule_.transmissionSucceeded(now);
 #if defined(NODE_DEBUG)
-        Serial.print(F("climate: next="));
-        Serial.print(nextInterval / 1000UL);
-        Serial.println(F(" s"));
+        debugValue(F("clim next s="), nextInterval / 1000UL);
 #endif
     }
 

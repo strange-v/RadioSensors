@@ -9,6 +9,7 @@
 #include "ArduinoEepromStorage.h"
 #include "ConfirmedInput.h"
 #include "CounterStorage.h"
+#include "DebugLog.h"
 #include "PolledReedInput.h"
 #include "TelemetrySchedule.h"
 
@@ -36,8 +37,7 @@ public:
         store_.load(count_);
         journal_.recover(count_);
 #if defined(NODE_DEBUG)
-        Serial.print(F("counter: restored "));
-        Serial.println(count_);
+        debugValue(F("cnt load="), count_);
 #endif
     }
 
@@ -45,11 +45,9 @@ public:
         const InputChange contactChange = contact_.update(input_);
 #if defined(NODE_DEBUG)
         if (contactChange != InputChange::None) {
-            Serial.print(F("counter: contact "));
-            Serial.print(contactChange == InputChange::Rose
-                ? F("open at ")
-                : F("closed at "));
-            Serial.println(now);
+            debugValue(contactChange == InputChange::Rose
+                ? F("reed open @")
+                : F("reed shut @"), now);
         }
 #else
         (void)contactChange;
@@ -59,8 +57,7 @@ public:
         store_.save(count_);
         reportSchedule_.pulseRecorded();
 #if defined(NODE_DEBUG)
-        Serial.print(F("counter: pulse "));
-        Serial.println(count_);
+        debugValue(F("pulse "), count_);
 #endif
     }
 

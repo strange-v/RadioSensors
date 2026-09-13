@@ -8,6 +8,7 @@
 
 #include "BatteryMonitor.h"
 #include "CommissioningService.h"
+#include "DebugLog.h"
 #include "LowPowerClock.h"
 #include "NodeRadio.h"
 #include "ProvisioningButton.h"
@@ -56,8 +57,7 @@ public:
         clock_.begin();
         radioReady_ = commissioning_.begin();
 #if defined(NODE_DEBUG)
-        Serial.print(F("radio: "));
-        Serial.println(radioReady_ ? F("ready") : F("initialization failed"));
+        debugLine(radioReady_ ? F("rf ok") : F("rf fail"));
 #endif
     }
 
@@ -92,13 +92,12 @@ private:
     void resetNetwork() {
         if (!commissioning_.resetNetwork()) {
 #if defined(NODE_DEBUG)
-            Serial.println(
-                F("button: network reset refused, factory credentials missing"));
+            debugLine(F("rst no fcred"));
 #endif
             return;
         }
 #if defined(NODE_DEBUG)
-        Serial.println(F("button: network configuration erased, restarting"));
+        debugLine(F("rst"));
         Serial.flush();
 #endif
         _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
@@ -111,9 +110,7 @@ private:
             return;
         }
 #if defined(NODE_DEBUG)
-        if (requestedByButton) {
-            Serial.println(F("commissioning: requested by button"));
-        }
+        if (requestedByButton) debugLine(F("join btn"));
 #endif
         joinAttempted_ = true;
         lastJoinAttempt_ = now;
@@ -127,9 +124,6 @@ private:
             (!urgent && !radioRetry_.allowed(now))) {
             return false;
         }
-#if defined(NODE_DEBUG)
-        Serial.println(F("telemetry: measuring"));
-#endif
         const protocol::TelemetryPrefix prefix{
             supplyVoltage_.report(battery_.readMillivolts()),
             protocol::encodeRadioState(
@@ -158,15 +152,15 @@ private:
                 commissioning_.config().radioFallback, ack.hasPowerTarget,
                 ack.powerTarget, NODE_RADIO_MAX_POWER_LEVEL));
 #if defined(NODE_DEBUG)
-            Serial.print(F("telemetry: ack, vcc="));
+            // After an ack the RSSI is in [-127, 0] dBm: print its magnitude.
+            Serial.print(F("tx ok mv="));
             Serial.print(prefix.supplyMillivolts);
-            Serial.print(F(" mV, rssi="));
-            Serial.println(downlinkRssi_);
+            debugValue(F(" rssi=-"), static_cast<uint8_t>(-downlinkRssi_));
 #endif
         } else {
             radioRetry_.failed(now);
 #if defined(NODE_DEBUG)
-            Serial.println(F("telemetry: failed"));
+            debugLine(F("tx fail"));
 #endif
             if (unacknowledgedReports_ < UINT8_MAX) ++unacknowledgedReports_;
             applyPower(afterUnacknowledged(
@@ -182,11 +176,10 @@ private:
         const bool stored =
             commissioning_.setRadioPower(decision.level, decision.fallback);
 #if defined(NODE_DEBUG)
-        Serial.print(F("radio: level "));
-        Serial.print(decision.level);
-        Serial.println(stored
-            ? (decision.fallback ? F(", fallback") : F(""))
-            : F(", not stored"));
+        debugValue(
+            stored ? (decision.fallback ? F("pwr fb ") : F("pwr "))
+                   : F("pwr nosave "),
+            decision.level);
 #else
         (void)stored;
 #endif
@@ -209,7 +202,7 @@ private:
                     protocol::CommandSessionCodecStatus::Ok &&
                 echoed == nonce) {
 #if defined(NODE_DEBUG)
-                Serial.println(F("command: none pending"));
+                debugLine(F("cmd none"));
 #endif
                 radio_.sleep();
                 return true;
@@ -223,7 +216,7 @@ private:
             }
         }
 #if defined(NODE_DEBUG)
-        Serial.println(F("command: gateway did not answer"));
+        debugLine(F("cmd timeout"));
 #endif
         radio_.sleep();
         return false;
@@ -244,13 +237,11 @@ private:
                 static_cast<uint8_t>(protocol::commandResultFrameSize(result)));
         radio_.sleep();
 #if defined(NODE_DEBUG)
-        Serial.print(F("command: id="));
+        Serial.print(sent ? F("cmd ack id=") : F("cmd noack id="));
         Serial.print(command.commandId);
-        Serial.print(F(" type="));
+        Serial.print(F(" t="));
         Serial.print(command.type);
-        Serial.print(F(" status="));
-        Serial.print(static_cast<uint8_t>(result.status));
-        Serial.println(sent ? F(" ack") : F(" no ack"));
+        debugValue(F(" s="), static_cast<uint8_t>(result.status));
 #else
         (void)sent;
 #endif
