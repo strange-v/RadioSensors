@@ -1,5 +1,6 @@
 #pragma once
 
+#include <CommandSessionFrames.h>
 #include <ProfileIds.h>
 #include <TelemetryFrames.h>
 #include <stddef.h>
@@ -66,6 +67,9 @@ public:
     void reportAcknowledged(const uint32_t now, uint16_t) {
         reportSchedule_.transmissionSucceeded(now);
     }
+
+    void applyCommand(const protocol::Command&, protocol::CommandResult&) {}
+    void commissioned() {}
 
 private:
     PolledReedInput input_;

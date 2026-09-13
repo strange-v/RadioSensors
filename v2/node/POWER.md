@@ -45,7 +45,7 @@ On the internal board an acknowledged report without input work costs about 215 
 | Receiver on after the ACK | 0.4 ms | 17 mA | 7 µC |
 | Vcc measurement after transmission | 3.5 ms | 1.8 mA | 6 µC |
 
-Not yet measured: a transmission without ACK and commissioning receive windows.
+Not yet measured: a transmission without ACK, commissioning receive windows, and command sessions.
 
 ## Battery budget
 

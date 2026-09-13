@@ -26,7 +26,7 @@ Commissioning and operational radio profiles have separate AES keys. Initial gat
 
 Normal telemetry is `common telemetry prefix + opaque profile payload`. The gateway may decode the common supply-voltage field but does not decode profile-specific measurements. Exact radio bytes are specified only in [v2/protocol/PROTOCOL.md](v2/protocol/PROTOCOL.md).
 
-Sleeping-node commands use a pull session. A telemetry ACK may eventually carry a pending-command hint; the node then sends nonce-bound `COMMAND_READY` and receives one durable command or `NO_COMMAND`. Commands and results must be idempotent and durable before acknowledgement.
+Sleeping-node commands use a pull session. A short button press, or a telemetry ACK carrying the pending-command flag, makes the node send nonce-bound `COMMAND_READY`; it receives one durable command or `NO_COMMAND`. Commands and results are idempotent and durable before acknowledgement.
 
 ## Gateway runtime
 

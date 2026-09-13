@@ -18,6 +18,7 @@ using radiosensors::node::BinaryReportSchedule;
 using radiosensors::node::LoadedSupplyVoltage;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
+using radiosensors::node::HintedSessionPolicy;
 using radiosensors::node::kCounterMinimumReportMs;
 
 namespace {
@@ -285,6 +286,117 @@ void test_set_count_result_generation_wrap_selects_latest() {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(299U), restored.generation);
 }
 
+void test_set_count_journal_applies_and_recognizes_redelivery() {
+    FakeStorage memory;
+    CounterStore<FakeStorage> counter(memory);
+    SetCountStore<FakeStorage> results(memory);
+    SetCountJournal<FakeStorage> journal(counter, results);
+    uint32_t count = 100;
+    TEST_ASSERT_TRUE(counter.save(count));
+    journal.recover(count);
+
+    SetCountResult result{};
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(SetCountOutcome::Applied),
+        static_cast<uint8_t>(journal.apply(17, 500, count, result)));
+    TEST_ASSERT_EQUAL_UINT32(500, count);
+    TEST_ASSERT_EQUAL_UINT32(100, result.oldCount);
+    TEST_ASSERT_EQUAL_UINT32(500, result.appliedCount);
+
+    // Pulses counted after the command must survive its redelivery.
+    count = 503;
+    TEST_ASSERT_TRUE(counter.save(count));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(SetCountOutcome::Redelivered),
+        static_cast<uint8_t>(journal.apply(17, 500, count, result)));
+    TEST_ASSERT_EQUAL_UINT32(503, count);
+    TEST_ASSERT_EQUAL_UINT32(100, result.oldCount);
+    TEST_ASSERT_EQUAL_UINT32(500, result.appliedCount);
+
+    SetCountStore<FakeStorage> reader(memory);
+    SetCountResult stored{};
+    TEST_ASSERT_TRUE(reader.load(stored));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(SetCountStatus::Applied),
+        static_cast<uint8_t>(stored.status));
+    TEST_ASSERT_EQUAL_UINT16(17, stored.commandId);
+}
+
+void test_set_count_journal_completes_an_interrupted_apply_on_boot() {
+    FakeStorage memory;
+    {
+        CounterStore<FakeStorage> counter(memory);
+        SetCountStore<FakeStorage> results(memory);
+        TEST_ASSERT_TRUE(counter.save(100));
+        // Reset after the Pending result, before the ring write.
+        SetCountResult pending{};
+        pending.status = SetCountStatus::Pending;
+        pending.commandId = 9;
+        pending.oldCount = 100;
+        pending.appliedCount = 42;
+        TEST_ASSERT_TRUE(results.save(pending));
+    }
+
+    CounterStore<FakeStorage> counter(memory);
+    SetCountStore<FakeStorage> results(memory);
+    SetCountJournal<FakeStorage> journal(counter, results);
+    uint32_t count = 0;
+    TEST_ASSERT_TRUE(counter.load(count));
+    TEST_ASSERT_EQUAL_UINT32(100, count);
+    journal.recover(count);
+    TEST_ASSERT_EQUAL_UINT32(42, count);
+
+    CounterStore<FakeStorage> ringReader(memory);
+    uint32_t persisted = 0;
+    TEST_ASSERT_TRUE(ringReader.load(persisted));
+    TEST_ASSERT_EQUAL_UINT32(42, persisted);
+    SetCountResult result{};
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(SetCountOutcome::Redelivered),
+        static_cast<uint8_t>(journal.apply(9, 42, count, result)));
+}
+
+void test_set_count_journal_forgets_ids_after_commissioning() {
+    FakeStorage memory;
+    CounterStore<FakeStorage> counter(memory);
+    SetCountStore<FakeStorage> results(memory);
+    SetCountJournal<FakeStorage> journal(counter, results);
+    uint32_t count = 0;
+    journal.recover(count);
+    SetCountResult result{};
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(SetCountOutcome::Applied),
+        static_cast<uint8_t>(journal.apply(5, 10, count, result)));
+
+    journal.forgetCommandIds(count);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(SetCountOutcome::Applied),
+        static_cast<uint8_t>(journal.apply(5, 20, count, result)));
+    TEST_ASSERT_EQUAL_UINT32(20, count);
+    TEST_ASSERT_EQUAL_UINT32(10, result.oldCount);
+}
+
+void test_hinted_sessions_are_rate_limited() {
+    HintedSessionPolicy policy;
+    const uint32_t minute = 60UL * 1000UL;
+    TEST_ASSERT_TRUE(policy.allowed(0));
+    policy.finished(0, true);
+    TEST_ASSERT_FALSE(policy.allowed(5U * minute - 1U));
+    TEST_ASSERT_TRUE(policy.allowed(5U * minute));
+
+    // Unanswered sessions add the radio retry delays on top.
+    policy.finished(5U * minute, false);
+    TEST_ASSERT_TRUE(policy.allowed(10U * minute));
+    policy.finished(10U * minute, false);
+    TEST_ASSERT_TRUE(policy.allowed(15U * minute));
+    policy.finished(15U * minute, false);
+    TEST_ASSERT_FALSE(policy.allowed(30U * minute - 1U));
+    TEST_ASSERT_TRUE(policy.allowed(30U * minute));
+
+    policy.finished(30U * minute, true);
+    TEST_ASSERT_TRUE(policy.allowed(35U * minute));
+}
+
 void test_event_keep_alive_rolls_from_successful_event() {
     BinaryReportSchedule schedule;
     TEST_ASSERT_TRUE(schedule.due(0));
@@ -483,6 +595,10 @@ int main(int, char**) {
     RUN_TEST(test_counter_ignores_uncommitted_record);
     RUN_TEST(test_set_count_result_round_trip_and_corruption_fallback);
     RUN_TEST(test_set_count_result_generation_wrap_selects_latest);
+    RUN_TEST(test_set_count_journal_applies_and_recognizes_redelivery);
+    RUN_TEST(test_set_count_journal_completes_an_interrupted_apply_on_boot);
+    RUN_TEST(test_set_count_journal_forgets_ids_after_commissioning);
+    RUN_TEST(test_hinted_sessions_are_rate_limited);
     RUN_TEST(test_event_keep_alive_rolls_from_successful_event);
     RUN_TEST(test_failed_binary_transmission_keeps_event_pending);
     RUN_TEST(test_binary_state_change_is_urgent_once);

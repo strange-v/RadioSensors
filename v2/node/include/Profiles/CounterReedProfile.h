@@ -1,5 +1,6 @@
 #pragma once
 
+#include <CommandSessionFrames.h>
 #include <ProfileIds.h>
 #include <TelemetryFrames.h>
 #include <stddef.h>
@@ -26,11 +27,14 @@ public:
         : input_(pin),
           contact_(true),
           phase_(minimumPhaseMs, true),
-          store_(eeprom_) {}
+          store_(eeprom_),
+          results_(eeprom_),
+          journal_(store_, results_) {}
 
     void begin() {
         input_.sleep();
         store_.load(count_);
+        journal_.recover(count_);
 #if defined(NODE_DEBUG)
         Serial.print(F("counter: restored "));
         Serial.println(count_);
@@ -80,12 +84,40 @@ public:
         reportSchedule_.transmissionSucceeded(now);
     }
 
+    void applyCommand(
+        const protocol::Command& command, protocol::CommandResult& result) {
+        if (command.type != static_cast<uint8_t>(protocol::CommandType::SetCount)) {
+            return;
+        }
+        if (!protocol::validCommandArguments(
+                command.type, command.arguments, command.argumentSize)) {
+            result.status = protocol::CommandStatus::InvalidArgument;
+            return;
+        }
+        storage::SetCountResult stored{};
+        if (journal_.apply(
+                command.commandId, protocol::readUint32Le(command.arguments),
+                count_, stored) == storage::SetCountOutcome::StorageFailure) {
+            result.status = protocol::CommandStatus::StorageFailure;
+            return;
+        }
+        result.status = protocol::CommandStatus::Applied;
+        result.dataSize = protocol::kSetCountResultSize;
+        protocol::writeUint32Le(result.data, stored.oldCount);
+        protocol::writeUint32Le(result.data + 4, stored.appliedCount);
+        reportSchedule_.pulseRecorded();
+    }
+
+    void commissioned() { journal_.forgetCommandIds(count_); }
+
 private:
     PolledReedInput input_;
     ConfirmedInput contact_;
     MinimumPhaseFilter phase_;
     storage::ArduinoEepromStorage eeprom_;
     storage::CounterStore<storage::ArduinoEepromStorage> store_;
+    storage::SetCountStore<storage::ArduinoEepromStorage> results_;
+    storage::SetCountJournal<storage::ArduinoEepromStorage> journal_;
     CounterReportSchedule reportSchedule_;
     uint32_t count_ = 0;
 };
