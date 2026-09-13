@@ -97,6 +97,7 @@ bool CommissioningService::requestJoin() {
     request.profileId = profileId_;
     request.firmware = firmware_;
     request.requestNonce = createNonce();
+    request.maxPowerLevel = NODE_RADIO_MAX_POWER_LEVEL;
     uint8_t requestBytes[protocol::kJoinRequestSize];
     if (protocol::encodeJoinRequest(
             request, requestBytes, sizeof(requestBytes)) !=

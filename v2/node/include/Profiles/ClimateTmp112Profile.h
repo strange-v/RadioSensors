@@ -37,12 +37,12 @@ public:
     bool takeUrgentReport() { return false; }
 
     size_t encodeTelemetry(
-        const uint16_t supplyMillivolts, uint8_t* output,
+        const protocol::TelemetryPrefix& prefix, uint8_t* output,
         const size_t capacity) {
         int16_t temperature = protocol::kInvalidTemperature;
         temperature_.readTemperature(temperature);
         return protocol::encodeTemperatureTelemetry(
-                   supplyMillivolts, temperature, output, capacity) ==
+                   prefix, temperature, output, capacity) ==
                 protocol::TelemetryCodecStatus::Ok
             ? kTelemetrySize
             : 0;

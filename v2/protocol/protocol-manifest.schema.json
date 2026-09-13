@@ -46,6 +46,7 @@
         "encoding": {
           "enum": [
             "uint8",
+            "int8",
             "int16_le",
             "uint16_le",
             "uint32_le",
@@ -71,7 +72,22 @@
             { "type": "integer" }
           ]
         },
-        "const_raw": { "type": "integer" }
+        "const_raw": { "type": "integer" },
+        "bits": {
+          "type": "array",
+          "description": "Named sub-fields of an integer field. Bits outside every mask are reserved and must be zero.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "quantity": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "mask": { "type": "integer", "minimum": 1, "maximum": 255 }
+            },
+            "required": ["name", "mask"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
       },
       "required": ["name", "offset", "encoding"],
       "additionalProperties": false,

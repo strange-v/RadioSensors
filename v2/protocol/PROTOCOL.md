@@ -127,19 +127,13 @@ The gateway allocates command IDs from one wrapping 16-bit sequence per installa
 
 The gateway marks the pending command complete only after a matching result is durably recorded. If the result is lost, a later session delivers the same command ID and payload.
 
-### Telemetry acknowledgement
-
-The RFM69 ACK that answers telemetry carries zero or one payload byte. With one byte, bit 0 `command_pending` means a command is queued for this node; bits 1..7 are zero when sent and ignored when received. The byte does not change the meaning of the acknowledgement. RFM69 AES pads both forms to one 16-byte block, so the flag costs no airtime.
-
-A node that sees the flag opens a command session in the same wake-up. It limits sessions that the flag starts but that do not end cleanly; the node README specifies the back-off.
-
 ## Telemetry
 
 ```text
-+----------------------+------------------+--------------------------+
-| DATA[0] = 0x40       | DATA[1..2]       | DATA[3..N]               |
-| v2 / Telemetry       | supply voltage   | profile-specific payload |
-+----------------------+------------------+--------------------------+
++----------------+----------------+-------------+---------------+--------------------------+
+| DATA[0] = 0x40 | DATA[1..2]     | DATA[3]     | DATA[4]       | DATA[5..N]               |
+| v2 / Telemetry | supply voltage | radio state | downlink RSSI | profile-specific payload |
++----------------+----------------+-------------+---------------+--------------------------+
 ```
 
 Telemetry does **not** carry a profile ID. The gateway uses the RFM69 transport sender ID to look up the registration record:
@@ -147,10 +141,47 @@ Telemetry does **not** carry a profile ID. The gateway uses the RFM69 transport 
 ```text
 RFM69 sender ID ----> gateway registry ----> profile ID ----------------+
                                                                        |
-DATA[3..N] profile-specific payload ------------------------------------+--> consumer decoder
+DATA[5..N] profile-specific payload ------------------------------------+--> consumer decoder
 ```
 
-Every telemetry frame has a three-byte common prefix. Supply voltage is unsigned little-endian millivolts; `UINT16_MAX` means unavailable. The gateway may decode this common field without knowing the profile. It treats bytes from offset 3 onward as opaque and forwards the complete frame together with the stored profile ID, sender ID, RSSI, and receive time in its WebSocket envelope. Telemetry from an unknown or inactive sender cannot be decoded safely and must be rejected and counted.
+Every telemetry frame has a five-byte common prefix:
+
+| Offset | Bytes | Field | Encoding |
+| ---: | ---: | --- | --- |
+| 1 | 2 | `supply_voltage` | Unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
+| 3 | 1 | `radio_state` | Bits 0..4 `tx_power_level` `0..31`; bit 5 `radio_fallback`; bit 6 `supply_limited`; bit 7 zero |
+| 4 | 1 | `downlink_rssi` | Signed dBm of the acknowledgement to the node's previous report; `INT8_MIN` means none yet |
+
+The node reports its actual radio state in every frame, so each RSSI the gateway measures is paired with the level the frame was sent at ([Radio power](#radio-power)). The gateway may decode the common prefix without knowing the profile. It treats bytes from offset 5 onward as opaque and forwards the complete frame together with the stored profile ID, sender ID, RSSI, and receive time in its WebSocket envelope. Telemetry from an unknown or inactive sender cannot be decoded safely and must be rejected and counted.
+
+A frame of at most 13 bytes keeps the encrypted RFM69 message, which adds three transport bytes, within one 16-byte AES block; every current profile fits, so all cost the same airtime. The examples below use radio state `02` (level 2) and downlink RSSI `BA` (−70 dBm).
+
+## Telemetry acknowledgement
+
+The RFM69 ACK that answers telemetry carries zero, one, or two payload bytes. It acknowledges the report whatever it carries.
+
+| Offset | Field | Meaning |
+| ---: | --- | --- |
+| 0 | flags | Bit 0 `command_pending`: a command is queued for this node. Bit 1 `power_target`: byte 1 follows. Bits 2..7 are zero when sent and ignored when received. |
+| 1 | `power_target` | Transmit power level `0..31` the gateway wants; present only with bit 1 |
+
+An empty payload has nothing to add. A node ignores a target above `31`. RFM69 AES pads every form to one 16-byte block, so the payload costs no airtime.
+
+A node that sees `command_pending` opens a command session in the same wake-up. It limits sessions that the flag starts but that do not end cleanly; the node README specifies the back-off.
+
+## Radio power
+
+Radio power is desired state, not a command. The node owns its level and reports it in every telemetry frame; the gateway owns a policy and, while the reported level differs from the one it wants, adds `power_target` to each telemetry acknowledgement. A lost acknowledgement is simply repeated by the next one, so no command ID or session is involved.
+
+| Rule | Owner | Behaviour |
+| --- | --- | --- |
+| Ceiling | Node | A build constant for its hardware and supply, reported as `max_power_level` in Join request |
+| Clamp | Node | Every level it uses — from a target, a fallback, or commissioning — is at most its ceiling |
+| Start | Node | After commissioning it transmits at its ceiling |
+| Apply | Node | A target takes effect after the acknowledgement that carried it and is stored before the next report |
+| Fallback | Node | After three consecutive reports without acknowledgement it switches to its ceiling and sets `radio_fallback`; the next applied target clears it |
+| Supply limit | Node | `supply_limited` is reserved for a limit below the ceiling derived from supply sag; nodes send zero |
+| Target | Gateway | A per-node policy: automatic, or a fixed level within the ceiling |
 
 Registration stores one stable numeric profile ID. The profile defines the complete node contract: telemetry layout, logical category, supported commands, and Home Assistant entities. A wire-incompatible telemetry layout or different command set requires a new profile ID. The profile ID is not repeated in normal telemetry.
 
@@ -167,6 +198,7 @@ DATA offset
  14       | fw minor  |  firmware semantic-version minor
  15       | fw patch  |  firmware semantic-version patch
  16..19   | nonce     |  request_nonce, uint32 little-endian
+ 20       | power     |  max_power_level, 0..31
           +-----------+
 ```
 
@@ -179,15 +211,16 @@ DATA offset
 | 14 | 1 | `firmware.minor` | Unsigned byte |
 | 15 | 1 | `firmware.patch` | Unsigned byte |
 | 16 | 4 | `request_nonce` | Unsigned little-endian |
+| 20 | 1 | `max_power_level` | Transmit power ceiling of the node, `0..31` |
 
-The application frame length must be exactly 20 bytes. The nonce correlates a future join accept with the current request; all 32-bit values, including zero, are valid. Authentication and replay resistance depend on the commissioning security profile and are not provided by the public UID.
+The application frame length must be exactly 21 bytes. The nonce correlates a future join accept with the current request; all 32-bit values, including zero, are valid. Authentication and replay resistance depend on the commissioning security profile and are not provided by the public UID.
 
 Known vector:
 
 ```text
-41 10 21 32 43 54 65 76 87 98 A9 34 12 01 02 03 EF CD AB 89
-|  |--------------------------| |---| |------| |-----------|
-H            UID               1234   1.2.3     89ABCDEF
+41 10 21 32 43 54 65 76 87 98 A9 34 12 01 02 03 EF CD AB 89 02
+|  |--------------------------| |---| |------| |-----------| |
+H            UID               1234   1.2.3     89ABCDEF   max 2
 ```
 
 ## Join accept
@@ -251,43 +284,43 @@ Gas/water and door/window are installation presentation, not different wire prof
 
 ### Profile 1: supply voltage
 
-Profile ID `1` carries only the node supply voltage. Its telemetry payload is exactly two bytes (three bytes including the common header). Supply voltage is unsigned little-endian millivolts; `UINT16_MAX` means unavailable. Example for 3300 mV: `40 E4 0C`.
+Profile ID `1` carries only the common prefix. The application frame is exactly five bytes. Example for 3300 mV: `40 E4 0C 02 BA`.
 
 ### Profile 2: temperature test node
 
-Profile ID `2` is used by the ATtiny1614/TMP112 commissioning test node. Its telemetry payload is exactly four bytes (five bytes including the common header). Temperature is signed little-endian, degrees C x 100, valid from `-8000` through `12500`; `INT16_MIN` means unavailable. Example for 3300 mV and 23.50 degrees C: `40 E4 0C 2E 09`.
+The application frame is exactly seven bytes: the common prefix followed by signed little-endian temperature in degrees C x 100, valid from `-8000` through `12500`; `INT16_MIN` means unavailable. Example for 3300 mV and 23.50 degrees C: `40 E4 0C 02 BA 2E 09`.
 
 The legacy type byte in v1 payload structs is not copied into v2 telemetry.
 
 ### Profile 3: temperature and humidity
 
-The application frame is exactly seven bytes: the common telemetry prefix, signed little-endian temperature in degrees C x 100, and unsigned little-endian humidity in percent RH x 100. Temperature is valid from `-8000` through `12500`, with `INT16_MIN` meaning unavailable. Humidity is valid from `0` through `10000`, with `UINT16_MAX` meaning unavailable.
+The application frame is exactly nine bytes: the common prefix, signed little-endian temperature in degrees C x 100, and unsigned little-endian humidity in percent RH x 100. Temperature is valid from `-8000` through `12500`, with `INT16_MIN` meaning unavailable. Humidity is valid from `0` through `10000`, with `UINT16_MAX` meaning unavailable.
 
-Example for 3300 mV, 23.50 degrees C, and 45.67% RH: `40 E4 0C 2E 09 D7 11`.
+Example for 3300 mV, 23.50 degrees C, and 45.67% RH: `40 E4 0C 02 BA 2E 09 D7 11`.
 
 ### Profile 4: temperature, humidity, and pressure
 
-The application frame is exactly nine bytes: the profile 3 fields followed by unsigned little-endian atmospheric pressure in tenths of a hectopascal. Pressure is valid from `3000` through `11000` (300.0 through 1100.0 hPa); `UINT16_MAX` means unavailable.
+The application frame is exactly eleven bytes: the profile 3 fields followed by unsigned little-endian atmospheric pressure in tenths of a hectopascal. Pressure is valid from `3000` through `11000` (300.0 through 1100.0 hPa); `UINT16_MAX` means unavailable.
 
-Example for 3300 mV, 23.50 degrees C, 45.67% RH, and 1013.2 hPa: `40 E4 0C 2E 09 D7 11 94 27`.
+Example for 3300 mV, 23.50 degrees C, 45.67% RH, and 1013.2 hPa: `40 E4 0C 02 BA 2E 09 D7 11 94 27`.
 
 ### Profile 5: binary input
 
-The application frame is exactly four bytes: the common telemetry prefix followed by one-byte state (`0` or `1`). State `1` means the contact is open; profiles 7 and 8 use the same meaning. Example for 3300 mV and state `1`: `40 E4 0C 01`.
+The application frame is exactly six bytes: the common prefix followed by one-byte state (`0` or `1`). State `1` means the contact is open; profiles 7 and 8 use the same meaning. Example for 3300 mV and state `1`: `40 E4 0C 02 BA 01`.
 
 ### Profile 6: pulse counter
 
-The application frame is exactly seven bytes: the common telemetry prefix followed by an unsigned 32-bit little-endian cumulative pulse count. Example for 3300 mV and count `0x12345678`: `40 E4 0C 78 56 34 12`.
+The application frame is exactly nine bytes: the common prefix followed by an unsigned 32-bit little-endian cumulative pulse count. Example for 3300 mV and count `0x12345678`: `40 E4 0C 02 BA 78 56 34 12`.
 
 Gas/water meaning, units per pulse, and display unit are installation metadata. They are not part of this telemetry frame. This profile additionally supports `set_count`.
 
 ### Profile 7: binary input with SHT40 climate data
 
-The application frame is exactly eight bytes: the common telemetry prefix, state (`0` or `1`), signed little-endian temperature in degrees C x 100, and unsigned little-endian humidity in percent RH x 100. The profile 3 ranges and sentinels apply. Example for 3300 mV, state `1`, 23.50 degrees C, and 45.67% RH: `40 E4 0C 01 2E 09 D7 11`.
+The application frame is exactly ten bytes: the common prefix, state (`0` or `1`), signed little-endian temperature in degrees C x 100, and unsigned little-endian humidity in percent RH x 100. The profile 3 ranges and sentinels apply. Example for 3300 mV, state `1`, 23.50 degrees C, and 45.67% RH: `40 E4 0C 02 BA 01 2E 09 D7 11`.
 
 ### Profile 8: binary input with TMP112 temperature
 
-The application frame is exactly six bytes: the common telemetry prefix, state (`0` or `1`), and signed little-endian temperature in degrees C x 100. The profile 2 range and sentinel apply. Example for 3300 mV, state `1`, and 23.50 degrees C: `40 E4 0C 01 2E 09`.
+The application frame is exactly eight bytes: the common prefix, state (`0` or `1`), and signed little-endian temperature in degrees C x 100. The profile 2 range and sentinel apply. Example for 3300 mV, state `1`, and 23.50 degrees C: `40 E4 0C 02 BA 01 2E 09`.
 
 ## Codec invariants
 

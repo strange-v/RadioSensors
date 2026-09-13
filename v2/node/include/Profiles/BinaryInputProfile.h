@@ -55,11 +55,11 @@ public:
     bool takeUrgentReport() { return reportSchedule_.takeUrgent(); }
 
     size_t encodeTelemetry(
-        const uint16_t supplyMillivolts, uint8_t* output,
+        const protocol::TelemetryPrefix& prefix, uint8_t* output,
         const size_t capacity) {
         return protocol::encodeBinaryTelemetry(
-                   supplyMillivolts, contact_.high() ? 1 : 0, output,
-                   capacity) == protocol::TelemetryCodecStatus::Ok
+                   prefix, contact_.high() ? 1 : 0, output, capacity) ==
+                protocol::TelemetryCodecStatus::Ok
             ? kTelemetrySize
             : 0;
     }

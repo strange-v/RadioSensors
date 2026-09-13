@@ -11,6 +11,7 @@ constexpr uint8_t kVersionShift = 5;
 constexpr uint8_t kVersionMask = 0xE0;
 constexpr uint8_t kKindMask = 0x1F;
 constexpr size_t kHeaderSize = 1;
+constexpr uint8_t kMaxRadioPowerLevel = 31;
 
 enum class FrameKind : uint8_t {
     Telemetry = 0,

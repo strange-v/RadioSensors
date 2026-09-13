@@ -361,7 +361,7 @@ It exists so something on the network can tell the gateway is up without a crede
 `GET /ui/telemetry/last` returns the most recently accepted telemetry record with its payload as hexadecimal, for looking at frames on the bench without a WebSocket client. It requires a browser session and does not accept a bearer token: it returns decoded node telemetry, which is what `telemetry:read` protects, and it is not part of the external client contract. Before the first frame it answers `404 no_telemetry`.
 
 ```json
-{"node_id":3,"profile_id":1,"received_at_ms":1770000000000,"rssi":-74,"size":3,"sequence":812,"payload_hex":"40e40c"}
+{"node_id":3,"profile_id":1,"received_at_ms":1770000000000,"rssi":-74,"size":5,"sequence":812,"payload_hex":"40e40c02ba"}
 ```
 
 ## Security and backup

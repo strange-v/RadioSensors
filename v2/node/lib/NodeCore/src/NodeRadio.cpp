@@ -1,7 +1,6 @@
 #include "NodeRadio.h"
 
 #include <Arduino.h>
-#include <CommandSessionFrames.h>
 #include <string.h>
 
 namespace radiosensors {
@@ -43,12 +42,15 @@ void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
 
 bool NodeRadio::sendTelemetry(
     const uint8_t gatewayId, const uint8_t* frame, const uint8_t size,
-    bool& commandPending) {
+    protocol::TelemetryAck& ack, int16_t& ackRssi) {
     const bool acknowledged =
         radio_.sendWithRetry(gatewayId, frame, size, 2, 40);
-    // The acknowledgement is still in DATA until the radio receives again.
-    commandPending = acknowledged &&
-        protocol::telemetryAckCommandPending(radio_.DATA, radio_.DATALEN);
+    // The acknowledgement stays in DATA and RSSI until the radio receives
+    // again.
+    ack = acknowledged
+        ? protocol::decodeTelemetryAck(radio_.DATA, radio_.DATALEN)
+        : protocol::TelemetryAck{false, false, 0};
+    if (acknowledged) ackRssi = radio_.RSSI;
     radio_.sleep();
     return acknowledged;
 }

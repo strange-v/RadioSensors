@@ -1,9 +1,9 @@
 #include "RadioService.h"
 
 #include <RFM69.h>
-#include <CommandSessionFrames.h>
 #include <JoinRequest.h>
 #include <SPI.h>
+#include <TelemetryFrames.h>
 
 #include <atomic>
 
@@ -201,15 +201,17 @@ void drainReceivedFrame() {
             // retry instead of acknowledging data that was discarded. Its
             // payload tells the node a command is waiting for it.
             if (queued && ackRequested) {
-                const uint8_t flags =
-                    commands::hasPending(static_cast<uint8_t>(senderId))
-                        ? radiosensors::protocol::kTelemetryAckCommandPending
-                        : 0;
-                if (flags != 0) rfm69.sendACK(&flags, sizeof(flags));
-                else rfm69.sendACK();
+                radiosensors::protocol::TelemetryAck ack{};
+                ack.commandPending =
+                    commands::hasPending(static_cast<uint8_t>(senderId));
+                uint8_t payload[radiosensors::protocol::kMaxTelemetryAckSize];
+                const size_t payloadSize =
+                    radiosensors::protocol::encodeTelemetryAck(
+                        ack, payload, sizeof(payload));
+                rfm69.sendACK(payload, static_cast<uint8_t>(payloadSize));
                 portENTER_CRITICAL(&statsMux);
                 ++taskStats.telemetryAcksSent;
-                if (flags != 0) ++taskStats.commandHintsSent;
+                if (ack.commandPending) ++taskStats.commandHintsSent;
                 portEXIT_CRITICAL(&statsMux);
             } else if (ackRequested) {
                 portENTER_CRITICAL(&statsMux);

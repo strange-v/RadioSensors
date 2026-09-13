@@ -24,7 +24,8 @@
       { "value": 9, "header": 73, "name": "no_command" }
     ],
     "telemetry_ack_flags": [
-      { "mask": 1, "name": "command_pending" }
+      { "mask": 1, "name": "command_pending" },
+      { "mask": 2, "name": "power_target" }
     ]
   },
   "commands": {
@@ -215,7 +216,7 @@
   "telemetry": {
     "offset_base": "application_frame",
     "header": 64,
-    "common_prefix_size": 3,
+    "common_prefix_size": 5,
     "common_fields": [
       {
         "name": "supply_voltage",
@@ -225,26 +226,44 @@
         "scale": { "numerator": 1, "denominator": 1000 },
         "unit": "V",
         "no_value_raw": "type_max"
+      },
+      {
+        "name": "radio_state",
+        "offset": 3,
+        "encoding": "uint8",
+        "bits": [
+          { "name": "tx_power_level", "quantity": "radio_power_level", "mask": 31 },
+          { "name": "radio_fallback", "quantity": "binary_state", "mask": 32 },
+          { "name": "supply_limited", "quantity": "binary_state", "mask": 64 }
+        ]
+      },
+      {
+        "name": "downlink_rssi",
+        "quantity": "signal_strength",
+        "offset": 4,
+        "encoding": "int8",
+        "unit": "dBm",
+        "no_value_raw": "type_min"
       }
     ],
     "profiles": [
       {
         "id": 1,
         "name": "voltage",
-        "frame_size": 3,
+        "frame_size": 5,
         "commands": [],
         "fields": []
       },
       {
         "id": 2,
         "name": "temperature",
-        "frame_size": 5,
+        "frame_size": 7,
         "commands": [],
         "fields": [
           {
             "name": "temperature",
             "quantity": "temperature",
-            "offset": 3,
+            "offset": 5,
             "encoding": "int16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "°C",
@@ -256,13 +275,13 @@
       {
         "id": 3,
         "name": "climate_th",
-        "frame_size": 7,
+        "frame_size": 9,
         "commands": [],
         "fields": [
           {
             "name": "temperature",
             "quantity": "temperature",
-            "offset": 3,
+            "offset": 5,
             "encoding": "int16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "°C",
@@ -272,7 +291,7 @@
           {
             "name": "humidity",
             "quantity": "relative_humidity",
-            "offset": 5,
+            "offset": 7,
             "encoding": "uint16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "%",
@@ -284,13 +303,13 @@
       {
         "id": 4,
         "name": "climate_thp",
-        "frame_size": 9,
+        "frame_size": 11,
         "commands": [],
         "fields": [
           {
             "name": "temperature",
             "quantity": "temperature",
-            "offset": 3,
+            "offset": 5,
             "encoding": "int16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "°C",
@@ -300,7 +319,7 @@
           {
             "name": "humidity",
             "quantity": "relative_humidity",
-            "offset": 5,
+            "offset": 7,
             "encoding": "uint16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "%",
@@ -310,7 +329,7 @@
           {
             "name": "pressure",
             "quantity": "pressure",
-            "offset": 7,
+            "offset": 9,
             "encoding": "uint16_le",
             "scale": { "numerator": 1, "denominator": 10 },
             "unit": "hPa",
@@ -322,13 +341,13 @@
       {
         "id": 5,
         "name": "binary_input",
-        "frame_size": 4,
+        "frame_size": 6,
         "commands": [],
         "fields": [
           {
             "name": "state",
             "quantity": "binary_state",
-            "offset": 3,
+            "offset": 5,
             "encoding": "uint8",
             "allowed_raw": [0, 1]
           }
@@ -337,13 +356,13 @@
       {
         "id": 6,
         "name": "pulse_counter",
-        "frame_size": 7,
+        "frame_size": 9,
         "commands": [1],
         "fields": [
           {
             "name": "count",
             "quantity": "pulse_count",
-            "offset": 3,
+            "offset": 5,
             "encoding": "uint32_le"
           }
         ]
@@ -351,20 +370,20 @@
       {
         "id": 7,
         "name": "binary_climate_th",
-        "frame_size": 8,
+        "frame_size": 10,
         "commands": [],
         "fields": [
           {
             "name": "state",
             "quantity": "binary_state",
-            "offset": 3,
+            "offset": 5,
             "encoding": "uint8",
             "allowed_raw": [0, 1]
           },
           {
             "name": "temperature",
             "quantity": "temperature",
-            "offset": 4,
+            "offset": 6,
             "encoding": "int16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "°C",
@@ -374,7 +393,7 @@
           {
             "name": "humidity",
             "quantity": "relative_humidity",
-            "offset": 6,
+            "offset": 8,
             "encoding": "uint16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "%",
@@ -386,20 +405,20 @@
       {
         "id": 8,
         "name": "binary_temperature",
-        "frame_size": 6,
+        "frame_size": 8,
         "commands": [],
         "fields": [
           {
             "name": "state",
             "quantity": "binary_state",
-            "offset": 3,
+            "offset": 5,
             "encoding": "uint8",
             "allowed_raw": [0, 1]
           },
           {
             "name": "temperature",
             "quantity": "temperature",
-            "offset": 4,
+            "offset": 6,
             "encoding": "int16_le",
             "scale": { "numerator": 1, "denominator": 100 },
             "unit": "°C",
