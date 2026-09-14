@@ -5,6 +5,8 @@
 
 namespace gateway::password_hash {
 
+constexpr uint32_t kDefaultIterations = 25000;
+
 bool begin();
 
 bool computePbkdf2Sha256(

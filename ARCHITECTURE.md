@@ -44,7 +44,7 @@ Settings, users/tokens, node registry, and installation secrets have separate NV
 
 Passwords use salted PBKDF2-HMAC-SHA256. API tokens contain 32 random bytes, are shown once, and are stored only as SHA-256 digests. Radio keys, password hashes, token hashes, and the device secret are excluded from normal APIs and diagnostic exports.
 
-HTTP authentication does not protect credentials from LAN packet capture. TLS/WSS or an explicitly trusted LAN, plus flash encryption and secure boot, remain production threat-model decisions.
+HTTP authentication does not protect credentials from LAN packet capture. TLS/WSS or an explicitly trusted LAN remains a production threat-model decision. The production threat model accepts physical flash access and does not require flash encryption or secure boot.
 
 ## Documentation ownership
 

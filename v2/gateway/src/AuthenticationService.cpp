@@ -231,7 +231,9 @@ LoginStatus login(
     uint8_t expected[radiosensors::gateway_storage::kPasswordHashSize]{};
     const uint8_t* salt = matched == nullptr ? dummySalt : matched->salt;
     if (matched != nullptr) memcpy(expected, matched->passwordHash, sizeof(expected));
-    const uint32_t iterations = matched == nullptr ? 100000 : matched->pbkdf2Iterations;
+    const uint32_t iterations = matched == nullptr
+        ? password_hash::kDefaultIterations
+        : matched->pbkdf2Iterations;
     uint8_t computed[radiosensors::gateway_storage::kPasswordHashSize]{};
     const bool hashStatus = password_hash::computePbkdf2Sha256(
         password, passwordLength,

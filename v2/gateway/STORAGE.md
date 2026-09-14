@@ -80,7 +80,7 @@ Exact size: 92 bytes.
 | 44 | 16 | Random salt |
 | 60 | 32 | Password hash |
 
-Role 1 is admin and role 2 is viewer. Flag bit 0 means enabled; other bits are zero. Hash algorithm 1 is PBKDF2-HMAC-SHA256 with the stored iteration count, 16-byte salt, and 32-byte output. The production default iteration count must be benchmarked on both gateway targets before password creation is enabled. The codec accepts 10,000 through 2,000,000 iterations and never silently downgrades a record.
+Role 1 is admin and role 2 is viewer. Flag bit 0 means enabled; other bits are zero. Hash algorithm 1 is PBKDF2-HMAC-SHA256 with 25,000 iterations by default, a 16-byte random salt, and a 32-byte output. The codec accepts 10,000 through 2,000,000 iterations and never silently downgrades a record.
 
 Usernames are lowercase ASCII letters, digits, `.`, `_`, or `-`. Password input is UTF-8 between 8 and 128 bytes and is never persisted or logged. Mutations cannot remove, disable, or demote the last enabled admin. An empty user set is valid only for the physical initial-setup flow.
 
@@ -123,7 +123,7 @@ When the installation key is absent, its bytes are zero; the network ID is still
 
 The device secret comes from the ESP32 hardware RNG, is not the public stable gateway ID, survives ordinary settings/auth/network reset, and is reserved for local secret derivation and authenticated export.
 
-CRC32 provides neither confidentiality nor authenticity. Without ESP32 NVS or flash encryption, physical flash access can recover keys and authentication material. Enabling flash encryption and secure boot, or accepting this physical attack, remains a production threat-model decision.
+CRC32 provides neither confidentiality nor authenticity. Physical flash access can recover keys and authentication material; the production threat model accepts that risk and does not require flash encryption or secure boot.
 
 An empty secrets namespace is initialized with a hardware-random device secret and a random operational network ID, without an installation key. Initial setup generates and durably stores the installation key; radio keys are never imported from build-time headers. Existing but invalid slot data is reported as corruption and is never treated as an empty store or automatically overwritten. A gateway whose stores do not all load runs without persistent storage until its NVS partition is erased, as the README describes; that erases every store, not only the damaged one.
 
