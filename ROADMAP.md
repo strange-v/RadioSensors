@@ -8,7 +8,6 @@ This file contains only unfinished milestones. Protocol and storage decisions be
 - Review registry locking. A commit holds the registry mutex across the NVS write in `store.save()`, and `activeProfileId()` takes that same mutex with `portMAX_DELAY` on the telemetry ingest path, so a pairing commit or a rename can block telemetry for the duration of a flash write. The radio receive path is already unaffected: it tests the lock-free active-node bitmap. Measure the worst-case NVS write before deciding whether to widen the lock-free view, shorten the critical section, or leave it.
 - Design encrypted migration backup/restore and production recovery flows.
 - Validate sustained radio traffic, OTA coexistence, PBKDF2 timing, watchdog behavior, flash encryption, and secure boot policy.
-- Report NVS usage in `/ui/status`. A full registry leaves little free space for slot rewrites in the 20 KiB partition; enlarge it if that is confirmed.
 
 ## Nodes
 

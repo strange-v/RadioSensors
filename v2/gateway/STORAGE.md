@@ -178,7 +178,7 @@ NVS work never runs in the radio-owner task. Commissioning persists a reservatio
 
 NVS namespace: `node-cmd`; slot keys: `commands_a`, `commands_b`; magic: `RSCB`; exact size: 820 bytes.
 
-The book holds at most 16 records, one per node: its pending command, or the result of its last command. Queuing replaces the node's record; when the book is full, the oldest result is evicted, and a book of 16 pending commands refuses another. The limit keeps both slots under 2 KiB, because the 20 KiB NVS partition also holds a registry of up to about 9 KiB.
+The book holds at most 16 records, one per node: its pending command, or the result of its last command. Queuing replaces the node's record; when the book is full, the oldest result is evicted, and a book of 16 pending commands refuses another. The limit keeps both slots under 2 KiB. The 32 KiB NVS partition also holds both slots of the 64-node registry, which use up to about 9 KiB.
 
 | Offset | Bytes | Field |
 | ---: | ---: | --- |
