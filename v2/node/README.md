@@ -97,7 +97,7 @@ An active node opens a command session when its button is short-pressed, or when
 
 | Command | Handled by | Effect |
 | --- | --- | --- |
-| `set_count` | counter image | Pending result, ring write, Applied result ([EEPROM.md](EEPROM.md)); the count is reported again within a minute |
+| `set_count` | counter image | Pending result, ring write, Applied result ([EEPROM.md](EEPROM.md)); the new count is reported immediately |
 
 Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the 1/5/15/60-minute telemetry retry delays. A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.
 

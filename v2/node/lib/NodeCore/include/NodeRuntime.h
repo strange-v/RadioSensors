@@ -71,8 +71,10 @@ public:
                 const bool commandPending = reportIfDue(now);
                 if (gesture == ButtonGesture::ShortPress) {
                     runCommandSession();
+                    reportIfDue(now);
                 } else if (commandPending && hintedSessions_.allowed(now)) {
                     hintedSessions_.finished(now, runCommandSession());
+                    reportIfDue(now);
                 }
             } else {
                 commissionIfDue(now, gesture == ButtonGesture::ShortPress);

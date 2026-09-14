@@ -65,7 +65,7 @@ public:
         return reportSchedule_.due(now);
     }
 
-    bool takeUrgentReport() { return false; }
+    bool takeUrgentReport() { return reportSchedule_.takeUrgent(); }
 
     size_t encodeTelemetry(
         const protocol::TelemetryPrefix& prefix, uint8_t* output,
@@ -102,7 +102,7 @@ public:
         result.dataSize = protocol::kSetCountResultSize;
         protocol::writeUint32Le(result.data, stored.oldCount);
         protocol::writeUint32Le(result.data + 4, stored.appliedCount);
-        reportSchedule_.pulseRecorded();
+        reportSchedule_.countSet();
     }
 
     void commissioned() { journal_.forgetCommandIds(count_); }

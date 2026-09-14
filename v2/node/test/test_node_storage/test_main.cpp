@@ -478,6 +478,18 @@ void test_counter_coalesces_pulses_for_one_minute() {
     TEST_ASSERT_FALSE(schedule.due(kCounterMinimumReportMs + 1U));
 }
 
+void test_setting_counter_is_urgent_once() {
+    CounterReportSchedule schedule;
+    schedule.transmissionSucceeded(0);
+    schedule.countSet();
+    TEST_ASSERT_TRUE(schedule.due(1));
+    TEST_ASSERT_TRUE(schedule.takeUrgent());
+    TEST_ASSERT_FALSE(schedule.takeUrgent());
+    TEST_ASSERT_TRUE(schedule.due(1));
+    schedule.transmissionSucceeded(1);
+    TEST_ASSERT_FALSE(schedule.due(2));
+}
+
 void test_keep_alive_handles_clock_wrap() {
     RollingKeepAlive schedule(1000);
     schedule.transmissionSucceeded(0xFFFFFF00UL);
@@ -645,6 +657,7 @@ int main(int, char**) {
     RUN_TEST(test_failed_binary_transmission_keeps_event_pending);
     RUN_TEST(test_binary_state_change_is_urgent_once);
     RUN_TEST(test_counter_coalesces_pulses_for_one_minute);
+    RUN_TEST(test_setting_counter_is_urgent_once);
     RUN_TEST(test_keep_alive_handles_clock_wrap);
     RUN_TEST(test_radio_retry_uses_bounded_exponential_backoff);
     RUN_TEST(test_fixed_climate_policy_ignores_supply_voltage);
