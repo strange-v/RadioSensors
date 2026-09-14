@@ -109,8 +109,20 @@ public:
 
     void pulseRecorded() { countChanged_ = true; }
 
+    void countSet() {
+        countChanged_ = true;
+        immediateReportPending_ = true;
+        urgent_ = true;
+    }
+
+    bool takeUrgent() {
+        const bool urgent = urgent_;
+        urgent_ = false;
+        return urgent;
+    }
+
     bool due(const uint32_t now) const {
-        return keepAlive_.due(now) ||
+        return immediateReportPending_ || keepAlive_.due(now) ||
             (countChanged_ && hasSuccessfulTransmission_ &&
              intervalElapsed(
                  now, lastSuccessfulTransmission_, kCounterMinimumReportMs));
@@ -118,6 +130,7 @@ public:
 
     void transmissionSucceeded(const uint32_t now) {
         countChanged_ = false;
+        immediateReportPending_ = false;
         lastSuccessfulTransmission_ = now;
         hasSuccessfulTransmission_ = true;
         keepAlive_.transmissionSucceeded(now);
@@ -128,6 +141,8 @@ private:
     uint32_t lastSuccessfulTransmission_ = 0;
     bool hasSuccessfulTransmission_ = false;
     bool countChanged_ = false;
+    bool immediateReportPending_ = false;
+    bool urgent_ = false;
 };
 
 class RadioRetryBackoff {
