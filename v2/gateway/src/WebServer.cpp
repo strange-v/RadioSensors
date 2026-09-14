@@ -75,7 +75,6 @@ std::atomic<uint32_t> websocketMessagesSent{0};
 std::atomic<uint32_t> websocketMessagesDropped{0};
 SemaphoreHandle_t setupMutex = nullptr;
 SemaphoreHandle_t managementMutex = nullptr;
-constexpr uint32_t kPasswordIterations = 100000;
 constexpr const char* kSessionCookieName = "rs_session";
 
 void sendError(AsyncWebServerRequest* request, int status, const char* code);
@@ -87,7 +86,7 @@ bool hashPassword(
         return false;
     credential.algorithm =
         radiosensors::gateway_storage::PasswordHashAlgorithm::Pbkdf2HmacSha256;
-    credential.iterations = kPasswordIterations;
+    credential.iterations = password_hash::kDefaultIterations;
     esp_fill_random(credential.salt, sizeof(credential.salt));
     return password_hash::computePbkdf2Sha256(
         password, passwordLength,
@@ -333,7 +332,7 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
     user.enabled = true;
     user.hashAlgorithm =
         radiosensors::gateway_storage::PasswordHashAlgorithm::Pbkdf2HmacSha256;
-    user.pbkdf2Iterations = kPasswordIterations;
+    user.pbkdf2Iterations = password_hash::kDefaultIterations;
     esp_fill_random(user.salt, sizeof(user.salt));
     const uint32_t hashStartedAt = millis();
     const bool hashResult = password_hash::computePbkdf2Sha256(
