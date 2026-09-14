@@ -10,6 +10,7 @@
 #include <TelemetryFrames.h>
 #include <UserManagement.h>
 #include <ArduinoJson.h>
+#include <nvs.h>
 #include <esp_random.h>
 #include <esp_timer.h>
 
@@ -1617,6 +1618,8 @@ void handleStatus(AsyncWebServerRequest* request) {
     const commissioning::Snapshot commissioningSnapshot = commissioning::snapshot();
     const telemetry_store::Snapshot telemetrySnapshot = telemetry_store::snapshot();
     const commands::Snapshot commandSnapshot = commands::snapshot();
+    nvs_stats_t nvsStats{};
+    const bool nvsStatsAvailable = nvs_get_stats(nullptr, &nvsStats) == ESP_OK;
     AsyncResponseStream* response = request->beginResponseStream("application/json");
     response->addHeader("Cache-Control", "no-store");
     response->printf(
@@ -1626,7 +1629,10 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"registry\":{\"records\":%u,\"generation\":%lu},"
         "\"setup\":{\"required\":%s,\"active\":%s,\"remaining_seconds\":%lu},"
         "\"storage\":{\"ready\":%s,\"settings_generation\":%lu,"
-        "\"auth_generation\":%lu,\"secrets_generation\":%lu},"
+        "\"auth_generation\":%lu,\"secrets_generation\":%lu,"
+        "\"nvs\":{\"stats_available\":%s,\"used_entries\":%u,"
+        "\"free_entries\":%u,\"available_entries\":%u,"
+        "\"total_entries\":%u,\"namespace_count\":%u}},"
         "\"pairing\":{\"active\":%s,\"remaining_seconds\":%lu,\"indication\":\"%s\"},"
         "\"commissioning\":{\"join_requests\":%lu,\"join_accepts_queued\":%lu,"
         "\"join_confirms\":%lu,\"join_completes_queued\":%lu,"
@@ -1687,6 +1693,12 @@ void handleStatus(AsyncWebServerRequest* request) {
         static_cast<unsigned long>(configuration_store::settingsGeneration()),
         static_cast<unsigned long>(configuration_store::authenticationGeneration()),
         static_cast<unsigned long>(configuration_store::secretsGeneration()),
+        nvsStatsAvailable ? "true" : "false",
+        static_cast<unsigned>(nvsStats.used_entries),
+        static_cast<unsigned>(nvsStats.free_entries),
+        static_cast<unsigned>(nvsStats.available_entries),
+        static_cast<unsigned>(nvsStats.total_entries),
+        static_cast<unsigned>(nvsStats.namespace_count),
         status::pairingActive() ? "true" : "false",
         static_cast<unsigned long>(status::pairingRemainingSeconds()),
         status::indicationName(),

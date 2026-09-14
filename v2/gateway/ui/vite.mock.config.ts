@@ -13,7 +13,10 @@ const health = {
   registry: { records: 6, generation: 12 },
   setup: { required: false, active: false, remaining_seconds: 0 },
   pairing: { active: false, remaining_seconds: 0, indication: 'idle' },
-  storage: { ready: true, settings_generation: 4, auth_generation: 2, secrets_generation: 1 },
+  storage: {
+    ready: true, settings_generation: 4, auth_generation: 2, secrets_generation: 1,
+    nvs: { stats_available: true, used_entries: 455, free_entries: 553, available_entries: 427, total_entries: 1008, namespace_count: 5 },
+  },
   ethernet: { state: 'connected', has_ip: true, ip: '192.168.1.42', mac: '50:ff:20:2e:fd:fe' },
   ota: { enabled: true, state: 'idle', progress: 0 },
   web_ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' },

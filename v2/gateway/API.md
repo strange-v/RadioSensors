@@ -293,7 +293,7 @@ Settings contain hostname, mDNS enabled state, NTP enabled state, up to three NT
 {"device_uid":"102132435465768798A9","factory_key":"00112233445566778899AABBCCDDEEFF"}
 ```
 
-The UID is exactly 10 bytes and the factory key exactly 16 bytes, both encoded as hexadecimal. The gateway switches the radio to commissioning network `0`, keeps the key only in RAM, and accepts a `JOIN_REQUEST` only for the supplied UID. The key is wiped when pairing succeeds, is closed, or expires. It is never written to settings, secrets, registry, diagnostics, or logs. `POST /ui/pairing/close` ends the window early. Both endpoints require an admin session and CSRF and return the current pairing state and remaining seconds.
+The UID is exactly 10 bytes and the factory key exactly 16 bytes, both encoded as hexadecimal. The gateway switches the radio to commissioning network `0`, keeps the key only in RAM, and accepts a `JOIN_REQUEST` only for the supplied UID. The registry holds at most 64 nodes. The key is wiped when pairing succeeds, is closed, or expires. It is never written to settings, secrets, registry, diagnostics, or logs. `POST /ui/pairing/close` ends the window early. Both endpoints require an admin session and CSRF and return the current pairing state and remaining seconds.
 
 ## Radio network
 
@@ -374,7 +374,7 @@ An empty name is a client that sent no header; it is reported as unidentified ra
 
 It exists so something on the network can tell the gateway is up without a credential, and so the Web UI can watch for a reboot after a radio network reset has killed every session. `boot_id` is the one detail worth publishing here: it changes on every boot, which is what distinguishes "it came back" from "it never went down", and mDNS broadcasts it anyway. Nothing else belongs in this response, and a client must not read it — see "External client contract".
 
-`GET /ui/status` requires a session and returns everything the gateway knows about itself: ethernet, radio, storage, time, registry, telemetry, setup and pairing windows, WebSocket counters, OTA, Web UI state, uptime, free heap, reset reason, and the radio pinout and counters. Those are diagnostics for whoever runs the gateway, not facts for the network, which is why they are not in `/health`.
+`GET /ui/status` requires a session and returns everything the gateway knows about itself: ethernet, radio, storage, time, registry, telemetry, setup and pairing windows, WebSocket counters, OTA, Web UI state, uptime, free heap, reset reason, and the radio pinout and counters. `storage.nvs` reports `used_entries`, `free_entries`, `available_entries`, `total_entries`, and `namespace_count`; the counts are valid when `stats_available` is true. Those are diagnostics for whoever runs the gateway, not facts for the network, which is why they are not in `/health`.
 
 ## Development diagnostics
 

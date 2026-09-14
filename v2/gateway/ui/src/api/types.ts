@@ -83,7 +83,10 @@ export interface Health {
   status: string; firmware: string; api_version: number; board: string; hostname: string; gateway_id: string; boot_id: string; reset_reason: string; uptime_seconds: number; free_heap: number;
   registry: { records: number; generation: number }; setup: { required: boolean; active: boolean; remaining_seconds: number };
   pairing: PairingStatus;
-  storage: { ready: boolean; settings_generation: number; auth_generation: number; secrets_generation: number };
+  storage: {
+    ready: boolean; settings_generation: number; auth_generation: number; secrets_generation: number;
+    nvs: { stats_available: boolean; used_entries: number; free_entries: number; available_entries: number; total_entries: number; namespace_count: number };
+  };
   ethernet: { state: string; has_ip: boolean; ip: string; mac: string }; ota: { enabled: boolean; state: string; progress: number };
   web_ui: { state: string; version: string; required_firmware: string }; telemetry: { nodes_seen: number; updates: number; last_node_id: number; last_received_at_ms: number };
   time: { state: string; unix_ms: number; last_sync_ms: number }; websocket: { clients: number; connections: number; messages_sent: number; messages_dropped: number };
