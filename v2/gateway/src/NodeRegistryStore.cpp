@@ -2,6 +2,7 @@
 
 #include <Preferences.h>
 #include <RegistryPersistence.h>
+#include <esp_timer.h>
 
 #include <atomic>
 #include <memory>
@@ -62,6 +63,21 @@ SemaphoreHandle_t mutex = nullptr;
 std::atomic<uint32_t> activeNodeIds[4]{};
 std::atomic<uint32_t> publishedGeneration{0};
 
+struct CommitTiming {
+    bool saved;
+    size_t records;
+    uint64_t saveUs;
+    uint64_t lockUs;
+};
+
+uint64_t commitClockUs() {
+#if GATEWAY_REGISTRY_TIMING_LOG
+    return esp_timer_get_time();
+#else
+    return 0;
+#endif
+}
+
 // The registry state readers may see without the mutex: the active-node bitmap
 // the radio receive path tests per frame, and the durable generation. Call
 // after every successful commit -- one function, so a later commit cannot
@@ -79,6 +95,51 @@ void publishLockFreeView() {
         activeNodeIds[index].store(words[index], std::memory_order_release);
     }
     publishedGeneration.store(store.generation(), std::memory_order_release);
+}
+
+// Call with the registry mutex held. Serial output happens after unlock so the
+// diagnostic itself is not counted as telemetry-blocking time.
+CommitTiming commitCandidateLocked(
+    const radiosensors::registry::NodeRegistry& candidate,
+    const uint64_t lockStartedUs) {
+#if GATEWAY_REGISTRY_TIMING_LOG
+    const uint64_t saveStartedUs = esp_timer_get_time();
+    const bool saved = store.save(candidate);
+    const uint64_t saveFinishedUs = esp_timer_get_time();
+#else
+    const bool saved = store.save(candidate);
+#endif
+    if (saved) {
+        nodes = candidate;
+        publishLockFreeView();
+    }
+#if GATEWAY_REGISTRY_TIMING_LOG
+    return CommitTiming{
+        saved,
+        candidate.size(),
+        saveFinishedUs - saveStartedUs,
+        static_cast<uint64_t>(esp_timer_get_time()) - lockStartedUs,
+    };
+#else
+    (void)lockStartedUs;
+    return CommitTiming{saved, candidate.size(), 0, 0};
+#endif
+}
+
+void logCommitTiming(const char* const operation, const CommitTiming& timing) {
+#if GATEWAY_REGISTRY_TIMING_LOG
+    Serial.printf(
+        "Registry commit timing: operation=%s result=%s records=%u "
+        "save_us=%llu lock_us=%llu\n",
+        operation,
+        timing.saved ? "ok" : "failed",
+        static_cast<unsigned>(timing.records),
+        static_cast<unsigned long long>(timing.saveUs),
+        static_cast<unsigned long long>(timing.lockUs));
+#else
+    (void)operation;
+    (void)timing;
+#endif
 }
 
 }  // namespace
@@ -201,6 +262,7 @@ RegistryCommitStatus reserveAndSave(
     radiosensors::registry::ReserveResult& result) {
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
         new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
     if (!candidate) {
@@ -215,14 +277,11 @@ RegistryCommitStatus reserveAndSave(
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(*candidate)) {
-        xSemaphoreGive(mutex);
-        return RegistryCommitStatus::StorageError;
-    }
-    nodes = *candidate;
-    publishLockFreeView();
+    const CommitTiming timing = commitCandidateLocked(*candidate, lockStartedUs);
     xSemaphoreGive(mutex);
-    return RegistryCommitStatus::Ok;
+    logCommitTiming("reserve", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
 }
 
 RegistryCommitStatus confirmAndSave(
@@ -232,6 +291,7 @@ RegistryCommitStatus confirmAndSave(
     radiosensors::registry::ConfirmStatus& result) {
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
         new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
     if (!candidate) {
@@ -243,14 +303,11 @@ RegistryCommitStatus confirmAndSave(
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(*candidate)) {
-        xSemaphoreGive(mutex);
-        return RegistryCommitStatus::StorageError;
-    }
-    nodes = *candidate;
-    publishLockFreeView();
+    const CommitTiming timing = commitCandidateLocked(*candidate, lockStartedUs);
     xSemaphoreGive(mutex);
-    return RegistryCommitStatus::Ok;
+    logCommitTiming("confirm", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
 }
 
 RegistryCommitStatus renameAndSave(
@@ -258,6 +315,7 @@ RegistryCommitStatus renameAndSave(
     radiosensors::registry::RenameStatus& result) {
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
         new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
     if (!candidate) {
@@ -269,14 +327,11 @@ RegistryCommitStatus renameAndSave(
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(*candidate)) {
-        xSemaphoreGive(mutex);
-        return RegistryCommitStatus::StorageError;
-    }
-    nodes = *candidate;
-    publishLockFreeView();
+    const CommitTiming timing = commitCandidateLocked(*candidate, lockStartedUs);
     xSemaphoreGive(mutex);
-    return RegistryCommitStatus::Ok;
+    logCommitTiming("rename", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
 }
 
 RegistryCommitStatus setPowerPolicyAndSave(
@@ -284,6 +339,7 @@ RegistryCommitStatus setPowerPolicyAndSave(
     radiosensors::registry::PowerPolicyStatus& result) {
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
         new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
     if (!candidate) {
@@ -295,20 +351,18 @@ RegistryCommitStatus setPowerPolicyAndSave(
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(*candidate)) {
-        xSemaphoreGive(mutex);
-        return RegistryCommitStatus::StorageError;
-    }
-    nodes = *candidate;
-    publishLockFreeView();
+    const CommitTiming timing = commitCandidateLocked(*candidate, lockStartedUs);
     xSemaphoreGive(mutex);
-    return RegistryCommitStatus::Ok;
+    logCommitTiming("power_policy", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
 }
 
 RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
     removed = false;
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
         new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
     if (!candidate) {
@@ -320,21 +374,19 @@ RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::NoChange;
     }
-    if (!store.save(*candidate)) {
-        removed = false;
-        xSemaphoreGive(mutex);
-        return RegistryCommitStatus::StorageError;
-    }
-    nodes = *candidate;
-    publishLockFreeView();
+    const CommitTiming timing = commitCandidateLocked(*candidate, lockStartedUs);
+    if (!timing.saved) removed = false;
     xSemaphoreGive(mutex);
-    return RegistryCommitStatus::Ok;
+    logCommitTiming("remove", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
 }
 
 RegistryCommitStatus clearAndSave(size_t& removed) {
     removed = 0;
     if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
     const size_t previous = nodes.size();
     if (previous == 0) {
         xSemaphoreGive(mutex);
@@ -346,15 +398,12 @@ RegistryCommitStatus clearAndSave(size_t& removed) {
         xSemaphoreGive(mutex);
         return RegistryCommitStatus::StorageError;
     }
-    if (!store.save(*empty)) {
-        xSemaphoreGive(mutex);
-        return RegistryCommitStatus::StorageError;
-    }
-    nodes = *empty;
-    publishLockFreeView();
-    removed = previous;
+    const CommitTiming timing = commitCandidateLocked(*empty, lockStartedUs);
+    if (timing.saved) removed = previous;
     xSemaphoreGive(mutex);
-    return RegistryCommitStatus::Ok;
+    logCommitTiming("clear", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
 }
 
 }  // namespace gateway::registry_store

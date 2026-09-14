@@ -174,6 +174,8 @@ The state flow is `absent -> pending -> active`; explicit management may set `di
 
 NVS work never runs in the radio-owner task. Commissioning persists a reservation before queuing `JOIN_ACCEPT`; synchronized store APIs own all registry access.
 
+A registry commit holds its mutex through the NVS write and read-back validation. One-record hardware measurements across reserve, confirm, rename, power-policy, and remove commits held it for 3.5–5.2 ms. The radio-owner task remains independent and queues accepted telemetry through its lock-free active-node view.
+
 ## Command book snapshot
 
 NVS namespace: `node-cmd`; slot keys: `commands_a`, `commands_b`; magic: `RSCB`; exact size: 820 bytes.
