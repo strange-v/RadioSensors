@@ -64,11 +64,17 @@ async function afterNodeChange() {
   await load()
 }
 
-// A radio policy change keeps the dialog open on the refreshed record.
-async function refreshSelected() {
+// Points an open card at the record just fetched, or closes it when the node
+// has left the registry -- removed from another session, say.
+function followSelected() {
   const nodeId = selected.value?.node_id
+  if (nodeId !== undefined) selected.value = nodes.value.find((node) => node.node_id === nodeId) ?? null
+}
+
+// A rename or a radio policy change keeps the dialog open on the new record.
+async function refreshSelected() {
   await fetchState(true)
-  selected.value = nodes.value.find((node) => node.node_id === nodeId) ?? null
+  followSelected()
 }
 
 type SortKey = 'name' | 'rssi' | 'lastSeen'
@@ -118,12 +124,15 @@ const load = () => fetchState()
 let listPollInFlight = false
 
 async function refreshList() {
-  // Step aside while a dialog is open: the node card would keep showing the
-  // record it was opened with, and re-sorting the list under an open pairing
-  // window is disruptive. Both dialogs reload on their own when they finish.
-  if (listPollInFlight || selected.value || showPairing.value) return
+  // Step aside while pairing: re-sorting the list under an open pairing window
+  // is disruptive, and that dialog reloads on its own when it finishes. An
+  // open node card is refreshed with the list, so its readings stay live.
+  if (listPollInFlight || showPairing.value) return
   listPollInFlight = true
-  try { await fetchState(true) } finally { listPollInFlight = false }
+  try {
+    await fetchState(true)
+    followSelected()
+  } finally { listPollInFlight = false }
 }
 
 // Leaves nothing behind: the factory key is a secret, and the picked photo

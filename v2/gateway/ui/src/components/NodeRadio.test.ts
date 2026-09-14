@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// The card must never pass the gateway's wanted level off as the level the
-// node uses, and must not let an administrator ask for more than the node's
-// hardware allows.
+// Power is requested, not set: a choice goes to the gateway the moment it is
+// made, can never exceed the node's ceiling, and stays shown until the
+// refreshed record carries it.
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import type { Ref } from 'vue'
@@ -21,8 +21,8 @@ import NodeRadio from './NodeRadio.vue'
 
 const node = (over: Partial<GatewayNode> = {}): GatewayNode => ({
   node_id: 7, device_uid: '102132435465768798A9', display_name: 'Hall', profile_id: 5, firmware: '0.1.0',
-  state: 'active', has_telemetry: true, rssi: -70, max_power_level: 5, power_policy: 'auto',
-  tx_power_target: 3, tx_power_level: 3, radio_fallback: false, supply_limited: false, downlink_rssi: -72, ...over,
+  state: 'active', has_telemetry: true, rssi: -70, max_power_level: 2, power_policy: 'auto',
+  tx_power_target: 2, tx_power_level: 2, radio_fallback: false, supply_limited: false, downlink_rssi: -72, ...over,
 })
 
 const mountCard = async (target = node()) => {
@@ -34,65 +34,79 @@ const mountCard = async (target = node()) => {
   return wrapper
 }
 
+type Card = Awaited<ReturnType<typeof mountCard>>
+const choices = (wrapper: Card) => wrapper.findAll('.segmented button')
+const chosen = (wrapper: Card) => wrapper.get('.segmented button.active').text()
+
 beforeEach(() => {
   state.admin.value = true
   vi.clearAllMocks()
 })
 
 describe('NodeRadio', () => {
-  it('shows the reported level against the ceiling and both directions of the link', async () => {
+  it('offers automatic control and every level up to the ceiling side by side', async () => {
     const wrapper = await mountCard()
-    const details = wrapper.get('.simple-details').text()
-    expect(details).toContain('3 of 5')
-    expect(details).toContain('-70 dBm')
-    expect(details).toContain('-72 dBm')
-    expect(wrapper.find('.radio-target').exists()).toBe(false)
+    expect(choices(wrapper).map((button) => button.text())).toEqual([en.radio.auto, '0', '1', '2'])
+    expect(chosen(wrapper)).toBe(en.radio.auto)
+    expect(wrapper.find('select').exists()).toBe(false)
   })
 
-  it('shows a wanted level apart from the one the node still uses', async () => {
-    const wrapper = await mountCard(node({ tx_power_target: 5 }))
-    expect(wrapper.get('.simple-details').text()).toContain('3 of 5')
-    expect(wrapper.get('.radio-target').text()).toContain('5')
-  })
-
-  it('says when the node has fallen back or is limited by its supply', async () => {
-    const wrapper = await mountCard(node({ radio_fallback: true, supply_limited: true }))
-    expect(wrapper.get('.radio-fallback').text()).toBe(en.radio.fallback)
-    expect(wrapper.get('.radio-supply').text()).toBe(en.radio.supplyLimited)
-  })
-
-  it('keeps a fixed level within the ceiling', async () => {
+  it('applies a fixed level as soon as it is chosen, and keeps showing it until the record catches up', async () => {
     const wrapper = await mountCard()
-    await wrapper.findAll('.segmented button')[1].trigger('click')
-    await wrapper.get('input').setValue('6')
-    expect(wrapper.get('.button.primary').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('small.invalid').exists()).toBe(true)
-
-    await wrapper.get('input').setValue('4')
-    await wrapper.get('.button.primary').trigger('click')
+    await choices(wrapper)[2].trigger('click')
     await flushPromises()
-    expect(gatewayApi.setPowerPolicy).toHaveBeenCalledWith(7, { power_policy: 'fixed', fixed_power_level: 4 })
+
+    expect(gatewayApi.setPowerPolicy).toHaveBeenCalledWith(7, { power_policy: 'fixed', fixed_power_level: 1 })
     expect(wrapper.emitted('updated')).toHaveLength(1)
+    expect(chosen(wrapper)).toBe('1')
+    expect(wrapper.get('.radio-hint').text()).toContain('2 is the maximum')
+
+    await wrapper.setProps({ node: node({ power_policy: 'fixed', fixed_power_level: 1 }) })
+    expect(chosen(wrapper)).toBe('1')
   })
 
   it('returns a fixed node to automatic control', async () => {
     const wrapper = await mountCard(node({ power_policy: 'fixed', fixed_power_level: 2 }))
-    expect(wrapper.get('.button.primary').attributes('disabled')).toBeDefined()
-    await wrapper.findAll('.segmented button')[0].trigger('click')
-    await wrapper.get('.button.primary').trigger('click')
+    expect(chosen(wrapper)).toBe('2')
+    await choices(wrapper)[0].trigger('click')
     await flushPromises()
     expect(gatewayApi.setPowerPolicy).toHaveBeenCalledWith(7, { power_policy: 'auto' })
   })
 
-  it('says when no report has arrived since the gateway started', async () => {
-    const wrapper = await mountCard(node({ has_telemetry: false, tx_power_level: undefined, rssi: undefined, downlink_rssi: undefined }))
-    expect(wrapper.get('.simple-details').text()).toContain(en.radio.noReport)
+  it('does not resend the choice already in force', async () => {
+    const wrapper = await mountCard()
+    await choices(wrapper)[0].trigger('click')
+    await flushPromises()
+    expect(gatewayApi.setPowerPolicy).not.toHaveBeenCalled()
+  })
+
+  it('puts the choice back when the gateway refuses it', async () => {
+    gatewayApi.setPowerPolicy.mockRejectedValueOnce(new Error('refused'))
+    const wrapper = await mountCard()
+    await choices(wrapper)[3].trigger('click')
+    await flushPromises()
+
+    expect(chosen(wrapper)).toBe(en.radio.auto)
+    expect(wrapper.get('.notice.error').text()).toBe(en.error.generic)
+    expect(wrapper.emitted('updated')).toBeUndefined()
+  })
+
+  it('lists the levels when there are too many to sit side by side', async () => {
+    const wrapper = await mountCard(node({ max_power_level: 31, power_policy: 'fixed', fixed_power_level: 12 }))
+    expect(wrapper.find('.segmented').exists()).toBe(false)
+    expect(wrapper.findAll('select option')).toHaveLength(33)
+    expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('12')
+
+    await wrapper.get('select').setValue('20')
+    await flushPromises()
+    expect(gatewayApi.setPowerPolicy).toHaveBeenCalledWith(7, { power_policy: 'fixed', fixed_power_level: 20 })
   })
 
   it('shows a viewer the policy without controls', async () => {
     state.admin.value = false
     const wrapper = await mountCard(node({ power_policy: 'fixed', fixed_power_level: 2 }))
     expect(wrapper.find('.segmented').exists()).toBe(false)
-    expect(wrapper.get('.radio-hint').text()).toBe('Fixed at level 2')
+    expect(wrapper.find('select').exists()).toBe(false)
+    expect(wrapper.get('.power-value').text()).toBe('Fixed at level 2')
   })
 })

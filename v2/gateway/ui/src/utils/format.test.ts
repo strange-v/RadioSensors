@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import SignalBars from '../components/SignalBars.vue'
-import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, isMeasuredRssi, isValidHostname, signal } from './format'
+import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, byteLength, isMeasuredRssi, isValidHostname, signal, truncateToBytes } from './format'
 
 // The RFM69 driver returns -RegRssiValue/2 from an 8-bit register, so every
 // genuine reading is a negative whole dBm no lower than -128.
@@ -69,6 +69,36 @@ describe('SignalBars', () => {
   it('labels only a real reading', () => {
     expect(mount(SignalBars, { props: { rssi: -74 } }).attributes('aria-label')).toBe('-74 dBm')
     expect(mount(SignalBars, { props: { rssi: 0 } }).attributes('aria-label')).toBeUndefined()
+  })
+})
+
+// Node names are limited in UTF-8 bytes, and the field trims to that limit as
+// it is typed, so a cut must never leave half a character behind.
+describe('truncateToBytes', () => {
+  it('leaves a string that fits alone', () => {
+    expect(truncateToBytes('Hall', 48)).toBe('Hall')
+    expect(truncateToBytes('', 0)).toBe('')
+  })
+
+  it('counts Cyrillic as two bytes a letter', () => {
+    expect(truncateToBytes('я'.repeat(30), 48)).toBe('я'.repeat(24))
+  })
+
+  it('cuts between characters, never inside one', () => {
+    expect(truncateToBytes('aя', 2)).toBe('a')
+    expect(truncateToBytes('a€', 3)).toBe('a')
+    expect(truncateToBytes('a😀', 4)).toBe('a')
+    expect(truncateToBytes('a😀', 5)).toBe('a😀')
+  })
+
+  it('agrees with byteLength on what fits', () => {
+    for (const text of ['Кухня на першому поверсі 😀', 'a€b😀c', '\ud800x']) {
+      for (let max = 0; max <= byteLength(text); max += 1) {
+        const cut = truncateToBytes(text, max)
+        expect(byteLength(cut)).toBeLessThanOrEqual(max)
+        expect(text.startsWith(cut)).toBe(true)
+      }
+    }
   })
 })
 

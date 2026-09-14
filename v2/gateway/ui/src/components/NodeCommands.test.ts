@@ -41,6 +41,9 @@ async function mountCard(target = node()) {
   return wrapper
 }
 
+type Card = Awaited<ReturnType<typeof mountCard>>
+const composeButton = (wrapper: Card) => wrapper.find('.commands-head .button')
+const compose = async (wrapper: Card) => { await wrapper.get('.commands-head .button').trigger('click') }
 const tick = async (ms = 3_000) => { await vi.advanceTimersByTimeAsync(ms); await flushPromises() }
 
 beforeEach(() => {
@@ -63,6 +66,8 @@ afterEach(() => vi.useRealTimers())
 describe('NodeCommands', () => {
   it('appears only on a profile that has commands', async () => {
     const counter = await mountCard()
+    expect(counter.find('input').exists()).toBe(false)
+    await compose(counter)
     expect(counter.find('.segmented').exists()).toBe(false)
     expect(counter.get('label span').text()).toBe(en.commands.field.set_count)
 
@@ -72,6 +77,7 @@ describe('NodeCommands', () => {
 
   it('refuses a count the node cannot store', async () => {
     const wrapper = await mountCard()
+    await compose(wrapper)
     await wrapper.get('input').setValue('4294967296')
     expect(wrapper.get('.button.primary').attributes('disabled')).toBeDefined()
     expect(wrapper.find('small.invalid').exists()).toBe(true)
@@ -82,6 +88,7 @@ describe('NodeCommands', () => {
 
   it('queues a command and follows it until the node answers', async () => {
     const wrapper = await mountCard()
+    await compose(wrapper)
     await wrapper.get('input').setValue('1234')
     await wrapper.get('.button.primary').trigger('click')
     await flushPromises()
@@ -90,13 +97,14 @@ describe('NodeCommands', () => {
     expect(wrapper.get('.command-state').text()).toContain(en.commands.state.pending)
     expect(wrapper.get('.command-hint').text()).toBe(en.commands.pendingHint)
     expect(wrapper.find('input').exists()).toBe(false)
+    expect(composeButton(wrapper).exists()).toBe(false)
 
     state.commands = [pending({ state: 'completed', status: 'applied', completed_at_ms: 2, result: { previous_count: 1200, count: 1234 } })]
     await tick()
 
     expect(wrapper.get('.command-state').text()).toContain(en.commands.status.applied)
     expect(wrapper.get('.command-hint').text()).toBe('The count went from 1200 to 1234.')
-    expect(wrapper.find('input').exists()).toBe(true)
+    expect(composeButton(wrapper).exists()).toBe(true)
 
     const polls = gatewayApi.poll.commands.mock.calls.length
     await tick(30_000)
@@ -105,6 +113,7 @@ describe('NodeCommands', () => {
 
   it('sends from the keyboard, and not while the value is invalid', async () => {
     const wrapper = await mountCard()
+    await compose(wrapper)
     await wrapper.get('input').setValue('-1')
     await wrapper.get('input').trigger('keydown', { key: 'Enter' })
     await flushPromises()
@@ -116,6 +125,17 @@ describe('NodeCommands', () => {
     expect(gatewayApi.queueCommand).toHaveBeenCalledWith({ node_id: 6, type: 'set_count', arguments: { count: 12 } })
   })
 
+  it('folds the form away without sending', async () => {
+    const wrapper = await mountCard()
+    await compose(wrapper)
+    await wrapper.get('input').setValue('12')
+    await wrapper.get('.compose-actions .button.secondary').trigger('click')
+
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(composeButton(wrapper).exists()).toBe(true)
+    expect(gatewayApi.queueCommand).not.toHaveBeenCalled()
+  })
+
   it('cancels a waiting command', async () => {
     state.commands = [pending()]
     const wrapper = await mountCard()
@@ -124,7 +144,7 @@ describe('NodeCommands', () => {
 
     expect(gatewayApi.cancelCommand).toHaveBeenCalledWith(6)
     expect(wrapper.find('.command-state').exists()).toBe(false)
-    expect(wrapper.find('input').exists()).toBe(true)
+    expect(composeButton(wrapper).exists()).toBe(true)
   })
 
   it('warns that a delivered command may already be applied', async () => {
@@ -138,7 +158,7 @@ describe('NodeCommands', () => {
     state.commands = [pending()]
     const wrapper = await mountCard()
     expect(wrapper.get('.command-state').text()).toContain(en.commands.state.pending)
-    expect(wrapper.find('input').exists()).toBe(false)
+    expect(composeButton(wrapper).exists()).toBe(false)
     expect(wrapper.find('.command-actions').exists()).toBe(false)
 
     state.commands = []

@@ -34,7 +34,8 @@ const health = {
 // Radio fields as the gateway reports them: the ceiling and policy from the
 // registry, the wanted level from its controller, and what the node's latest
 // report says it uses. Тепличка has fallen back; Газ is still moving to the
-// fixed level just set.
+// fixed level just set; Кухня has the protocol's highest ceiling, so its
+// levels come as a list rather than side by side.
 type MockNode = {
   node_id: number; device_uid: string; display_name: string; profile_id: number; firmware: string; state: string
   last_seen_at_ms?: number; rssi?: number; has_telemetry: boolean
@@ -46,7 +47,7 @@ const radio = (level: number, over: Partial<MockNode> = {}) => ({
   radio_fallback: false, supply_limited: false, downlink_rssi: -66, ...over,
 })
 const nodes: MockNode[] = [
-  { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true, ...radio(1) },
+  { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true, ...radio(1, { max_power_level: 31 }) },
   { node_id: 3, device_uid: '0F1E2D3C4B5A69788796', display_name: 'Гараж', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 40_000, rssi: -74, has_telemetry: true, ...radio(2) },
   { node_id: 4, device_uid: '112233445566778899AA', display_name: '', profile_id: 2, firmware: '2.0.4', state: 'pending', has_telemetry: false, max_power_level: 2, power_policy: 'auto' },
   { node_id: 5, device_uid: 'BBCCDDEEFF0011223344', display_name: 'Тепличка', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 300_000, rssi: -89, has_telemetry: true, ...radio(2, { radio_fallback: true, downlink_rssi: -93 }) },

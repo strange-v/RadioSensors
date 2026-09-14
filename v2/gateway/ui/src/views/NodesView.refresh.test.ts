@@ -105,7 +105,28 @@ describe('node list refresh', () => {
     expect(wrapper.find('.notice.error').exists()).toBe(false)
   })
 
-  it('holds off while a dialog is open, and resumes once it closes', async () => {
+  it('keeps an open node card on the fresh record', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('.node-row').trigger('click')
+
+    state.nodes = [node({ rssi: -91 })]
+    await tick()
+
+    expect(wrapper.getComponent({ name: 'NodeDetail' }).props('node')).toMatchObject({ node_id: 2, rssi: -91 })
+  })
+
+  it('closes the node card when the node leaves the registry', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('.node-row').trigger('click')
+    expect(wrapper.findComponent({ name: 'NodeDetail' }).exists()).toBe(true)
+
+    state.nodes = []
+    await tick()
+
+    expect(wrapper.findComponent({ name: 'NodeDetail' }).exists()).toBe(false)
+  })
+
+  it('holds off while pairing, and resumes once the dialog closes', async () => {
     const wrapper = await mountView()
     await wrapper.get('.page-heading button').trigger('click')  // open pairing
     await flushPromises()
