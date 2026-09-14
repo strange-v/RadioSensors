@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // Reusable dialog chrome: backdrop + panel + a fixed-height header (title and
 // close button only, no subtitle). Body content is left entirely to the
-// caller via the default slot. Use this for every new popup instead of
-// hand-rolling backdrop/panel markup.
+// caller via the default slot. The `title` slot replaces the heading when the
+// title itself is editable (the node card renames in place); the `title` prop
+// still names the dialog for assistive technology. Use this for every new
+// popup instead of hand-rolling backdrop/panel markup.
 //
 // Work in progress has one house style, in two sizes:
 //
@@ -21,18 +23,33 @@
 import Icon from './Icon.vue'
 
 // `busy`: the label to show over the mask, or undefined while idle.
-defineProps<{ title: string; busy?: string }>()
+const props = defineProps<{ title: string; busy?: string }>()
 const emit = defineEmits<{ close: [] }>()
+
+// A click is dispatched to the element that contains both the press and the
+// release, so selecting text in a field and letting go past the panel's edge
+// is a click on the backdrop. Only a press that began on the backdrop too
+// dismisses the dialog.
+let pressedBackdrop = false
+
+function onBackdropPointerDown(event: PointerEvent) {
+  pressedBackdrop = event.target === event.currentTarget
+}
 
 // A masked dialog cannot be dismissed: the operation would carry on behind a
 // closed dialog and land on state nobody is watching.
+function onBackdropClick(event: MouseEvent) {
+  const dismiss = pressedBackdrop && event.target === event.currentTarget && !props.busy
+  pressedBackdrop = false
+  if (dismiss) emit('close')
+}
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="busy || emit('close')">
+  <div class="modal-backdrop" @pointerdown="onBackdropPointerDown" @click="onBackdropClick">
     <section class="modal" role="dialog" aria-modal="true" :aria-label="title" :aria-busy="busy ? 'true' : undefined">
       <header class="modal-header">
-        <h2>{{ title }}</h2>
+        <slot name="title"><h2>{{ title }}</h2></slot>
         <button class="icon-button" type="button" :disabled="!!busy" :aria-label="$t('common.close')" @click="emit('close')">
           <Icon name="close" />
         </button>

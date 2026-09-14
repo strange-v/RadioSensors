@@ -48,6 +48,22 @@ export function byteLength(value: string): number {
   return new TextEncoder().encode(value).length
 }
 
+// The longest start of `value` that fits in `max` UTF-8 bytes, cut between
+// characters, never inside one. A lone surrogate counts the 3 bytes of the
+// U+FFFD that TextEncoder writes in its place.
+export function truncateToBytes(value: string, max: number): string {
+  let used = 0
+  let end = 0
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0
+    const size = code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4
+    if (used + size > max) break
+    used += size
+    end += char.length
+  }
+  return value.slice(0, end)
+}
+
 // A DNS label, mirroring validHostname() in GatewayStorage.cpp. Empty is valid
 // and means the gateway keeps its `osk-hub-<mac>` default.
 export const HOSTNAME_MAX_BYTES = 32

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // A node's waiting command or the result of its last one, and the form that
 // queues the next. A sleeping node fetches its command in a radio session of
-// its own, so the card polls until the node has answered.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// its own, so the card polls until the node has answered. Commands are rare,
+// so the form stays folded behind a button rather than lengthening every card.
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, errorCode, isAdmin } from '../api/client'
 import type { CommandType, GatewayNode, NodeCommand } from '../api/types'
@@ -18,7 +19,9 @@ const POLL_MS = 3_000
 const types = computed(() => supportedCommands(props.node.profile_id))
 const command = ref<NodeCommand | null>(null)
 const selectedType = ref<CommandType>(types.value[0] ?? 'set_count')
+const composing = ref(false)
 const draftValue = ref('')
+const valueInput = ref<HTMLInputElement | null>(null)
 const busy = ref(false)
 const failure = ref('')
 let timer: number | undefined
@@ -63,6 +66,14 @@ async function poll() {
   try { await load(true) } finally { pollInFlight = false }
 }
 
+async function compose() {
+  draftValue.value = ''
+  failure.value = ''
+  composing.value = true
+  await nextTick()
+  valueInput.value?.focus()
+}
+
 async function send() {
   const value = parsedValue.value
   if (value === null || busy.value) return
@@ -73,6 +84,7 @@ async function send() {
       node_id: props.node.node_id, type: selectedType.value, arguments: commandArguments(selectedType.value, value),
     })
     draftValue.value = ''
+    composing.value = false
   } catch (error) {
     failure.value = errorCode(error)
   } finally {
@@ -103,7 +115,10 @@ onBeforeUnmount(() => window.clearInterval(timer))
 
 <template>
   <section v-if="types.length && (isAdmin || command)" class="form-stack node-commands">
-    <h3>{{ $t('commands.title') }}</h3>
+    <div class="commands-head">
+      <h3>{{ $t('commands.title') }}</h3>
+      <button v-if="isAdmin && !waiting && !composing" class="button secondary compact" type="button" @click="compose">{{ $t('commands.compose') }}</button>
+    </div>
 
     <div v-if="command" class="command-state">
       <div class="command-line">
@@ -117,16 +132,17 @@ onBeforeUnmount(() => window.clearInterval(timer))
       </div>
     </div>
 
-    <template v-if="isAdmin && !waiting">
+    <template v-if="isAdmin && !waiting && composing">
       <div v-if="types.length > 1" class="segmented" role="group" :aria-label="$t('commands.kind')">
         <button v-for="type in types" :key="type" type="button" :class="{ active: selectedType === type }" @click="selectedType = type">{{ $t(`commands.type.${type}`) }}</button>
       </div>
       <label>
         <span>{{ $t(`commands.field.${selectedType}`) }}</span>
-        <input v-model="draftValue" inputmode="numeric" :aria-label="$t(`commands.field.${selectedType}`)" @keydown.enter="send">
+        <input ref="valueInput" v-model="draftValue" inputmode="numeric" :aria-label="$t(`commands.field.${selectedType}`)" @keydown.enter="send">
         <small :class="{ invalid: invalidValue }">{{ invalidValue ? $t(`commands.invalid.${selectedType}`) : $t(`commands.hint.${selectedType}`) }}</small>
       </label>
-      <div class="command-actions">
+      <div class="compose-actions">
+        <button class="button secondary" type="button" @click="composing = false">{{ $t('common.cancel') }}</button>
         <button class="button primary" :disabled="busy || parsedValue === null" type="button" @click="send">{{ busy ? $t('commands.sending') : $t('commands.send') }}</button>
       </div>
     </template>
@@ -136,12 +152,14 @@ onBeforeUnmount(() => window.clearInterval(timer))
 </template>
 
 <style scoped>
-.node-commands { padding-top: var(--space-4); border-top: 1px solid var(--line); }
-.node-commands h3 { font-size: var(--text-md); }
+.node-commands { gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.node-commands .notice { margin: 0; }
+.commands-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; }
+.commands-head h3 { color: var(--ink-soft); font-size: var(--text-sm); font-weight: 500; }
 .node-commands .segmented { justify-self: start; }
 .command-state { display: grid; gap: var(--space-2); }
 .command-line { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .command-hint { color: var(--ink-soft); font-size: var(--text-sm); }
-.command-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); }
+.command-actions, .compose-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 .command-actions small { margin-right: auto; color: var(--muted); font-size: var(--text-sm); }
 </style>
