@@ -119,7 +119,7 @@ Every status except `storage_failure` completes the command. The node sends Comm
 
 Commands are one-shot actions. Configuration the gateway maintains, such as radio power, is desired state carried by the telemetry acknowledgement instead.
 
-`set_count` replaces the cumulative pulse count. `previous_count` is the count immediately before the command.
+`set_count` replaces the cumulative pulse count. `previous_count` is the count immediately before the command. The node sends pulse-counter telemetry with the updated count in the same wake-up.
 
 ### Command IDs and redelivery
 
