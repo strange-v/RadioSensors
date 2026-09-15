@@ -26,6 +26,11 @@ constexpr uint8_t kRadioFallback = 0x20;
 constexpr uint8_t kRadioSupplyLimited = 0x40;
 constexpr uint8_t kRadioStateReservedMask = 0x80;
 
+// Common prefix: link fields first, then supply voltage next to the
+// measurements.
+constexpr size_t kTelemetryRadioStateOffset = 1;
+constexpr size_t kTelemetryDownlinkRssiOffset = 2;
+constexpr size_t kTelemetrySupplyVoltageOffset = 3;
 constexpr size_t kTelemetryPrefixSize = 5;
 constexpr size_t kVoltageTelemetrySize = 5;
 constexpr size_t kTemperatureTelemetrySize = 7;
@@ -121,9 +126,10 @@ inline TelemetryCodecStatus beginTelemetry(
         return TelemetryCodecStatus::OutputTooSmall;
     }
     output[0] = encodeHeader(FrameKind::Telemetry);
-    writeUint16Le(output + 1, prefix.supplyMillivolts);
-    output[3] = prefix.radioState;
-    output[4] = static_cast<uint8_t>(prefix.downlinkRssi);
+    output[kTelemetryRadioStateOffset] = prefix.radioState;
+    output[kTelemetryDownlinkRssiOffset] =
+        static_cast<uint8_t>(prefix.downlinkRssi);
+    writeUint16Le(output + kTelemetrySupplyVoltageOffset, prefix.supplyMillivolts);
     return TelemetryCodecStatus::Ok;
 }
 
@@ -135,12 +141,12 @@ inline TelemetryCodecStatus decodeTelemetry(
     if (input[0] != encodeHeader(FrameKind::Telemetry)) {
         return TelemetryCodecStatus::WrongHeader;
     }
-    if ((input[3] & kRadioStateReservedMask) != 0) {
+    if ((input[kTelemetryRadioStateOffset] & kRadioStateReservedMask) != 0) {
         return TelemetryCodecStatus::InvalidRadioState;
     }
-    view.supplyMillivolts = readUint16Le(input + 1);
-    view.radioState = input[3];
-    view.downlinkRssi = static_cast<int8_t>(input[4]);
+    view.radioState = input[kTelemetryRadioStateOffset];
+    view.downlinkRssi = static_cast<int8_t>(input[kTelemetryDownlinkRssiOffset]);
+    view.supplyMillivolts = readUint16Le(input + kTelemetrySupplyVoltageOffset);
     view.profilePayload = input + kTelemetryPrefixSize;
     view.profilePayloadSize = size - kTelemetryPrefixSize;
     return TelemetryCodecStatus::Ok;

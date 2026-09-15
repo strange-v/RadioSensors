@@ -219,17 +219,8 @@
     "common_prefix_size": 5,
     "common_fields": [
       {
-        "name": "supply_voltage",
-        "quantity": "voltage",
-        "offset": 1,
-        "encoding": "uint16_le",
-        "scale": { "numerator": 1, "denominator": 1000 },
-        "unit": "V",
-        "no_value_raw": "type_max"
-      },
-      {
         "name": "radio_state",
-        "offset": 3,
+        "offset": 1,
         "encoding": "uint8",
         "bits": [
           { "name": "tx_power_level", "quantity": "radio_power_level", "mask": 31 },
@@ -240,10 +231,19 @@
       {
         "name": "downlink_rssi",
         "quantity": "signal_strength",
-        "offset": 4,
+        "offset": 2,
         "encoding": "int8",
         "unit": "dBm",
         "no_value_raw": "type_min"
+      },
+      {
+        "name": "supply_voltage",
+        "quantity": "voltage",
+        "offset": 3,
+        "encoding": "uint16_le",
+        "scale": { "numerator": 1, "denominator": 1000 },
+        "unit": "V",
+        "no_value_raw": "type_max"
       }
     ],
     "profiles": [

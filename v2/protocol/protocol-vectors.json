@@ -6,7 +6,7 @@
     {
       "name": "profile_1_nominal",
       "profile_id": 1,
-      "hex": "40E40C02BA",
+      "hex": "4002BAE40C",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -25,7 +25,7 @@
     {
       "name": "profile_2_nominal",
       "profile_id": 2,
-      "hex": "40E40C02BA2E09",
+      "hex": "4002BAE40C2E09",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -46,7 +46,7 @@
     {
       "name": "profile_3_nominal",
       "profile_id": 3,
-      "hex": "40E40C02BA2E09D711",
+      "hex": "4002BAE40C2E09D711",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -69,7 +69,7 @@
     {
       "name": "profile_4_nominal",
       "profile_id": 4,
-      "hex": "40E40C02BA2E09D7119427",
+      "hex": "4002BAE40C2E09D7119427",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -94,7 +94,7 @@
     {
       "name": "profile_4_no_values_at_fallback",
       "profile_id": 4,
-      "hex": "40FFFF3F800080FFFFFFFF",
+      "hex": "403F80FFFF0080FFFFFFFF",
       "raw": {
         "supply_voltage": 65535,
         "tx_power_level": 31,
@@ -119,7 +119,7 @@
     {
       "name": "profile_5_nominal",
       "profile_id": 5,
-      "hex": "40E40C02BA01",
+      "hex": "4002BAE40C01",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -140,7 +140,7 @@
     {
       "name": "profile_6_nominal",
       "profile_id": 6,
-      "hex": "40E40C02BA78563412",
+      "hex": "4002BAE40C78563412",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -161,7 +161,7 @@
     {
       "name": "profile_7_nominal",
       "profile_id": 7,
-      "hex": "40E40C02BA012E09D711",
+      "hex": "4002BAE40C012E09D711",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -186,7 +186,7 @@
     {
       "name": "profile_8_nominal",
       "profile_id": 8,
-      "hex": "40E40C02BA012E09",
+      "hex": "4002BAE40C012E09",
       "raw": {
         "supply_voltage": 3300,
         "tx_power_level": 2,
@@ -211,31 +211,31 @@
     {
       "name": "wrong_telemetry_header",
       "profile_id": 1,
-      "hex": "41E40C02BA",
+      "hex": "4102BAE40C",
       "error": "wrong_header"
     },
     {
       "name": "wrong_profile_length",
       "profile_id": 4,
-      "hex": "40E40C02BA2E09D711",
+      "hex": "4002BAE40C2E09D711",
       "error": "wrong_length"
     },
     {
       "name": "reserved_radio_state_bit",
       "profile_id": 1,
-      "hex": "40E40C82BA",
+      "hex": "4082BAE40C",
       "error": "invalid_value"
     },
     {
       "name": "invalid_binary_state",
       "profile_id": 5,
-      "hex": "40E40C02BA02",
+      "hex": "4002BAE40C02",
       "error": "invalid_value"
     },
     {
       "name": "temperature_below_range",
       "profile_id": 2,
-      "hex": "40E40C02BABFE0",
+      "hex": "4002BAE40CBFE0",
       "error": "invalid_value"
     }
   ],
@@ -305,7 +305,7 @@
     {
       "name": "telemetry_envelope",
       "message": "telemetry",
-      "hex": "0103040302010734124433221104030201C1FF0540E70C02BA",
+      "hex": "0103040302010734124433221104030201C1FF054002BAE70C",
       "decoded": {
         "stream_version": 1,
         "message_kind": 3,
@@ -315,7 +315,7 @@
         "received_at_unix_ms": "72623859993555780",
         "rssi": -63,
         "payload_size": 5,
-        "payload": "40E70C02BA"
+        "payload": "4002BAE70C"
       }
     },
     {

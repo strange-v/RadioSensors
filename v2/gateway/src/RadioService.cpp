@@ -212,7 +212,8 @@ void drainReceivedFrame() {
                     commands::hasPending(static_cast<uint8_t>(senderId));
                 if (dataLength >= radiosensors::protocol::kTelemetryPrefixSize) {
                     ack.hasPowerTarget = power_control::target(
-                        static_cast<uint8_t>(senderId), received.data[3],
+                        static_cast<uint8_t>(senderId),
+                        received.data[radiosensors::protocol::kTelemetryRadioStateOffset],
                         ack.powerTarget);
                 }
                 uint8_t payload[radiosensors::protocol::kMaxTelemetryAckSize];
