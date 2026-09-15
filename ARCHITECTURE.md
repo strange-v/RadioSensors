@@ -44,7 +44,7 @@ Settings, users/tokens, node registry, and installation secrets have separate NV
 
 Passwords use salted PBKDF2-HMAC-SHA256. API tokens contain 32 random bytes, are shown once, and are stored only as SHA-256 digests. Radio keys, password hashes, token hashes, and the device secret are excluded from normal APIs and diagnostic exports.
 
-HTTP authentication does not protect credentials from LAN packet capture. TLS/WSS or an explicitly trusted LAN remains a production threat-model decision. The production threat model accepts physical flash access and does not require flash encryption or secure boot.
+The gateway serves HTTP and WebSocket only and is intended exclusively for a trusted private LAN. It does not provide TLS/WSS and must not be exposed directly to the Internet or an untrusted network. LAN traffic capture, DNS/mDNS spoofing, a compromised LAN client, and physical flash access are outside the accepted production threat model; flash encryption and secure boot are not required.
 
 ## Documentation ownership
 
