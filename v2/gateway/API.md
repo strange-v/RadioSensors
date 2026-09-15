@@ -386,4 +386,4 @@ It exists so something on the network can tell the gateway is up without a crede
 
 ## Security and backup
 
-Plain HTTP bearer/session authentication does not prevent LAN traffic capture. TLS/WSS or a trusted-LAN requirement remains a production decision. Diagnostic export excludes password hashes, token hashes, radio keys, and device secrets. A complete migration backup must be encrypted and authenticated; its container is not yet specified.
+The gateway serves HTTP and WebSocket only and is intended exclusively for a trusted private LAN. It does not provide TLS/WSS and must not be exposed directly to the Internet or an untrusted network. LAN traffic capture, DNS/mDNS spoofing, and a compromised LAN client are outside the accepted threat model. Diagnostic export excludes password hashes, token hashes, radio keys, and device secrets. A complete migration backup must be encrypted and authenticated; its container is not yet specified.
