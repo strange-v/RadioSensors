@@ -22,7 +22,7 @@ pio run -e climate_tmp112
 pio run -e climate_tmp112 -t upload
 ```
 
-Hardware environments inherit serial UPDI on COM6 at 115200 baud. Adjust the local upload port in `platformio.ini` when necessary.
+Hardware environments inherit serial UPDI upload on COM11 at 115200 baud and serial monitoring on COM12 at 9600 baud. Only the adapter's RX line is connected to COM12.
 
 Upload never writes fuses. Write them once per chip before the first upload; every environment uses the same values (4 MHz from the 16 MHz oscillator, BOD 1.8 V in active mode only, EEPROM preserved on chip erase, UPDI pin kept):
 
@@ -46,7 +46,7 @@ Production firmware contains no shared commissioning key. Each ATtiny1614 must r
 
 ```powershell
 & "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m pip install -r scripts/requirements-provisioning.txt
-& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" scripts/provision_node.py --port COM6
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" scripts/provision_node.py --port COM11
 ```
 
 The tool reads the 10-byte SIGROW UID, refuses to replace an existing valid record unless `--force` is supplied, generates the key with the operating system CSPRNG, writes and verifies USERROW, then exports a text credential, SVG QR, and `manifest.csv` under the git-ignored `provisioned_nodes/` directory. The QR payload is `web+opensmartkit:pair?v=1&family=sense&uid=<20 HEX>&key=<32 HEX>`. Treat every exported file as a secret manufacturing artifact and back it up outside the repository.

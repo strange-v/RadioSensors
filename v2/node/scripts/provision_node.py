@@ -157,7 +157,7 @@ def export_credentials(uid: bytes, key: bytes, output: Path, no_qr: bool) -> str
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", default="COM6", help="SerialUPDI port")
+    parser.add_argument("--port", default="COM11", help="SerialUPDI port")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--output", type=Path, default=Path("provisioned_nodes"))
     parser.add_argument("--force", action="store_true", help="replace an existing valid key")
