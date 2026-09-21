@@ -84,12 +84,11 @@ Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MA
 
 | Event | Level |
 | --- | --- |
-| Commissioning | Ceiling |
-| Acknowledgement carrying a power target | The target clamped to the ceiling, stored and applied at once; fallback cleared |
+| Boot and commissioning | Ceiling |
+| Acknowledgement carrying a power target | The target clamped to the ceiling, applied at once; fallback cleared |
 | Third consecutive report without acknowledgement | Ceiling with the fallback flag, unless already there |
-| Boot with a stored level above the ceiling | Ceiling |
 
-Level and fallback flag are part of the network configuration, so they survive a reset. The supply-limited flag is always zero.
+Level and fallback flag are held only in RAM, so adapting the level never writes EEPROM. After a restart the first report goes out at the ceiling, and its acknowledgement returns the node to the level the gateway still wants. The supply-limited flag is always zero.
 
 ## Command sessions
 

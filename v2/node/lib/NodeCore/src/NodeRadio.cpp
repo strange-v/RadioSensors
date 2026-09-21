@@ -43,7 +43,8 @@ void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
     radio_.setAddress(config.nodeId);
     radio_.setNetwork(config.networkId);
     radio_.encrypt(key);
-    radio_.setPowerLevel(config.powerLevel);
+    // Every boot and every join starts at the ceiling; the gateway lowers it.
+    radio_.setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
 }
 
 void NodeRadio::setPowerLevel(const uint8_t level) {

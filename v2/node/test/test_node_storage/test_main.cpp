@@ -42,7 +42,6 @@ public:
 NetworkConfig makeConfig(const uint8_t nodeId = 7) {
     NetworkConfig value{};
     value.state = ProvisioningState::Active;
-    value.powerLevel = 12;
     value.nodeId = nodeId;
     value.gatewayId = 100;
     value.networkId = 42;
@@ -50,7 +49,6 @@ NetworkConfig makeConfig(const uint8_t nodeId = 7) {
         value.installationKey[index] = static_cast<uint8_t>(index + 1);
     }
     value.requestNonce = 0x89ABCDEFUL;
-    value.radioFallback = true;
     return value;
 }
 
@@ -150,23 +148,22 @@ void test_network_config_round_trip_and_newest_slot() {
     NetworkConfig first = makeConfig();
     TEST_ASSERT_TRUE(writer.save(first));
     NetworkConfig second = first;
-    second.powerLevel = 19;
+    second.networkId = 43;
     TEST_ASSERT_TRUE(writer.save(second));
 
     NetworkConfigStore<FakeStorage> reader(memory);
     NetworkConfig restored{};
     TEST_ASSERT_TRUE(reader.load(restored));
-    TEST_ASSERT_EQUAL_UINT8(19, restored.powerLevel);
+    TEST_ASSERT_EQUAL_UINT8(43, restored.networkId);
     TEST_ASSERT_EQUAL_UINT8(1, restored.generation);
     TEST_ASSERT_EQUAL_HEX32(0x89ABCDEFUL, restored.requestNonce);
-    TEST_ASSERT_TRUE(restored.radioFallback);
 }
 
-void test_network_config_rejects_reserved_radio_flags() {
+void test_network_config_rejects_nonzero_reserved_bytes() {
     uint8_t bytes[kNetworkConfigSlotSize];
     NetworkConfig value = makeConfig();
     TEST_ASSERT_TRUE(encodeNetworkConfig(value, bytes, sizeof(bytes)));
-    bytes[28] = 0x02;
+    bytes[28] = 0x01;
     write16(bytes + 30, crc16Ccitt(bytes, 30));
     NetworkConfig restored{};
     TEST_ASSERT_FALSE(decodeNetworkConfig(bytes, sizeof(bytes), restored));
@@ -219,13 +216,13 @@ void test_network_config_generation_wrap_selects_latest() {
     NetworkConfig value = makeConfig();
 
     for (uint16_t generation = 0; generation < 300; ++generation) {
-        value.powerLevel = static_cast<uint8_t>(generation % 32U);
+        value.networkId = static_cast<uint8_t>(generation);
         TEST_ASSERT_TRUE(store.save(value));
     }
 
     NetworkConfig restored{};
     TEST_ASSERT_TRUE(store.load(restored));
-    TEST_ASSERT_EQUAL_UINT8(299U % 32U, restored.powerLevel);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(299U), restored.networkId);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(299U), restored.generation);
 }
 
@@ -639,7 +636,7 @@ int main(int, char**) {
     RUN_TEST(test_factory_credentials_round_trip_and_validation);
     RUN_TEST(test_factory_credential_store_reads_user_row_independently);
     RUN_TEST(test_network_config_round_trip_and_newest_slot);
-    RUN_TEST(test_network_config_rejects_reserved_radio_flags);
+    RUN_TEST(test_network_config_rejects_nonzero_reserved_bytes);
     RUN_TEST(test_power_target_is_clamped_and_ends_a_fallback);
     RUN_TEST(test_node_falls_back_to_its_ceiling_after_three_lost_reports);
     RUN_TEST(test_network_config_falls_back_from_corrupt_new_slot);

@@ -26,11 +26,6 @@ CommissioningService::CommissioningService(
 bool CommissioningService::begin() {
     readDeviceUid();
     const bool hasConfig = store_.load(config_);
-    // Firmware with a lower ceiling never transmits above it.
-    if (hasConfig && config_.powerLevel > NODE_RADIO_MAX_POWER_LEVEL) {
-        config_.powerLevel = NODE_RADIO_MAX_POWER_LEVEL;
-        store_.save(config_);
-    }
     factoryCredentialsValid_ = factoryStore_.load(factoryCredentials_);
     if (!hasConfig && !factoryCredentialsValid_) {
 #if defined(NODE_DEBUG)
@@ -87,16 +82,6 @@ uint32_t CommissioningService::createNonce() const {
     return value;
 }
 
-bool CommissioningService::setRadioPower(const uint8_t level, const bool fallback) {
-    storage::NetworkConfig next = config_;
-    next.powerLevel = level;
-    next.radioFallback = fallback;
-    if (!store_.save(next)) return false;
-    config_ = next;
-    radio_.setPowerLevel(level);
-    return true;
-}
-
 bool CommissioningService::advance() {
     if (active()) return true;
     if (config_.nodeId != 0) return confirmJoin();
@@ -148,7 +133,6 @@ bool CommissioningService::requestJoin() {
     }
 
     config_.state = storage::ProvisioningState::Provisional;
-    config_.powerLevel = NODE_RADIO_MAX_POWER_LEVEL;
     config_.nodeId = accept.assignedNodeId;
     config_.gatewayId = accept.gatewayNodeId;
     config_.networkId = accept.networkId;
@@ -156,7 +140,6 @@ bool CommissioningService::requestJoin() {
         config_.installationKey, accept.installationKey,
         sizeof(config_.installationKey));
     config_.requestNonce = accept.requestNonce;
-    config_.radioFallback = false;
     if (!store_.save(config_)) {
 #if defined(NODE_DEBUG)
         debugLine(F("join acc nosave"));

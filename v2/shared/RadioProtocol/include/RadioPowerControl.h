@@ -101,6 +101,11 @@ inline uint8_t observe(
         state.reports = 0;
         state.rssiSum = 0;
     }
+    // While a newly reported level is averaged, keep the level already
+    // wanted: a node that restarted at its ceiling goes straight back, and a
+    // target whose acknowledgement was lost is not withdrawn. A fallback
+    // report is taken at its word.
+    const bool keepDesired = state.known && !report.fallback;
     state.known = true;
     state.reportedLevel = report.level;
     state.fallback = report.fallback;
@@ -109,7 +114,7 @@ inline uint8_t observe(
         state.rssiSum += report.rssi;
     }
 
-    uint8_t desired = report.level;
+    uint8_t desired = keepDesired ? state.desired : report.level;
     if (isFixedPolicy(policy)) {
         if (!state.fixedRejected) desired = fixedLevel(policy);
     } else if (state.reports >= kReportsPerDecision) {

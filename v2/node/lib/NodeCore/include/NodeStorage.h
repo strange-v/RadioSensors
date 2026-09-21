@@ -27,14 +27,11 @@ enum class ProvisioningState : uint8_t {
 struct NetworkConfig {
     uint8_t generation = 0;
     ProvisioningState state = ProvisioningState::Provisional;
-    uint8_t powerLevel = 0;
     uint8_t nodeId = 0;
     uint8_t gatewayId = 0;
     uint8_t networkId = 0;
     uint8_t installationKey[16]{};
     uint32_t requestNonce = 0;
-    // The node raised itself to its ceiling after losing the gateway.
-    bool radioFallback = false;
 };
 
 struct FactoryCredentials {
@@ -139,9 +136,9 @@ inline bool encodeNetworkConfig(
     const NetworkConfig& value, uint8_t* output, const size_t capacity) {
     constexpr uint8_t kMagic0 = 'R';
     constexpr uint8_t kMagic1 = 'N';
-    constexpr uint8_t kSchema = 1;
+    constexpr uint8_t kSchema = 2;
     if (output == nullptr || capacity < kNetworkConfigSlotSize ||
-        value.powerLevel > 31 || value.nodeId == 0 || value.nodeId == 255 ||
+        value.nodeId == 0 || value.nodeId == 255 ||
         value.gatewayId == 0 || value.gatewayId == 255 ||
         value.gatewayId == value.nodeId) {
         return false;
@@ -157,13 +154,12 @@ inline bool encodeNetworkConfig(
     output[1] = kMagic1;
     output[2] = kSchema;
     output[3] = value.generation;
-    output[4] = static_cast<uint8_t>((state << 5) | value.powerLevel);
+    output[4] = state;
     output[5] = value.nodeId;
     output[6] = value.gatewayId;
     output[7] = value.networkId;
     memcpy(output + 8, value.installationKey, sizeof(value.installationKey));
     write32(output + 24, value.requestNonce);
-    output[28] = value.radioFallback ? 1 : 0;
     write16(output + 30, crc16Ccitt(output, 30));
     return true;
 }
@@ -171,28 +167,25 @@ inline bool encodeNetworkConfig(
 inline bool decodeNetworkConfig(
     const uint8_t* input, const size_t size, NetworkConfig& value) {
     if (input == nullptr || size != kNetworkConfigSlotSize ||
-        input[0] != 'R' || input[1] != 'N' || input[2] != 1 ||
+        input[0] != 'R' || input[1] != 'N' || input[2] != 2 ||
         read16(input + 30) != crc16Ccitt(input, 30)) {
         return false;
     }
-    const uint8_t state = input[4] >> 5;
-    const uint8_t powerLevel = input[4] & 0x1FU;
+    const uint8_t state = input[4];
     if ((state != static_cast<uint8_t>(ProvisioningState::Provisional) &&
          state != static_cast<uint8_t>(ProvisioningState::Active)) ||
         input[5] == 0 || input[5] == 255 || input[6] == 0 ||
         input[6] == 255 || input[5] == input[6] ||
-        (input[28] & 0xFEU) != 0 || input[29] != 0) {
+        input[28] != 0 || input[29] != 0) {
         return false;
     }
     value.generation = input[3];
     value.state = static_cast<ProvisioningState>(state);
-    value.powerLevel = powerLevel;
     value.nodeId = input[5];
     value.gatewayId = input[6];
     value.networkId = input[7];
     memcpy(value.installationKey, input + 8, sizeof(value.installationKey));
     value.requestNonce = read32(input + 24);
-    value.radioFallback = input[28] != 0;
     return true;
 }
 

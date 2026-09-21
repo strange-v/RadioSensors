@@ -128,9 +128,7 @@ private:
         }
         const protocol::TelemetryPrefix prefix{
             supplyVoltage_.report(battery_.readMillivolts()),
-            protocol::encodeRadioState(
-                commissioning_.config().powerLevel,
-                commissioning_.config().radioFallback, false),
+            protocol::encodeRadioState(powerLevel_, radioFallback_, false),
             downlinkRssi_};
         uint8_t frame[Profile::kTelemetrySize];
         const size_t size =
@@ -150,8 +148,7 @@ private:
             radioRetry_.succeeded();
             unacknowledgedReports_ = 0;
             applyPower(afterAcknowledged(
-                commissioning_.config().powerLevel,
-                commissioning_.config().radioFallback, ack.hasPowerTarget,
+                powerLevel_, radioFallback_, ack.hasPowerTarget,
                 ack.powerTarget, NODE_RADIO_MAX_POWER_LEVEL));
 #if defined(NODE_DEBUG)
             // The RSSI is in [-128, 0] dBm, -128 when not measured: print
@@ -167,24 +164,19 @@ private:
 #endif
             if (unacknowledgedReports_ < UINT8_MAX) ++unacknowledgedReports_;
             applyPower(afterUnacknowledged(
-                commissioning_.config().powerLevel,
-                commissioning_.config().radioFallback,
-                unacknowledgedReports_, NODE_RADIO_MAX_POWER_LEVEL));
+                powerLevel_, radioFallback_, unacknowledgedReports_,
+                NODE_RADIO_MAX_POWER_LEVEL));
         }
         return acknowledged && ack.commandPending;
     }
 
     void applyPower(const PowerDecision decision) {
         if (!decision.change) return;
-        const bool stored =
-            commissioning_.setRadioPower(decision.level, decision.fallback);
+        powerLevel_ = decision.level;
+        radioFallback_ = decision.fallback;
+        radio_.setPowerLevel(decision.level);
 #if defined(NODE_DEBUG)
-        debugValue(
-            stored ? (decision.fallback ? F("pwr fb ") : F("pwr "))
-                   : F("pwr nosave "),
-            decision.level);
-#else
-        (void)stored;
+        debugValue(decision.fallback ? F("pwr fb ") : F("pwr "), decision.level);
 #endif
     }
 
@@ -260,6 +252,11 @@ private:
     RadioRetryBackoff radioRetry_;
     HintedSessionPolicy hintedSessions_;
     int8_t downlinkRssi_ = protocol::kNoDownlinkRssi;
+    // Held only in RAM: a restart begins at the ceiling and the gateway's next
+    // acknowledgement restores its target, so no level change wears the
+    // EEPROM.
+    uint8_t powerLevel_ = NODE_RADIO_MAX_POWER_LEVEL;
+    bool radioFallback_ = false;
     uint8_t unacknowledgedReports_ = 0;
     uint32_t lastJoinAttempt_ = 0;
     bool radioReady_ = false;

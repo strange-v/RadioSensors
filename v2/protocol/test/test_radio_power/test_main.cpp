@@ -116,6 +116,20 @@ void test_policy_change_applies_before_the_next_report() {
     TEST_ASSERT_EQUAL_UINT8(9, report(state, 12, -60));
 }
 
+void test_restarted_node_is_sent_back_to_the_wanted_level() {
+    ControlState state{};
+    report(state, 10, -60, kPolicyAuto, 20);
+    report(state, 10, -60, kPolicyAuto, 20);
+    TEST_ASSERT_EQUAL_UINT8(7, report(state, 10, -60, kPolicyAuto, 20));
+    TEST_ASSERT_EQUAL_UINT8(7, report(state, 7, -80, kPolicyAuto, 20));
+
+    // The node restarted at its ceiling, without a fallback.
+    TEST_ASSERT_EQUAL_UINT8(7, report(state, 20, -70, kPolicyAuto, 20));
+    for (int index = 0; index < 4; ++index) {
+        TEST_ASSERT_EQUAL_UINT8(7, report(state, 7, -80, kPolicyAuto, 20));
+    }
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_policy_encoding);
@@ -127,5 +141,6 @@ int main(int, char**) {
     RUN_TEST(test_fallback_rejects_a_fixed_level_until_the_policy_changes);
     RUN_TEST(test_fallback_keeps_automatic_control_above_the_failed_level);
     RUN_TEST(test_policy_change_applies_before_the_next_report);
+    RUN_TEST(test_restarted_node_is_sent_back_to_the_wanted_level);
     return UNITY_END();
 }

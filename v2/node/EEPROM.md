@@ -32,19 +32,18 @@ Each network configuration slot has this exact format:
 | Offset | Size | Field |
 | ---: | ---: | --- |
 | 0 | 2 | Magic `RN` |
-| 2 | 1 | Storage schema version (`1`) |
+| 2 | 1 | Storage schema version (`2`) |
 | 3 | 1 | Wrapping generation |
-| 4 | 1 | Provisioning state in bits 7..5, radio power in bits 4..0 |
+| 4 | 1 | Provisioning state: `1` provisional, `2` active |
 | 5 | 1 | Node ID |
 | 6 | 1 | Gateway ID |
 | 7 | 1 | Network ID |
 | 8 | 16 | Installation key |
 | 24 | 4 | Request nonce, little-endian |
-| 28 | 1 | Radio flags: bit 0 fallback; other bits zero |
-| 29 | 1 | Reserved, zero |
+| 28 | 2 | Reserved, zero |
 | 30 | 2 | CRC16-CCITT over bytes 0..29, little-endian |
 
-Profile ID, firmware version, sensor selection, pins, reporting intervals, and the transmit power ceiling are compile-time values and are not stored here. Commissioning stores the ceiling as the radio power level and clears the fallback flag; afterwards the level changes only by a gateway target or a fallback.
+Profile ID, firmware version, sensor selection, pins, reporting intervals, and the transmit power ceiling are compile-time values and are not stored here. The radio power level and fallback flag are held only in RAM, so adapting the level never writes EEPROM ([README.md](README.md#radio-power)).
 
 Saving always targets the older/inactive slot. Its magic is invalidated first, the payload and CRC are written next, and the two magic bytes are committed last. On boot, both slots are validated and the newest generation is selected, including across the 8-bit generation wrap.
 

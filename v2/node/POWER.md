@@ -4,7 +4,7 @@ Measured reference values and the battery budget model for battery-powered node 
 
 ## Conditions
 
-ATtiny1614 at 4 MHz, RFM69 H module at power level 2 (about 0 dBm on PA_BOOST), non-debug builds with unused pins disabled, supplied at 3.0 V by a Nordic PPK2 source meter. `counter_reed` and `binary` run on the internal board. `climate_tmp112` runs on the outdoor board, supplied directly at the MCU rail. The debug and SerialUPDI adapters are disconnected during measurement.
+ATtiny1614 at 4 MHz, RFM69 H module at power level 2 (about 0 dBm on PA_BOOST) unless a row names a lowered level, non-debug builds with unused pins disabled, supplied at 3.0 V by a Nordic PPK2 source meter. `counter_reed` and `binary` run on the internal board. `climate_tmp112` runs on the outdoor board, supplied at the MCU rail unless a row names the supercap connector, which adds the supervisor, load switch, and charging diode. The debug and SerialUPDI adapters are disconnected during measurement.
 
 ## Idle
 
@@ -13,8 +13,9 @@ ATtiny1614 at 4 MHz, RFM69 H module at power level 2 (about 0 dBm on PA_BOOST), 
 | `counter_reed` | 1.75 µA | 0.27 µC, about 200 µs, 3.3 mA peak | 2.92 µA |
 | `binary` | 1.71 µA | 0.27 µC | 2.90 µA |
 | `climate_tmp112` | 2.23 µA | — | 2.2 µA |
+| `climate_tmp112`, supercap connector | 2.99 µA | — | 3.0 µA |
 
-Polled inputs wake every 250 ms; the climate image wakes every 32 s. The contact state does not measurably change these values.
+Polled inputs wake every 250 ms; the climate image wakes every 32 s. The contact state does not measurably change these values. The supercap supply path adds about 0.76 µA.
 
 ## Input events
 
@@ -33,8 +34,9 @@ A counter pulse costs two debounce bursts, one when the contact closes and one w
 | `counter_reed` accepted pulse and acknowledged report in one wake-up | 34.7 ms | 7.2 mA | 30.4 mA | 251 µC |
 | `climate_tmp112` acknowledged report | 46.5 ms | 5.9 mA | 31.6 mA | 274 µC |
 | `climate_tmp112` power-up to first acknowledged report | 88.4 ms | 4.7 mA | 84.6 mA | 414 µC |
+| `climate_tmp112` power-up to first acknowledged report at a lowered level, supercap connector | 88.6 ms | 4.2 mA | 289 mA | 370 µC |
 
-On the internal board an acknowledged report without input work costs about 215 µC. The climate report adds the TMP112 one-shot conversion, which keeps the CPU awake together with the Vcc measurement for 32 ms (61 µC), and the outdoor board's module draws 30.6 mA while transmitting instead of 26 mA. The power-up peak is inrush into the board capacitors. The `binary` event divides as follows; the `counter_reed` report shows the same radio phases. The radio accounts for about 90 % of a report, and its airtime is set by the bit rate: both the frame and the ACK are padded to one 16-byte AES block.
+On the internal board an acknowledged report without input work costs about 215 µC. The climate report adds the TMP112 one-shot conversion, which keeps the CPU awake together with the Vcc measurement for 32 ms (61 µC), and the outdoor board's module draws 30.6 mA while transmitting at level 2 and about 22 mA at the lowered level. The power-up peak is inrush into the node's capacitors, at most 0.1 ms. The `binary` event divides as follows; the `counter_reed` report shows the same radio phases. The radio accounts for about 90 % of a report, and its airtime is set by the bit rate: both the frame and the ACK are padded to one 16-byte AES block.
 
 | Phase | Duration | Mean | Charge |
 | --- | ---: | ---: | ---: |
@@ -65,7 +67,7 @@ One report costs about 0.06 µAh; 1 mAh equals 3.6 C.
 | | 40 state changes per day | 0.9 |
 | | hourly keep-alive, at most | 0.5 |
 
-The solar climate node needs about 6.5 µA while reporting every 64 s and about 3.1 µA at the 320-second low-charge interval.
+Supplied through the supercap connector, the solar climate node needs about 7.3 µA while reporting every 64 s and about 3.9 µA at the 320-second low-charge interval.
 
 The counter needs about 30 mAh per year and the binary input about 27 mAh: seven to eight years of a 220 mAh CR2032 before self-discharge and end-of-life voltage sag under the transmit peak. The idle current dominates; the hourly keep-alive costs about 2 % of the budget.
 
