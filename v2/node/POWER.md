@@ -49,6 +49,41 @@ On the internal board an acknowledged report without input work costs about 215 
 
 Not yet measured: a transmission without ACK, commissioning receive windows, and command sessions.
 
+## Radio power levels
+
+`radio_power_sweep` on the outdoor board at 3.0 V: one voltage-only report per level, each acknowledged on the first attempt. Nominal output follows the RFM69 library 1.6.0 mapping for H modules; the transmission current is the highest 2 ms average inside the transmission. Every report takes 17.7 ms whatever the level.
+
+| Level | Nominal output | Amplifier | Transmission | Report |
+| ---: | ---: | --- | ---: | ---: |
+| 0 | −2 dBm | PA1 | 26.6 mA | 199 µC |
+| 1 | −1 dBm | PA1 | 28.3 mA | 204 µC |
+| 2 | 0 dBm | PA1 | 30.4 mA | 214 µC |
+| 3 | 1 dBm | PA1 | 32.7 mA | 222 µC |
+| 4 | 2 dBm | PA1 | 35.4 mA | 232 µC |
+| 5 | 3 dBm | PA1 | 38.6 mA | 244 µC |
+| 6 | 4 dBm | PA1 | 41.7 mA | 256 µC |
+| 7 | 5 dBm | PA1 | 45.2 mA | 269 µC |
+| 8 | 6 dBm | PA1 | 49.2 mA | 284 µC |
+| 9 | 7 dBm | PA1 | 52.6 mA | 298 µC |
+| 10 | 8 dBm | PA1 | 56.0 mA | 310 µC |
+| 11 | 9 dBm | PA1 | 58.7 mA | 321 µC |
+| 12 | 10 dBm | PA1 | 60.7 mA | 328 µC |
+| 13 | 11 dBm | PA1 | 62.2 mA | 334 µC |
+| 14 | 12 dBm | PA1 | 62.0 mA | 335 µC |
+| 15 | 13 dBm | PA1 | 62.8 mA | 335 µC |
+| 16 | 12 dBm | PA1 + PA2 | 76.5 mA | 387 µC |
+| 17 | 13 dBm | PA1 + PA2 | 85.1 mA | 421 µC |
+| 18 | 14 dBm | PA1 + PA2 | 94.3 mA | 456 µC |
+| 19 | 15 dBm | PA1 + PA2 | 104.1 mA | 492 µC |
+| 20 | 17 dBm | PA1 + PA2, high power | 123.6 mA | 564 µC |
+| 21 | 18 dBm | PA1 + PA2, high power | 130.4 mA | 591 µC |
+| 22 | 19 dBm | PA1 + PA2, high power | 135.2 mA | 605 µC |
+| 23..31 | 20 dBm | PA1 + PA2, high power | 139.6 mA | 625 µC |
+
+- The library clamps every level above 23 to 23, so a ceiling above 23 changes nothing. The highest single sample is 143 mA.
+- Levels 13–15 draw the same current. Levels 16 and 17 draw more than 14 and 15 for the same nominal output, and the step from 15 to 16 lowers it. The scale is one nominal dB per level only within 0–15 and within 16–19 or 20–23.
+- A report at level 23 costs about three times one at level 2. For the solar climate node reporting every 64 s that adds about 6.4 µA; for a battery node with about 64 reports a day, about 2.7 mAh per year.
+
 ## Battery budget
 
 ```text

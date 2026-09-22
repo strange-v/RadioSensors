@@ -12,6 +12,7 @@ This PlatformIO project produces one statically composed ATtiny1614 image per st
 | `binary_debug` | 5 | same, with UART diagnostics | 250 ms |
 | `counter_reed` | 6 | pulse count, supply voltage | 250 ms |
 | `counter_reed_debug` | 6 | same, with UART diagnostics | 250 ms |
+| `radio_power_sweep` | diagnostic | supply voltage at power levels 0..31 | 250 ms |
 
 Binary-input images with climate sensors (profiles 7, 8) are not implemented yet. An installation decides whether a binary input is a door, a window, or a float switch.
 
@@ -23,6 +24,8 @@ pio run -e climate_tmp112 -t upload
 ```
 
 Hardware environments inherit serial UPDI upload on COM11 at 115200 baud and serial monitoring on COM12 at 9600 baud. Only the adapter's RX line is connected to COM12.
+
+`radio_power_sweep` is a bench image for an already commissioned node. It sends one acknowledged voltage telemetry frame per second, increasing the RFM69 power level from 0 through 31, then sends nothing until reset. The frame's radio state contains the level used for that transmission. Keep the gateway close so every level completes in one attempt. Use a current-capable measurement supply and lower `NODE_POWER_SWEEP_LAST_LEVEL` when the board or its supply must not be exposed to all 32 levels.
 
 Upload never writes fuses. Write them once per chip before the first upload; every environment uses the same values (4 MHz from the 16 MHz oscillator, BOD 1.8 V in active mode only, EEPROM preserved on chip erase, UPDI pin kept):
 
@@ -80,7 +83,7 @@ The gateway rejects a join request from a UID it still holds as active. To pair 
 
 ## Radio power
 
-Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`; every image uses 2 until its board is measured. The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame. That RSSI is sampled when the acknowledgement's sync word matches: the RFM69 keeps measuring the channel after a frame ends, so a read after reception returns anything between the frame and the noise floor ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
+Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`; every image uses 2 until its board is measured. Transmission current and report charge per level are in [POWER.md](POWER.md#radio-power-levels). The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame. That RSSI is sampled when the acknowledgement's sync word matches: the RFM69 keeps measuring the channel after a frame ends, so a read after reception returns anything between the frame and the noise floor ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
 
 | Event | Level |
 | --- | --- |

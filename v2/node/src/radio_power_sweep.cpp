@@ -1,0 +1,92 @@
+#include <Arduino.h>
+#include <ProfileIds.h>
+#include <TelemetryFrames.h>
+
+#include "BatteryMonitor.h"
+#include "CommissioningService.h"
+#include "LowPowerClock.h"
+#include "NodeRadio.h"
+#include "UnusedPins.h"
+
+#if NODE_POWER_SWEEP_FIRST_LEVEL > NODE_POWER_SWEEP_LAST_LEVEL
+#error "NODE_POWER_SWEEP_FIRST_LEVEL must not exceed the last level"
+#endif
+
+#if NODE_POWER_SWEEP_LAST_LEVEL > 31
+#error "NODE_POWER_SWEEP_LAST_LEVEL must be in the RFM69 range 0..31"
+#endif
+
+#if NODE_POWER_SWEEP_INTERVAL_TICKS < 1
+#error "NODE_POWER_SWEEP_INTERVAL_TICKS must be positive"
+#endif
+
+namespace {
+using namespace radiosensors;
+
+constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
+constexpr uint16_t kProfileId =
+    protocol::profileIdValue(protocol::ProfileId::Voltage);
+
+// The sweep does not use sensors, the provisioning button, or UART.
+constexpr uint8_t kUnusedPins[] = {
+    PIN_PA5,
+    PIN_PA6,
+    PIN_PB0,
+    PIN_PB1,
+    PIN_PB2,
+    PIN_PB3,
+};
+
+node::NodeRadio radio(NODE_RFM69_CS, NODE_RFM69_IRQ);
+node::LowPowerClock clock;
+node::BatteryMonitor battery;
+node::CommissioningService commissioning(radio, kProfileId, kFirmwareVersion);
+
+uint8_t powerLevel = NODE_POWER_SWEEP_FIRST_LEVEL;
+uint8_t ticksUntilTransmission = NODE_POWER_SWEEP_INTERVAL_TICKS;
+bool sweepEnabled = false;
+bool sweepFinished = false;
+
+void transmitAtCurrentLevel() {
+    radio.setPowerLevel(powerLevel);
+    const protocol::TelemetryPrefix prefix{
+        battery.readMillivolts(),
+        protocol::encodeRadioState(powerLevel, false, false),
+        protocol::kNoDownlinkRssi};
+    uint8_t frame[protocol::kVoltageTelemetrySize];
+    if (protocol::encodeVoltageTelemetry(prefix, frame, sizeof(frame)) !=
+        protocol::TelemetryCodecStatus::Ok) {
+        return;
+    }
+
+    protocol::TelemetryAck ack{};
+    int8_t ackRssi = protocol::kNoDownlinkRssi;
+    radio.sendTelemetry(
+        commissioning.config().gatewayId, frame,
+        static_cast<uint8_t>(sizeof(frame)), ack, ackRssi);
+    // Match the production transaction, which samples loaded supply after
+    // every transmission even though this diagnostic does not retain it.
+    battery.readMillivolts();
+}
+}
+
+void setup() {
+    node::disableUnusedPins(kUnusedPins);
+    clock.begin();
+    sweepEnabled = commissioning.begin() && commissioning.active();
+}
+
+void loop() {
+    clock.sleepUntilInterrupt();
+    if (!sweepEnabled || sweepFinished) return;
+
+    if (--ticksUntilTransmission != 0) return;
+    ticksUntilTransmission = NODE_POWER_SWEEP_INTERVAL_TICKS;
+    transmitAtCurrentLevel();
+
+    if (powerLevel == NODE_POWER_SWEEP_LAST_LEVEL) {
+        sweepFinished = true;
+    } else {
+        ++powerLevel;
+    }
+}
