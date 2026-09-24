@@ -85,6 +85,28 @@ Not yet measured: a transmission without ACK, commissioning receive windows, and
 - The antenna changes the current far more than the board. With the sticker antenna the two boards stay within 14 % of each other and both draw the same current at levels 13–15; on the outdoor board the 20 cm antenna draws up to 20 % less than the sticker and the 5 cm one up to 46 % less. Amplifier current follows the antenna load, not the radiated power, so a ceiling needs each board and antenna's own sweep together with the gateway's RSSI.
 - A report at level 23 costs 2.5–2.9 times one at level 2. On the outdoor board reporting every 64 s that adds 4.6–6.5 µA; for an internal-board node with about 64 reports a day, about 2.7 mAh per year.
 
+## Supply sag
+
+Voltage drop during a `radio_power_sweep` transmission, measured at the supply terminals with the sticker antenna at room temperature. The used and exhausted cells come from other devices; their voltage at rest does not reveal their wear.
+
+| Supply | Board | Voltage at rest | Level | Sag | Minimum |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Supercapacitor, supercap connector | outdoor | 3.0 V | 23 | 40 mV | 2.96 V |
+| New CR2032 | internal | 3.18 V | 0 | 140 mV | 3.04 V |
+| | | | 2 | 160 mV | 3.02 V |
+| | | | 5 | 200 mV | 2.98 V |
+| | | | 15 | 340 mV | 2.84 V |
+| | | | 23 | 620 mV | 2.56 V |
+| Used CR2032 | internal | 3.08 V | 0 | 300 mV | 2.78 V |
+| | | | 5 | 450 mV | 2.63 V |
+| | | | 15 | 700 mV | 2.38 V |
+| Exhausted CR2032 | internal | 2.85 V | 0 | 1.0 V | 1.85 V |
+
+- Levels above 23 give the same sag because the library clamps them to 23.
+- The supercapacitor behaves as about 0.28 Ω. The new CR2032 falls from about 5 Ω at level 0 to 4.4 Ω at level 23, the used one stays near 11 Ω, the exhausted one is about 38 Ω.
+- The used cell stops delivering reports above level 15. At 11 Ω, levels 20–23 would take it below the 1.8 V BOD.
+- The exhausted cell delivers only the first report after it is connected, then stays near 1.8 V under load and does not recover between reports. No power level helps it.
+
 ## Battery budget
 
 ```text
@@ -111,4 +133,6 @@ The counter needs about 30 mAh per year and the binary input about 27 mAh: seven
 
 - Measure the charge of each event in the PPK2 selection, not the average of an arbitrary window, and combine the charges with the model above.
 - Supply from the PPK2 source meter at the voltage of the intended cell.
+- Measure supply sag on the real cell or supercapacitor, not the PPK2, whose regulated output hides it. On an oscilloscope use AC coupling, a ×1 probe, 50 mV/div, 5 ms/div, and a single falling-edge trigger just below zero, with a short ground lead at the supply terminals.
+- A coin cell takes seconds to recover from a transmission. Let it rest for a minute, step the levels upward, and read the lowest point at the end of the transmission; a cell still recovering from a higher level doubles the sag at a low one.
 - Charges from a hand-held magnet include extra debounce bursts caused by reed chatter; measure a counter on a running meter for realistic values.

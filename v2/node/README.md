@@ -13,6 +13,7 @@ This PlatformIO project produces one statically composed ATtiny1614 image per st
 | `counter_reed` | 6 | pulse count, supply voltage | 250 ms |
 | `counter_reed_debug` | 6 | same, with UART diagnostics | 250 ms |
 | `radio_power_sweep` | diagnostic | supply voltage at power levels 0..31 | 250 ms |
+| `radio_power_sweep_button` | diagnostic | one report every 5 s; PA6 selects the power level | 250 ms |
 
 Binary-input images with climate sensors (profiles 7, 8) are not implemented yet. An installation decides whether a binary input is a door, a window, or a float switch.
 
@@ -25,7 +26,7 @@ pio run -e climate_tmp112 -t upload
 
 Hardware environments inherit serial UPDI upload on COM11 at 115200 baud and serial monitoring on COM12 at 9600 baud. Only the adapter's RX line is connected to COM12.
 
-`radio_power_sweep` is a bench image for an already commissioned node. It sends one acknowledged voltage telemetry frame per second, increasing the RFM69 power level from 0 through 31, then sends nothing until reset. The frame's radio state contains the level used for that transmission. Keep the gateway close so every level completes in one attempt. Use a current-capable measurement supply and lower `NODE_POWER_SWEEP_LAST_LEVEL` when the board or its supply must not be exposed to all 32 levels.
+`radio_power_sweep` is a bench image for an already commissioned node. It sends one acknowledged voltage telemetry frame every 5 seconds, increasing the RFM69 power level from 0 through 31, then sends nothing until reset. `radio_power_sweep_button` sets `NODE_POWER_SWEEP_BUTTON_LEVEL` and sends a frame every 5 seconds at the selected level. It starts at `NODE_POWER_SWEEP_FIRST_LEVEL`; each PA6 press selects the next level, wrapping to the first after `NODE_POWER_SWEEP_LAST_LEVEL`. The frame's radio state contains the level used for that transmission. Keep the gateway close so every level completes in one attempt. Use a current-capable measurement supply and lower `NODE_POWER_SWEEP_LAST_LEVEL` when the board or its supply must not be exposed to all 32 levels.
 
 Upload never writes fuses. Write them once per chip before the first upload; every environment uses the same values (4 MHz from the 16 MHz oscillator, BOD 1.8 V in active mode only, EEPROM preserved on chip erase, UPDI pin kept):
 
