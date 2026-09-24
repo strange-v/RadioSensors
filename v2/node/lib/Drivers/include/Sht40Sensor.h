@@ -13,10 +13,16 @@ public:
         : wire_(wire), address_(address) {}
 
     void begin();
+    // One measurement; after a failure the bus is recovered, the sensor
+    // reset, and the measurement repeated once. The outputs change only on
+    // success.
     bool read(int16_t& temperatureCentiDegrees,
               uint16_t& humidityCentiPercent);
 
 private:
+    void softReset();
+    bool measure(int16_t& temperatureCentiDegrees,
+                 uint16_t& humidityCentiPercent);
     static uint8_t crc8(const uint8_t* data, uint8_t size);
 
     TwoWire& wire_;

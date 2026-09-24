@@ -104,6 +104,16 @@ An active node opens a command session when its button is short-pressed, or when
 
 Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the 1/5/15/60-minute telemetry retry delays. A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.
 
+## Fault recovery
+
+| Fault | Response |
+| --- | --- |
+| I2C sensor read fails | The TWI0 bus is freed (up to nine SCL clocks, then STOP), the sensor is put back into its sleep state or reset, and the read is repeated once. A report whose read fails twice carries the invalid-value sentinel. |
+| Radio or sensor work hangs | A watchdog armed only around startup, reports, command sessions, and commissioning attempts resets the MCU after 8 s. It is off in sleep and on radio-free ticks, which keeps the idle current unchanged. |
+| RFM69 fails to initialize | Software restart 5 minutes after boot. A node without network configuration or factory credentials does not restart. |
+
+Debug builds log `tmp fail`, `rst wdt` after a watchdog reset, and `rst rf` before a radio restart.
+
 ## Persistence and protocols
 
 Network configuration uses two CRC-protected generation slots. Counter state uses a separate wear-levelled journal, and accepted `SET_COUNT` results have recoverable slots. Exact layouts are in [EEPROM.md](EEPROM.md).

@@ -41,7 +41,11 @@ public:
         const protocol::TelemetryPrefix& prefix, uint8_t* output,
         const size_t capacity) {
         int16_t temperature = protocol::kInvalidTemperature;
-        temperature_.readTemperature(temperature);
+        if (!temperature_.readTemperature(temperature)) {
+#if defined(NODE_DEBUG)
+            debugLine(F("tmp fail"));
+#endif
+        }
         return protocol::encodeTemperatureTelemetry(
                    prefix, temperature, output, capacity) ==
                 protocol::TelemetryCodecStatus::Ok

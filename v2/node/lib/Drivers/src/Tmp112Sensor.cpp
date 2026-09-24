@@ -1,10 +1,16 @@
 #include "Tmp112Sensor.h"
 
+#include "TwiBusRecovery.h"
+
 namespace radiosensors {
 namespace node {
 
 void Tmp112Sensor::begin() {
     wire_.begin();
+    enterShutdown();
+}
+
+void Tmp112Sensor::enterShutdown() {
     uint16_t configuration = 0;
     if (readRegister16(0x01, configuration)) {
         // SD=1 keeps the sensor in its sub-microamp shutdown state between
@@ -34,6 +40,13 @@ bool Tmp112Sensor::writeRegister16(
 }
 
 bool Tmp112Sensor::readTemperature(int16_t& centiDegrees) {
+    if (measure(centiDegrees)) return true;
+    recoverTwiBus(wire_);
+    enterShutdown();
+    return measure(centiDegrees);
+}
+
+bool Tmp112Sensor::measure(int16_t& centiDegrees) {
     uint16_t configurationRegister = 0;
     if (!readRegister16(0x01, configurationRegister)) {
         return false;
@@ -62,9 +75,11 @@ bool Tmp112Sensor::readTemperature(int16_t& centiDegrees) {
         raw |= static_cast<int16_t>(~((1 << bits) - 1));
     }
     const int32_t scaled = static_cast<int32_t>(raw) * 625;
-    centiDegrees = static_cast<int16_t>(
+    const int16_t value = static_cast<int16_t>(
         scaled >= 0 ? (scaled + 50) / 100 : (scaled - 50) / 100);
-    return centiDegrees >= -8000 && centiDegrees <= 12500;
+    if (value < -8000 || value > 12500) return false;
+    centiDegrees = value;
+    return true;
 }
 
 }  // namespace node

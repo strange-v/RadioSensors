@@ -23,7 +23,7 @@ CommissioningService::CommissioningService(
       profileId_(profileId),
       firmware_(firmware) {}
 
-bool CommissioningService::begin() {
+StartStatus CommissioningService::begin() {
     readDeviceUid();
     const bool hasConfig = store_.load(config_);
     factoryCredentialsValid_ = factoryStore_.load(factoryCredentials_);
@@ -31,21 +31,21 @@ bool CommissioningService::begin() {
 #if defined(NODE_DEBUG)
         debugLine(F("join no fcred"));
 #endif
-        return false;
+        return StartStatus::NoCredentials;
     }
 #if defined(NODE_DEBUG)
     debugLine(hasConfig ? F("cfg ok") : F("cfg none"));
 #endif
     const uint8_t nodeId = hasConfig ? config_.nodeId : 0;
     const uint8_t networkId = hasConfig ? config_.networkId : 0;
-    if (!radio_.begin(nodeId, networkId)) return false;
+    if (!radio_.begin(nodeId, networkId)) return StartStatus::RadioFailed;
     if (hasConfig) {
         radio_.useOperationalProfile(config_);
     } else {
         radio_.useCommissioningProfile(factoryCredentials_.key);
     }
     radio_.sleep();
-    return true;
+    return StartStatus::Ready;
 }
 
 bool CommissioningService::active() const {

@@ -1,5 +1,7 @@
 #include "Sht40Sensor.h"
 
+#include "TwiBusRecovery.h"
+
 namespace radiosensors {
 namespace node {
 
@@ -21,6 +23,22 @@ uint8_t Sht40Sensor::crc8(const uint8_t* data, const uint8_t size) {
 }
 
 bool Sht40Sensor::read(
+    int16_t& temperatureCentiDegrees, uint16_t& humidityCentiPercent) {
+    if (measure(temperatureCentiDegrees, humidityCentiPercent)) return true;
+    recoverTwiBus(wire_);
+    softReset();
+    return measure(temperatureCentiDegrees, humidityCentiPercent);
+}
+
+void Sht40Sensor::softReset() {
+    wire_.beginTransmission(address_);
+    wire_.write(0x94);
+    wire_.endTransmission();
+    // The reset takes at most 1 ms.
+    delay(1);
+}
+
+bool Sht40Sensor::measure(
     int16_t& temperatureCentiDegrees, uint16_t& humidityCentiPercent) {
     // 0xFD: high-precision measurement without heater.
     wire_.beginTransmission(address_);
@@ -48,9 +66,10 @@ bool Sht40Sensor::read(
     if (humidity < 0) humidity = 0;
     if (humidity > 10000) humidity = 10000;
 
+    if (temperature < -4000 || temperature > 12500) return false;
     temperatureCentiDegrees = static_cast<int16_t>(temperature);
     humidityCentiPercent = static_cast<uint16_t>(humidity);
-    return temperature >= -4000 && temperature <= 12500;
+    return true;
 }
 
 }  // namespace node

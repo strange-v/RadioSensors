@@ -1,5 +1,6 @@
 #include <ConfirmedInput.h>
 #include <CounterStorage.h>
+#include <I2cBusRecovery.h>
 #include <RadioPowerState.h>
 #include <SupplyVoltage.h>
 #include <TelemetrySchedule.h>
@@ -24,6 +25,7 @@ using radiosensors::node::PowerDecision;
 using radiosensors::node::afterAcknowledged;
 using radiosensors::node::afterUnacknowledged;
 using radiosensors::node::kCounterMinimumReportMs;
+using radiosensors::node::recoverI2cBus;
 
 namespace {
 
@@ -76,6 +78,48 @@ public:
     bool settles = true;
     int reads = 0;
     int bursts = 0;
+};
+
+// Open-drain lines with pull-ups and one target that holds SDA low until it
+// has seen `heldClocks` more SCL rising edges; a negative count holds it
+// forever.
+class FakeI2cBus {
+public:
+    explicit FakeI2cBus(const int heldClocks) : heldClocks_(heldClocks) {}
+
+    void pullSclLow() { setScl(false); }
+    void releaseScl() { setScl(true); }
+    void pullSdaLow() { setSda(false); }
+    void releaseSda() { setSda(true); }
+    bool sclHigh() const { return sclReleased_; }
+    bool sdaHigh() const { return sdaReleased_ && heldClocks_ == 0; }
+    void halfPeriod() {}
+
+    int clocks = 0;
+    int starts = 0;
+    int stops = 0;
+
+private:
+    void setScl(const bool released) {
+        const bool rising = released && !sclReleased_;
+        sclReleased_ = released;
+        if (!rising) return;
+        ++clocks;
+        if (heldClocks_ > 0) --heldClocks_;
+    }
+
+    void setSda(const bool released) {
+        const bool before = sdaHigh();
+        sdaReleased_ = released;
+        const bool after = sdaHigh();
+        if (!sclReleased_ || before == after) return;
+        if (after) ++stops;
+        else ++starts;
+    }
+
+    int heldClocks_;
+    bool sclReleased_ = true;
+    bool sdaReleased_ = true;
 };
 
 FactoryCredentials makeFactoryCredentials() {
@@ -630,6 +674,32 @@ void test_minimum_phase_accepts_level_held_for_minimum_time() {
         static_cast<uint8_t>(phase.update(1750, false)));
 }
 
+void test_i2c_recovery_on_idle_bus_only_sends_stop() {
+    FakeI2cBus bus(0);
+    TEST_ASSERT_TRUE(recoverI2cBus(bus));
+    // The one rising edge is the STOP's own SCL release.
+    TEST_ASSERT_EQUAL_INT(1, bus.clocks);
+    TEST_ASSERT_EQUAL_INT(0, bus.starts);
+    TEST_ASSERT_EQUAL_INT(1, bus.stops);
+}
+
+void test_i2c_recovery_clocks_until_target_releases_sda() {
+    FakeI2cBus bus(3);
+    TEST_ASSERT_TRUE(recoverI2cBus(bus));
+    TEST_ASSERT_EQUAL_INT(3 + 1, bus.clocks);
+    TEST_ASSERT_EQUAL_INT(0, bus.starts);
+    TEST_ASSERT_EQUAL_INT(1, bus.stops);
+    TEST_ASSERT_TRUE(bus.sclHigh());
+    TEST_ASSERT_TRUE(bus.sdaHigh());
+}
+
+void test_i2c_recovery_gives_up_after_nine_clocks() {
+    FakeI2cBus bus(-1);
+    TEST_ASSERT_FALSE(recoverI2cBus(bus));
+    TEST_ASSERT_EQUAL_INT(9 + 1, bus.clocks);
+    TEST_ASSERT_EQUAL_INT(0, bus.starts);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_layout_fills_eeprom_without_overlap);
@@ -665,5 +735,8 @@ int main(int, char**) {
     RUN_TEST(test_confirmed_input_counts_boot_inside_low_phase_once);
     RUN_TEST(test_minimum_phase_rejects_chatter_and_counts_one_rise_per_pulse);
     RUN_TEST(test_minimum_phase_accepts_level_held_for_minimum_time);
+    RUN_TEST(test_i2c_recovery_on_idle_bus_only_sends_stop);
+    RUN_TEST(test_i2c_recovery_clocks_until_target_releases_sda);
+    RUN_TEST(test_i2c_recovery_gives_up_after_nine_clocks);
     return UNITY_END();
 }

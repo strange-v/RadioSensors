@@ -15,6 +15,7 @@
 #include "RadioPowerState.h"
 #include "SupplyVoltage.h"
 #include "TelemetrySchedule.h"
+#include "WatchdogWindow.h"
 
 namespace radiosensors {
 namespace node {
@@ -52,12 +53,19 @@ public:
           button_(button) {}
 
     void begin() {
-        profile_.begin();
-        button_.begin();
-        clock_.begin();
-        radioReady_ = commissioning_.begin();
 #if defined(NODE_DEBUG)
-        debugLine(radioReady_ ? F("rf ok") : F("rf fail"));
+        // The core moves the reset flags to GPIOR0 before setup().
+        if ((GPIOR0 & RSTCTRL_WDRF_bm) != 0) debugLine(F("rst wdt"));
+#endif
+        {
+            WatchdogWindow watchdog;
+            profile_.begin();
+            button_.begin();
+            clock_.begin();
+            radioStart_ = commissioning_.begin();
+        }
+#if defined(NODE_DEBUG)
+        debugLine(radioStart_ == StartStatus::Ready ? F("rf ok") : F("rf fail"));
 #endif
     }
 
@@ -66,7 +74,14 @@ public:
         if (gesture == ButtonGesture::LongPress) resetNetwork();
         const uint32_t now = clock_.nowMs();
         profile_.poll(now);
-        if (radioReady_) {
+        if (radioStart_ == StartStatus::RadioFailed &&
+            intervalElapsed(now, 0, kRadioRestartDelayMs)) {  // since boot
+#if defined(NODE_DEBUG)
+            debugLine(F("rst rf"));
+#endif
+            restart();
+        }
+        if (radioStart_ == StartStatus::Ready) {
             if (commissioning_.active()) {
                 const bool commandPending = reportIfDue(now);
                 if (gesture == ButtonGesture::ShortPress) {
@@ -88,6 +103,9 @@ private:
     static constexpr uint32_t kJoinRetryIntervalMs = 5UL * 60UL * 1000UL;
     static constexpr uint32_t kSessionWindowMs = 250;
     static constexpr uint8_t kSessionAttempts = 3;
+    // A radio that failed to start gets a fresh boot; the delay bounds how
+    // often a dead module costs one.
+    static constexpr uint32_t kRadioRestartDelayMs = 5UL * 60UL * 1000UL;
 
     // USERROW and profile EEPROM, including the counter, survive. The restart
     // brings the node up unconfigured, on its factory commissioning profile.
@@ -100,6 +118,12 @@ private:
         }
 #if defined(NODE_DEBUG)
         debugLine(F("rst"));
+#endif
+        restart();
+    }
+
+    static void restart() {
+#if defined(NODE_DEBUG)
         Serial.flush();
 #endif
         _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
@@ -114,6 +138,7 @@ private:
 #if defined(NODE_DEBUG)
         if (requestedByButton) debugLine(F("join btn"));
 #endif
+        WatchdogWindow watchdog;
         joinAttempted_ = true;
         lastJoinAttempt_ = now;
         commissioning_.advance();
@@ -126,6 +151,7 @@ private:
             (!urgent && !radioRetry_.allowed(now))) {
             return false;
         }
+        WatchdogWindow watchdog;
         const protocol::TelemetryPrefix prefix{
             supplyVoltage_.report(battery_.readMillivolts()),
             protocol::encodeRadioState(powerLevel_, radioFallback_, false),
@@ -183,6 +209,7 @@ private:
     // Returns whether the gateway answered: with No command, or with a
     // command that was then applied and answered.
     bool runCommandSession() {
+        WatchdogWindow watchdog;
         const uint8_t gatewayId = commissioning_.config().gatewayId;
         const uint32_t nonce = commissioning_.createNonce();
         uint8_t ready[protocol::kCommandReadySize];
@@ -259,7 +286,7 @@ private:
     bool radioFallback_ = false;
     uint8_t unacknowledgedReports_ = 0;
     uint32_t lastJoinAttempt_ = 0;
-    bool radioReady_ = false;
+    StartStatus radioStart_ = StartStatus::RadioFailed;
     bool joinAttempted_ = false;
 };
 

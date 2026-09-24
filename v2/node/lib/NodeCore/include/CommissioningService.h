@@ -12,13 +12,20 @@
 namespace radiosensors {
 namespace node {
 
+enum class StartStatus : uint8_t {
+    Ready,
+    // Neither a network configuration nor factory credentials.
+    NoCredentials,
+    RadioFailed,
+};
+
 class CommissioningService {
 public:
     CommissioningService(
         NodeRadio& radio, uint16_t profileId,
         protocol::FirmwareVersion firmware);
 
-    bool begin();
+    StartStatus begin();
     bool active() const;
     bool advance();
     const storage::NetworkConfig& config() const;

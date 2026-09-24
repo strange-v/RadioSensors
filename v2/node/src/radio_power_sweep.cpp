@@ -115,7 +115,8 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(NODE_BUTTON_PIN), onButtonEdge, CHANGE);
 #endif
     clock.begin();
-    sweepEnabled = commissioning.begin() && commissioning.active();
+    sweepEnabled = commissioning.begin() == node::StartStatus::Ready &&
+        commissioning.active();
 }
 
 void loop() {
