@@ -95,6 +95,28 @@ pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32 --port COM5 erase-regi
 
 The first line is for the Waveshare board, the second for WT32-ETH01, which must be in its ROM bootloader as for any cable upload. esptool resets the board afterwards. It boots as a new gateway, with a fresh device secret and a random network ID, and waits for initial setup. Do not use `pio run -t erase`: it erases the whole flash, including the firmware and the Web UI.
 
+## Load testing
+
+`scripts/status_logger.py` appends `/ui/status` health to a CSV every five minutes: boot ID and reset reason, uptime, free heap, radio and WebSocket counters. It signs in again after a gateway restart and records an unreachable gateway as a row with an error. It asks for the password, or takes it from `OSK_PASSWORD`:
+
+```powershell
+python scripts/status_logger.py osk-hub-a085e3e6cc20.local admin soak.csv
+```
+
+The node image `radio_flood` ([node README](../node/README.md)) supplies burst traffic. Two of them, about 28 frames per second together with retries after collisions, were acknowledged for 12 minutes with no dropped telemetry, no missed interrupt, and free heap steady at about 195 KB; after a reset the radio received again without a power cycle.
+
+## Crash dumps
+
+A panic or task-watchdog reset writes a core dump to the `coredump` partition, where it stays until the next crash; `reset_reason` in `/ui/status` names the cause. Read the Waveshare dump over USB and decode it against the ELF of the running firmware:
+
+```powershell
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM8 read-flash 0xff0000 0x10000 core.bin
+$env:PATH = "$env:USERPROFILE\.platformio\packages\tool-xtensa-esp-elf-gdb\bin;$env:PATH"
+esp-coredump --chip esp32s3 info_corefile -t raw -c core.bin .pio\build\gateway_waveshare_s3_eth\firmware.elf
+```
+
+`esp-coredump` is in the PlatformIO Python environment (`%USERPROFILE%\.platformio\penv\Scripts`). The WT32-ETH01 dump is at `0x3f0000`. The task watchdog guards only `loop()`; startup runs before it is enabled.
+
 ## Runtime
 
 One priority-11 task owns RFM69 and all FIFO/SPI operations. Active telemetry enters bounded queues and is acknowledged only after acceptance. Commissioning and NVS writes execute outside the radio task. The main loop keeps the latest opaque telemetry frame for each node and publishes it through the binary WebSocket.

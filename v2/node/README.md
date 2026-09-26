@@ -16,6 +16,7 @@ This PlatformIO project produces one statically composed ATtiny1614 image per st
 | `counter_reed_debug` | 6 | same, with UART diagnostics | 250 ms |
 | `radio_power_sweep` | diagnostic | supply voltage at power levels 0..31 | 250 ms |
 | `radio_power_sweep_button` | diagnostic | one report every 5 s; PA6 selects the power level | 250 ms |
+| `radio_flood` | 1 | acknowledged voltage reports back to back, for gateway load tests | 250 ms |
 
 The binary-input image with TMP112 (profile 8) is not implemented yet. An installation decides whether a binary input is a door, a window, or a float switch.
 
@@ -31,6 +32,8 @@ For the SHT40 binary node, build `binary_sht40` or `binary_sht40_debug` and uplo
 Hardware environments inherit serial UPDI upload on COM11 at 115200 baud and serial monitoring on COM12 at 9600 baud. Only the adapter's RX line is connected to COM12.
 
 `radio_power_sweep` is a bench image for an already commissioned node. It sends one acknowledged voltage telemetry frame every 5 seconds, increasing the RFM69 power level from 0 through 31, then sends nothing until reset. `radio_power_sweep_button` sets `NODE_POWER_SWEEP_BUTTON_LEVEL` and sends a frame every 5 seconds at the selected level. It starts at `NODE_POWER_SWEEP_FIRST_LEVEL`; each PA6 press selects the next level, wrapping to the first after `NODE_POWER_SWEEP_LAST_LEVEL`. The frame's radio state contains the level used for that transmission. Keep the gateway close so every level completes in one attempt. Use a current-capable measurement supply and lower `NODE_POWER_SWEEP_LAST_LEVEL` when the board or its supply must not be exposed to all 32 levels.
+
+`radio_flood` is a gateway load-test image. It joins as profile 1 (voltage) on a short PA6 press, like any unconfigured node, and a 10-second hold resets its network configuration. Once active it sends acknowledged voltage reports without sleeping or backing off, `NODE_FLOOD_INTERVAL_MS` (50 ms) apart, at the fixed level `NODE_FLOOD_POWER_LEVEL` (2); power targets from the gateway are counted, not applied, so set the node to a fixed policy at that level. One exchange takes about 18 ms, so a node sends about 14 reports per second. Every 100 reports it prints `sent=… ack=… tgt=… ms=…` on the UART at 9600 baud. It draws tens of milliamperes continuously: supply it from a bench supply, not a coin cell.
 
 Upload never writes fuses. Write them once per chip before the first upload; every environment uses the same values (4 MHz from the 16 MHz oscillator, BOD 1.8 V in active mode only, EEPROM preserved on chip erase, UPDI pin kept):
 

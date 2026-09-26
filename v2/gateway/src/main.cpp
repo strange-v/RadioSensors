@@ -40,6 +40,12 @@ const char* ethernetControllerName(gateway::board::EthernetController controller
 
 void setup() {
     Serial.begin(115200);
+#if ARDUINO_USB_CDC_ON_BOOT
+    // A host that keeps the USB CDC port open without reading it fills the
+    // TX buffer, and each write then waits up to 2 s: drop the log rather
+    // than stall the gateway.
+    Serial.setTxTimeoutMs(0);
+#endif
     delay(kSerialStartupDelayMs);
 
     Serial.println();
@@ -51,8 +57,6 @@ void setup() {
         ethernetControllerName(gateway::board::current.ethernetController));
     Serial.printf("PoE profile: %s\n", gateway::board::current.hasPoe ? "yes" : "no");
     Serial.printf("Reset reason: %s\n", gateway::diagnostics::resetReason());
-    const bool watchdogStarted = gateway::diagnostics::beginWatchdog();
-    Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 
     gateway::configuration_store::begin();
     gateway::identity::begin();
@@ -79,6 +83,11 @@ void setup() {
     gateway::commands::begin(radioReady);
     gateway::web_server::begin();
     gateway::ota::begin();
+
+    // Only loop() feeds the watchdog, so startup, which may outlast its 5 s
+    // timeout, runs before the loop task is subscribed.
+    const bool watchdogStarted = gateway::diagnostics::beginWatchdog();
+    Serial.printf("Task watchdog: %s\n", watchdogStarted ? "enabled" : "failed");
 }
 
 void loop() {
