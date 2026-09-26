@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <RFM69registers.h>
+#include <RadioAes.h>
 #include <string.h>
 
 namespace radiosensors {
@@ -10,6 +11,11 @@ namespace node {
 namespace {
 constexpr uint8_t kTelemetryAttempts = 3;
 constexpr uint32_t kAckWaitMs = 40;
+
+static_assert(radio_aes::kStandbyMode == RF69_MODE_STANDBY, "RFM69 mode");
+static_assert(radio_aes::kPacketConfig2Register == REG_PACKETCONFIG2, "RFM69 map");
+static_assert(radio_aes::kAesKey1Register == REG_AESKEY1, "RFM69 map");
+static_assert(radio_aes::kAesOn == RF_PACKET2_AES_ON, "RFM69 map");
 }
 
 NodeRadio::NodeRadio(const uint8_t chipSelect, const uint8_t interruptPin)
@@ -25,24 +31,17 @@ bool NodeRadio::begin(const uint8_t nodeId, const uint8_t networkId) {
     return initialized;
 }
 
-void NodeRadio::useCommissioningProfile(const uint8_t factoryKey[16]) {
-    char key[17];
-    memcpy(key, factoryKey, 16);
-    key[16] = '\0';
+void NodeRadio::useCommissioningProfile(const uint8_t (&factoryKey)[16]) {
     radio_.setAddress(0);
     radio_.setNetwork(0);
-    radio_.encrypt(key);
-    memset(key, 0, sizeof(key));
+    radio_aes::enable(radio_, factoryKey);
     radio_.setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
 }
 
 void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
-    char key[17];
-    memcpy(key, config.installationKey, 16);
-    key[16] = '\0';
     radio_.setAddress(config.nodeId);
     radio_.setNetwork(config.networkId);
-    radio_.encrypt(key);
+    radio_aes::enable(radio_, config.installationKey);
     // Every boot and every join starts at the ceiling; the gateway lowers it.
     radio_.setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
 }

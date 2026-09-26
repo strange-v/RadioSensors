@@ -40,3 +40,4 @@ run_suite test_commissioning_frames
 run_suite test_gateway_storage
 run_suite test_command_book
 run_suite test_radio_power
+run_suite test_radio_aes

@@ -2,6 +2,7 @@
 
 #include <RFM69.h>
 #include <RFM69registers.h>
+#include <RadioAes.h>
 #include <JoinRequest.h>
 #include <SPI.h>
 #include <TelemetryFrames.h>
@@ -16,6 +17,12 @@
 
 namespace gateway::radio {
 namespace {
+
+namespace radio_aes = radiosensors::radio_aes;
+static_assert(radio_aes::kStandbyMode == RF69_MODE_STANDBY, "RFM69 mode");
+static_assert(radio_aes::kPacketConfig2Register == REG_PACKETCONFIG2, "RFM69 map");
+static_assert(radio_aes::kAesKey1Register == REG_AESKEY1, "RFM69 map");
+static_assert(radio_aes::kAesOn == RF_PACKET2_AES_ON, "RFM69 map");
 
 constexpr uint8_t kExpectedVersion = 0x24;
 constexpr uint32_t kTaskStackSize = 4096;
@@ -73,7 +80,7 @@ std::atomic<Profile> currentProfile{Profile::Operational};
 std::atomic<uint8_t> currentNetworkId{0};
 uint8_t operationalNetworkId = 0;
 uint8_t commissioningNetworkId = 0;
-char operationalKey[radiosensors::gateway_storage::kRadioKeySize + 1]{};
+uint8_t operationalKey[radiosensors::gateway_storage::kRadioKeySize]{};
 uint8_t pairingKey[radiosensors::gateway_storage::kRadioKeySize]{};
 // Read by web and service tasks; after begin() only the radio task sets it.
 std::atomic<bool> operationalEnabled{false};
@@ -349,8 +356,8 @@ void restoreModule() {
         rfm69.getVersion() == kExpectedVersion;
     if (restored) {
         configurePower();
-        rfm69.encrypt(currentProfile.load() == Profile::Commissioning
-            ? reinterpret_cast<const char*>(pairingKey)
+        radio_aes::enable(rfm69, currentProfile.load() == Profile::Commissioning
+            ? pairingKey
             : operationalKey);
         rfm69.receiveDone();
         rememberRegisters();
@@ -404,14 +411,14 @@ void processCommand(const RadioCommand& command) {
         memcpy(pairingKey, command.key, sizeof(pairingKey));
         commissioningEnabled = true;
         rfm69.setNetwork(commissioningNetworkId);
-        rfm69.encrypt(reinterpret_cast<const char*>(pairingKey));
+        radio_aes::enable(rfm69, pairingKey);
         currentProfile.store(Profile::Commissioning);
         currentNetworkId.store(commissioningNetworkId);
     } else if (command.kind == CommandKind::ApplyInstallation) {
         memcpy(operationalKey, command.key, sizeof(command.key));
         operationalNetworkId = command.networkId;
         rfm69.setNetwork(operationalNetworkId);
-        rfm69.encrypt(operationalKey);
+        radio_aes::enable(rfm69, operationalKey);
         currentProfile.store(Profile::Operational);
         currentNetworkId.store(operationalNetworkId);
         memset(pairingKey, 0, sizeof(pairingKey));
@@ -422,13 +429,13 @@ void processCommand(const RadioCommand& command) {
         if (command.profile == Profile::Commissioning) {
             if (commissioningEnabled) {
                 rfm69.setNetwork(commissioningNetworkId);
-                rfm69.encrypt(reinterpret_cast<const char*>(pairingKey));
+                radio_aes::enable(rfm69, pairingKey);
                 currentProfile.store(Profile::Commissioning);
                 currentNetworkId.store(commissioningNetworkId);
             }
         } else {
             rfm69.setNetwork(operationalNetworkId);
-            rfm69.encrypt(operationalKey);
+            radio_aes::enable(rfm69, operationalKey);
             currentProfile.store(Profile::Operational);
             currentNetworkId.store(operationalNetworkId);
             memset(pairingKey, 0, sizeof(pairingKey));
@@ -443,12 +450,12 @@ void processCommand(const RadioCommand& command) {
         if (command.switchAfterSend) {
             if (command.profile == Profile::Commissioning && commissioningEnabled) {
                 rfm69.setNetwork(commissioningNetworkId);
-                rfm69.encrypt(reinterpret_cast<const char*>(pairingKey));
+                radio_aes::enable(rfm69, pairingKey);
                 currentProfile.store(Profile::Commissioning);
                 currentNetworkId.store(commissioningNetworkId);
             } else if (command.profile == Profile::Operational) {
                 rfm69.setNetwork(operationalNetworkId);
-                rfm69.encrypt(operationalKey);
+                radio_aes::enable(rfm69, operationalKey);
                 currentProfile.store(Profile::Operational);
                 currentNetworkId.store(operationalNetworkId);
                 memset(pairingKey, 0, sizeof(pairingKey));
@@ -626,7 +633,7 @@ bool begin() {
 
     // Without a key the radio sleeps, so it neither receives nor sends in the
     // clear, but its task still starts so initial setup can hand the key over.
-    if (operationalEnabled.load()) rfm69.encrypt(operationalKey);
+    if (operationalEnabled.load()) radio_aes::enable(rfm69, operationalKey);
     else rfm69.sleep();
 
     interruptQueue = xQueueCreate(1, sizeof(uint8_t));
