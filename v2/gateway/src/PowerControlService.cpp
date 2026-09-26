@@ -25,7 +25,8 @@ portMUX_TYPE statesMux = portMUX_INITIALIZER_UNLOCKED;
 std::atomic<uint8_t> desired[kLastNodeId + 1]{};
 // Set once the controller has seen the node's current fallback. Until then
 // an acknowledgement must not carry a target computed before the fallback,
-// or it would send the node straight back to the level that failed.
+// or automatic control would send the node straight back to the level that
+// failed.
 std::atomic<bool> fallbackObserved[kLastNodeId + 1]{};
 
 bool validNode(const uint8_t nodeId) {

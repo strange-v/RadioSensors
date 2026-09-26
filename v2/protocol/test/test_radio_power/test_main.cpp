@@ -69,16 +69,12 @@ void test_fixed_policy_is_clamped_to_the_ceiling() {
     TEST_ASSERT_EQUAL_UINT8(2, report(limited, 2, -70, fixedPolicy(4), 2));
 }
 
-void test_fallback_rejects_a_fixed_level_until_the_policy_changes() {
+void test_fixed_level_is_requested_again_after_a_fallback() {
     ControlState state{};
     TEST_ASSERT_EQUAL_UINT8(1, report(state, 6, -70, fixedPolicy(1), 6));
     report(state, 1, -95, fixedPolicy(1), 6);
-    TEST_ASSERT_EQUAL_UINT8(6, report(state, 6, -80, fixedPolicy(1), 6, true));
-    TEST_ASSERT_TRUE(state.fixedRejected);
-    TEST_ASSERT_EQUAL_UINT8(6, report(state, 6, -80, fixedPolicy(1), 6, true));
-
-    TEST_ASSERT_EQUAL_UINT8(3, report(state, 6, -80, fixedPolicy(3), 6, true));
-    TEST_ASSERT_FALSE(state.fixedRejected);
+    TEST_ASSERT_EQUAL_UINT8(1, report(state, 6, -80, fixedPolicy(1), 6, true));
+    TEST_ASSERT_EQUAL_UINT8(1, report(state, 6, -80, fixedPolicy(1), 6, true));
 }
 
 void test_fallback_keeps_automatic_control_above_the_failed_level() {
@@ -138,7 +134,7 @@ int main(int, char**) {
     RUN_TEST(test_link_inside_the_window_is_left_alone);
     RUN_TEST(test_weak_link_steps_up_within_the_ceiling);
     RUN_TEST(test_fixed_policy_is_clamped_to_the_ceiling);
-    RUN_TEST(test_fallback_rejects_a_fixed_level_until_the_policy_changes);
+    RUN_TEST(test_fixed_level_is_requested_again_after_a_fallback);
     RUN_TEST(test_fallback_keeps_automatic_control_above_the_failed_level);
     RUN_TEST(test_policy_change_applies_before_the_next_report);
     RUN_TEST(test_restarted_node_is_sent_back_to_the_wanted_level);

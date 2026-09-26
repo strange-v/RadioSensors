@@ -48,13 +48,9 @@ struct ControlState {
     bool known;
     uint8_t reportedLevel;
     bool fallback;
-    uint8_t policy;
     uint8_t reports;
     int32_t rssiSum;
     uint8_t floor;
-    // A fixed level the node fell back from; not pushed again until the
-    // policy changes.
-    bool fixedRejected;
     uint8_t desired;
 };
 
@@ -69,8 +65,6 @@ inline uint8_t minLevel(const uint8_t left, const uint8_t right) {
 // has nothing to ask for.
 inline uint8_t changePolicy(
     ControlState& state, const uint8_t policy, const uint8_t ceiling) {
-    state.policy = policy;
-    state.fixedRejected = false;
     state.reports = 0;
     state.rssiSum = 0;
     if (isFixedPolicy(policy)) {
@@ -87,12 +81,7 @@ inline uint8_t changePolicy(
 inline uint8_t observe(
     ControlState& state, const uint8_t policy, const uint8_t ceiling,
     const Report& report) {
-    if (!state.known || state.policy != policy) {
-        state.fixedRejected = false;
-        state.policy = policy;
-    }
     if (report.fallback && state.known && !state.fallback) {
-        if (isFixedPolicy(policy)) state.fixedRejected = true;
         state.floor = minLevel(
             ceiling,
             static_cast<uint8_t>(state.reportedLevel + kFallbackMargin));
@@ -115,8 +104,11 @@ inline uint8_t observe(
     }
 
     uint8_t desired = keepDesired ? state.desired : report.level;
+    // A fixed level is the user's decision and is requested again after
+    // every fallback; a level too low for the link shows as repeated
+    // fallbacks rather than being dropped silently.
     if (isFixedPolicy(policy)) {
-        if (!state.fixedRejected) desired = fixedLevel(policy);
+        desired = fixedLevel(policy);
     } else if (state.reports >= kReportsPerDecision) {
         const int32_t average = state.rssiSum / state.reports;
         if (average > kTargetRssiHigh) {

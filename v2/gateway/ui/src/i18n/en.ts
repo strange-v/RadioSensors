@@ -25,7 +25,7 @@ export const en = {
     policy: 'Power control', level: 'Transmit level', levelValue: '{level} of {max}', levelOption: 'Level {level}',
     targetValue: 'Requested: {level}', targetHint: 'Applied with the node’s next report.',
     uplink: 'Gateway hears the node', downlink: 'Node hears the gateway',
-    fallback: 'The node stopped hearing the gateway and raised its level to its maximum. The level that failed is not requested again.',
+    fallback: 'The node stopped hearing the gateway and raised its level to its maximum.',
     auto: 'Automatic',
     autoHint: 'The gateway keeps the node heard at about −80 dBm with the lowest level that achieves it.',
     fixedHint: 'The node always transmits at this level. {max} is the maximum set for its hardware and supply.',
