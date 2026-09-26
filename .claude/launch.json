@@ -4,7 +4,7 @@
     {
       "name": "gateway-ui-mock",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "v2/gateway/ui", "run", "dev", "--", "--config", "vite.mock.config.ts", "--port", "5199", "--strictPort"],
+      "runtimeArgs": ["--prefix", "gateway/ui", "run", "dev", "--", "--config", "vite.mock.config.ts", "--port", "5199", "--strictPort"],
       "port": 5199
     }
   ]

@@ -1,3 +1,3 @@
 .githooks/* text eol=lf
-v2/protocol/generated/*.svg text eol=lf
+protocol/generated/*.svg text eol=lf
 *.sh text eol=lf

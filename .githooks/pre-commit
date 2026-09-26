@@ -5,8 +5,8 @@ repository_root=$(git rev-parse --show-toplevel)
 cd "$repository_root"
 
 staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
-generate_pattern='^v2/protocol/(protocol-manifest\.json|scripts/generate_protocol_docs\.mjs)$'
-validate_pattern='^v2/protocol/(protocol-manifest\.json|protocol-manifest\.schema\.json|protocol-vectors\.json|scripts/(generate_protocol_docs|validate_protocol_artifacts)\.mjs)$'
+generate_pattern='^protocol/(protocol-manifest\.json|scripts/generate_protocol_docs\.mjs)$'
+validate_pattern='^protocol/(protocol-manifest\.json|protocol-manifest\.schema\.json|protocol-vectors\.json|scripts/(generate_protocol_docs|validate_protocol_artifacts)\.mjs)$'
 
 needs_generation=0
 needs_validation=0
@@ -28,21 +28,21 @@ fi
 
 if [ "$needs_generation" -eq 1 ]; then
   if ! git diff --quiet -- \
-    v2/protocol/protocol-manifest.json \
-    v2/protocol/scripts/generate_protocol_docs.mjs; then
+    protocol/protocol-manifest.json \
+    protocol/scripts/generate_protocol_docs.mjs; then
     echo "pre-commit: stage all manifest/generator changes before generating diagrams." >&2
     exit 1
   fi
-  node v2/protocol/scripts/generate_protocol_docs.mjs
+  node protocol/scripts/generate_protocol_docs.mjs
 fi
 
-node v2/protocol/scripts/validate_protocol_artifacts.mjs
+node protocol/scripts/validate_protocol_artifacts.mjs
 
 if [ "$needs_generation" -eq 1 ]; then
   generated_changes=$(
     {
-      git diff --name-only -- v2/protocol/generated
-      git ls-files --others --exclude-standard -- v2/protocol/generated
+      git diff --name-only -- protocol/generated
+      git ls-files --others --exclude-standard -- protocol/generated
     } | sed '/^$/d'
   )
   if [ -n "$generated_changes" ]; then

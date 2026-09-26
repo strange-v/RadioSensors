@@ -24,7 +24,7 @@ The gateway uses address 100. IDs 1..99 are allocated persistently; 0 is for com
 
 Commissioning and operational radio profiles have separate AES keys. Initial gateway setup generates an operational network ID in 1..255 and permits an advanced edit before confirmation. Ordinary changes are locked after a node is active; later changes require a staged migration design.
 
-Normal telemetry is `common telemetry prefix + opaque profile payload`. The prefix carries supply voltage and the node's radio state; the gateway may decode it but does not decode profile-specific measurements. Exact radio bytes are specified only in [v2/protocol/PROTOCOL.md](v2/protocol/PROTOCOL.md).
+Normal telemetry is `common telemetry prefix + opaque profile payload`. The prefix carries supply voltage and the node's radio state; the gateway may decode it but does not decode profile-specific measurements. Exact radio bytes are specified only in [protocol/PROTOCOL.md](protocol/PROTOCOL.md).
 
 Node settings the gateway maintains are desired state, not commands. The node reports the value it actually uses in every telemetry frame, and the gateway repeats the value it wants in the telemetry acknowledgement until the two match, so a lost frame costs nothing and no history can drift from the truth. Hard limits belong to the node: it clamps radio power to its hardware ceiling and falls back on its own after losing the gateway.
 
@@ -48,11 +48,11 @@ The gateway serves HTTP and WebSocket only and is intended exclusively for a tru
 
 ## Documentation ownership
 
-- Radio frames and payload validation: `v2/protocol/PROTOCOL.md`.
-- REST endpoints and JSON: `v2/gateway/API.md`.
-- WebSocket bytes and resynchronization: `v2/gateway/WEBSOCKET.md`.
-- Persistent bytes: `v2/gateway/STORAGE.md` and `v2/node/EEPROM.md`.
-- Measured node consumption and battery budgets: `v2/node/POWER.md`.
+- Radio frames and payload validation: `protocol/PROTOCOL.md`.
+- REST endpoints and JSON: `gateway/API.md`.
+- WebSocket bytes and resynchronization: `gateway/WEBSOCKET.md`.
+- Persistent bytes: `gateway/STORAGE.md` and `node/EEPROM.md`.
+- Measured node consumption and battery budgets: `node/POWER.md`.
 - Build, upload, wiring, and bench use: component README files.
 - Unfinished work only: `ROADMAP.md`.
 
