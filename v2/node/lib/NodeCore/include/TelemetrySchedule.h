@@ -72,7 +72,9 @@ private:
 
 class BinaryReportSchedule {
 public:
-    BinaryReportSchedule() : keepAlive_(kEventNodeKeepAliveMs) {}
+    explicit BinaryReportSchedule(
+        const uint32_t intervalMs = kEventNodeKeepAliveMs)
+        : keepAlive_(intervalMs) {}
 
     void stateChanged() {
         stateChanged_ = true;

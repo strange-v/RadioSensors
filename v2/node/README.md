@@ -10,12 +10,14 @@ This PlatformIO project produces one statically composed ATtiny1614 image per st
 | `climate_tmp112_debug` | 2 | same, with UART diagnostics | 32 s |
 | `binary` | 5 | binary state, supply voltage | 250 ms |
 | `binary_debug` | 5 | same, with UART diagnostics | 250 ms |
+| `binary_sht40` | 7 | binary state, SHT40 temperature and humidity, supply voltage | 250 ms |
+| `binary_sht40_debug` | 7 | same, with UART diagnostics | 250 ms |
 | `counter_reed` | 6 | pulse count, supply voltage | 250 ms |
 | `counter_reed_debug` | 6 | same, with UART diagnostics | 250 ms |
 | `radio_power_sweep` | diagnostic | supply voltage at power levels 0..31 | 250 ms |
 | `radio_power_sweep_button` | diagnostic | one report every 5 s; PA6 selects the power level | 250 ms |
 
-Binary-input images with climate sensors (profiles 7, 8) are not implemented yet. An installation decides whether a binary input is a door, a window, or a float switch.
+The binary-input image with TMP112 (profile 8) is not implemented yet. An installation decides whether a binary input is a door, a window, or a float switch.
 
 Build or upload one environment:
 
@@ -23,6 +25,8 @@ Build or upload one environment:
 pio run -e climate_tmp112
 pio run -e climate_tmp112 -t upload
 ```
+
+For the SHT40 binary node, build `binary_sht40` or `binary_sht40_debug` and upload the chosen environment. It uses the SHT40 at I2C address `0x44`, the active-low contact on PA5, and a five-minute reporting interval; all three settings are in `platformio.ini`.
 
 Hardware environments inherit serial UPDI upload on COM11 at 115200 baud and serial monitoring on COM12 at 9600 baud. Only the adapter's RX line is connected to COM12.
 
@@ -40,7 +44,7 @@ Each environment compiles exactly one composition root from `src/` through `buil
 
 `NODE_TICK_MS` selects the RTC PIT wake period: 32 s for periodic images, 250 ms for polled inputs.
 
-No input may float in sleep. Each composition root disables the digital input buffer of the pins its image leaves unconnected: the sensor I2C pads on counter and binary-input images, the reed pad on climate images, and PB2/PB3 outside debug builds. `NodeRadio` pulls up MISO, which the RFM69 releases while deselected.
+No input may float in sleep. Each composition root disables the digital input buffer of the pins its image leaves unconnected: the sensor I2C pads on counter and plain binary-input images, the reed pad on climate images, and PB2/PB3 outside debug builds. `NodeRadio` pulls up MISO, which the RFM69 releases while deselected.
 
 Reported supply voltage is the lower of the measurement taken just before transmission and the one taken immediately after the previous transmission, so it reflects battery sag under radio load.
 
@@ -57,7 +61,7 @@ The tool reads the 10-byte SIGROW UID, refuses to replace an existing valid reco
 
 ## Implemented runtimes
 
-Every image supports per-node-key UID commissioning, recovery of provisional commissioning, dual-slot network configuration, Vcc measurement, acknowledged telemetry, bounded 1/5/15/60-minute radio retry, and RTC power-down scheduling independent of sleeping `millis()`. The climate image adds TMP112 one-shot measurement; the binary-input image adds the PA5 contact state; the counter image adds the PA5 pulse input and the wear-levelled counter journal.
+Every image supports per-node-key UID commissioning, recovery of provisional commissioning, dual-slot network configuration, Vcc measurement, acknowledged telemetry, bounded 1/5/15/60-minute radio retry, and RTC power-down scheduling independent of sleeping `millis()`. The climate image adds TMP112 one-shot measurement; the binary-input images add the PA5 contact state, with SHT40 temperature and humidity on `binary_sht40`; the counter image adds the PA5 pulse input and the wear-levelled counter journal.
 
 The solar/supercapacitor climate policy schedules nominal 60 seconds above 2500 mV and 300 seconds at or below it. The 32-second RTC step yields about 64/320 seconds. Battery-powered climate builds use one compile-time interval and do not persist it.
 
@@ -69,7 +73,7 @@ PA5 is the active-low reed/counter input. Each 250 ms tick reads it once, with t
 
 A counter additionally accepts a new level only after it has persisted for `NODE_COUNTER_MINIMUM_PHASE_MS` (500 ms) of RTC time, because a magnet moving slowly near the pull-in distance makes the reed chatter far longer than the debounce burst. With the 250 ms tick, phases of at least 750 ms are always accepted and phases shorter than 500 ms never are. Binary inputs do not use this filter.
 
-A binary input reports each confirmed change in the same wake-up, even while radio retry backoff is active; if that attempt fails, the report waits for the backoff like any other. State `1` means the contact is open. Binary-input and counter profiles use a rolling one-hour keep-alive from the last acknowledged report. A counter counts from boot, including before commissioning, persists every confirmed LOW-to-HIGH pulse before any transmission, and reports the absolute count no more than once per minute while dirty.
+A binary input reports each confirmed change in the same wake-up, even while radio retry backoff is active; if that attempt fails, the report waits for the backoff like any other. State `1` means the contact is open. `binary_sht40` measures temperature and humidity for every report and sends a full frame at least every five minutes after the last acknowledged report. The plain binary-input and counter profiles use a rolling one-hour keep-alive. A counter counts from boot, including before commissioning, persists every confirmed LOW-to-HIGH pulse before any transmission, and reports the absolute count no more than once per minute while dirty.
 
 Measured consumption and the battery budget are in [POWER.md](POWER.md).
 
@@ -84,7 +88,7 @@ The gateway rejects a join request from a UID it still holds as active. To pair 
 
 ## Radio power
 
-Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`; every image uses 2 until its board is measured. Transmission current and report charge per level are in [POWER.md](POWER.md#radio-power-levels). The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame. That RSSI is sampled when the acknowledgement's sync word matches: the RFM69 keeps measuring the channel after a frame ends, so a read after reception returns anything between the frame and the noise floor ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
+Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MAX_POWER_LEVEL`: 23 for the supercapacitor-powered `climate_tmp112` and 15 for the CR2032-powered `binary`, `binary_sht40`, and `counter_reed` images. The diagnostic power-sweep images use 23 for commissioning but sweep their configured level range independently. Transmission current and report charge per level are in [POWER.md](POWER.md#radio-power-levels). The node sends the ceiling in Join request and reports its level, fallback flag, and the RSSI of the last acknowledgement in every telemetry frame. That RSSI is sampled when the acknowledgement's sync word matches: the RFM69 keeps measuring the channel after a frame ends, so a read after reception returns anything between the frame and the noise floor ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)).
 
 | Event | Level |
 | --- | --- |

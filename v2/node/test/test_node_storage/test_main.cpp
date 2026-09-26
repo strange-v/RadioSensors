@@ -489,6 +489,20 @@ void test_event_keep_alive_rolls_from_successful_event() {
     TEST_ASSERT_TRUE(schedule.due(115UL * 60UL * 1000UL));
 }
 
+void test_binary_climate_interval_rolls_from_successful_event() {
+    constexpr uint32_t minute = 60UL * 1000UL;
+    BinaryReportSchedule schedule(5UL * minute);
+    TEST_ASSERT_TRUE(schedule.due(0));
+    schedule.transmissionSucceeded(0);
+    TEST_ASSERT_FALSE(schedule.due(5UL * minute - 1UL));
+    schedule.stateChanged();
+    TEST_ASSERT_TRUE(schedule.takeUrgent());
+    TEST_ASSERT_TRUE(schedule.due(2UL * minute));
+    schedule.transmissionSucceeded(2UL * minute);
+    TEST_ASSERT_FALSE(schedule.due(5UL * minute));
+    TEST_ASSERT_TRUE(schedule.due(7UL * minute));
+}
+
 void test_failed_binary_transmission_keeps_event_pending() {
     BinaryReportSchedule schedule;
     schedule.transmissionSucceeded(0);
@@ -721,6 +735,7 @@ int main(int, char**) {
     RUN_TEST(test_set_count_journal_forgets_ids_after_commissioning);
     RUN_TEST(test_hinted_sessions_are_rate_limited);
     RUN_TEST(test_event_keep_alive_rolls_from_successful_event);
+    RUN_TEST(test_binary_climate_interval_rolls_from_successful_event);
     RUN_TEST(test_failed_binary_transmission_keeps_event_pending);
     RUN_TEST(test_binary_state_change_is_urgent_once);
     RUN_TEST(test_counter_coalesces_pulses_for_one_minute);
