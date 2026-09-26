@@ -78,7 +78,7 @@ void transmitAtCurrentLevel() {
     radio.setPowerLevel(powerLevel);
     const protocol::TelemetryPrefix prefix{
         battery.readMillivolts(),
-        protocol::encodeRadioState(powerLevel, false, false),
+        protocol::encodeRadioState(powerLevel, false),
         protocol::kNoDownlinkRssi};
     uint8_t frame[protocol::kVoltageTelemetrySize];
     if (protocol::encodeVoltageTelemetry(prefix, frame, sizeof(frame)) !=

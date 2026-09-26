@@ -220,9 +220,8 @@ void test_telemetry_ack_payload() {
 }
 
 void test_radio_state_and_downlink_rssi() {
-    TEST_ASSERT_EQUAL_HEX8(0x02, encodeRadioState(2, false, false));
-    TEST_ASSERT_EQUAL_HEX8(0x3F, encodeRadioState(31, true, false));
-    TEST_ASSERT_EQUAL_HEX8(0x5F, encodeRadioState(31, false, true));
+    TEST_ASSERT_EQUAL_HEX8(0x02, encodeRadioState(2, false));
+    TEST_ASSERT_EQUAL_HEX8(0x3F, encodeRadioState(31, true));
     TEST_ASSERT_EQUAL_UINT8(31, radioPowerLevel(0x3F));
     TEST_ASSERT_EQUAL_INT8(-70, downlinkRssiValue(-70));
     TEST_ASSERT_EQUAL_INT8(-127, downlinkRssiValue(-200));
@@ -370,7 +369,7 @@ void test_climate_encoders_validate_measurements_and_allow_sentinels() {
             kPrefix, 2000, 5000, 2999, frame, sizeof(frame))));
 
     const TelemetryPrefix unknown{
-        kInvalidSupplyVoltage, encodeRadioState(31, true, false), kNoDownlinkRssi};
+        kInvalidSupplyVoltage, encodeRadioState(31, true), kNoDownlinkRssi};
     TEST_ASSERT_EQUAL(
         static_cast<int>(TelemetryCodecStatus::Ok),
         static_cast<int>(encodeClimateThpTelemetry(

@@ -22,7 +22,7 @@ import NodeRadio from './NodeRadio.vue'
 const node = (over: Partial<GatewayNode> = {}): GatewayNode => ({
   node_id: 7, device_uid: '102132435465768798A9', display_name: 'Hall', profile_id: 5, firmware: '0.1.0',
   state: 'active', has_telemetry: true, rssi: -70, max_power_level: 2, power_policy: 'auto',
-  tx_power_target: 2, tx_power_level: 2, radio_fallback: false, supply_limited: false, downlink_rssi: -72, ...over,
+  tx_power_target: 2, tx_power_level: 2, radio_fallback: false, downlink_rssi: -72, ...over,
 })
 
 const mountCard = async (target = node()) => {

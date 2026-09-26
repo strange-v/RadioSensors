@@ -500,8 +500,6 @@ void handleNodes(AsyncWebServerRequest* request) {
                     radiosensors::protocol::radioPowerLevel(view.radioState);
                 document["radio_fallback"] =
                     (view.radioState & radiosensors::protocol::kRadioFallback) != 0;
-                document["supply_limited"] =
-                    (view.radioState & radiosensors::protocol::kRadioSupplyLimited) != 0;
                 if (view.downlinkRssi != radiosensors::protocol::kNoDownlinkRssi) {
                     document["downlink_rssi"] = view.downlinkRssi;
                 }

@@ -174,7 +174,6 @@ async function remove() {
         </dd></div>
       </dl>
       <div v-if="node.radio_fallback" class="notice radio-fallback">{{ $t('radio.fallback') }}</div>
-      <div v-if="node.supply_limited" class="notice radio-supply">{{ $t('radio.supplyLimited') }}</div>
 
       <NodeRadio v-if="active" :node="node" @updated="emit('updated')" />
       <NodeCommands v-if="active" :key="node.node_id" :node="node" />

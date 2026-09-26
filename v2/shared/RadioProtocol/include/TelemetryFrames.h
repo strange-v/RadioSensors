@@ -23,8 +23,7 @@ constexpr uint16_t kMaximumPressureDeciHectopascals = 11000;
 // Radio state byte of the common prefix.
 constexpr uint8_t kRadioPowerLevelMask = 0x1F;
 constexpr uint8_t kRadioFallback = 0x20;
-constexpr uint8_t kRadioSupplyLimited = 0x40;
-constexpr uint8_t kRadioStateReservedMask = 0x80;
+constexpr uint8_t kRadioStateReservedMask = 0xC0;
 
 // Common prefix: link fields first, then supply voltage next to the
 // measurements.
@@ -81,11 +80,10 @@ struct TelemetryAck {
 };
 
 constexpr uint8_t encodeRadioState(
-    const uint8_t powerLevel, const bool fallback, const bool supplyLimited) {
+    const uint8_t powerLevel, const bool fallback) {
     return static_cast<uint8_t>(
         (powerLevel & kRadioPowerLevelMask) |
-        (fallback ? kRadioFallback : 0) |
-        (supplyLimited ? kRadioSupplyLimited : 0));
+        (fallback ? kRadioFallback : 0));
 }
 
 constexpr uint8_t radioPowerLevel(const uint8_t radioState) {

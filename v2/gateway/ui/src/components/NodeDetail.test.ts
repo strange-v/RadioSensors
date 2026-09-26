@@ -26,7 +26,7 @@ import NodeDetail from './NodeDetail.vue'
 const node = (over: Partial<GatewayNode> = {}): GatewayNode => ({
   node_id: 7, device_uid: '0F1E2D3C4B5A69788796', display_name: 'Hall', profile_id: 1, firmware: '2.1.0',
   state: 'active', last_seen_at_ms: Date.now(), has_telemetry: true, rssi: -70, max_power_level: 5,
-  power_policy: 'auto', tx_power_target: 3, tx_power_level: 3, radio_fallback: false, supply_limited: false,
+  power_policy: 'auto', tx_power_target: 3, tx_power_level: 3, radio_fallback: false,
   downlink_rssi: -72, ...over,
 })
 
@@ -83,10 +83,9 @@ describe('NodeDetail', () => {
     expect(wrapper.findAllComponents({ name: 'SignalBars' })).toHaveLength(0)
   })
 
-  it('says when the node has fallen back or is limited by its supply', async () => {
-    const wrapper = await mountCard(node({ radio_fallback: true, supply_limited: true }))
+  it('says when the node has fallen back', async () => {
+    const wrapper = await mountCard(node({ radio_fallback: true }))
     expect(wrapper.get('.radio-fallback').text()).toBe(en.radio.fallback)
-    expect(wrapper.get('.radio-supply').text()).toBe(en.radio.supplyLimited)
   })
 
   it('renames in the header and stays open on the new name', async () => {

@@ -11,14 +11,12 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70
       },
       "values": {
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70
       }
     },
@@ -30,7 +28,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "temperature": 2350
       },
@@ -38,7 +35,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "temperature": 23.5
       }
@@ -51,7 +47,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "temperature": 2350,
         "humidity": 4567
@@ -60,7 +55,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "temperature": 23.5,
         "humidity": 45.67
@@ -74,7 +68,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "temperature": 2350,
         "humidity": 4567,
@@ -84,7 +77,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "temperature": 23.5,
         "humidity": 45.67,
@@ -99,7 +91,6 @@
         "supply_voltage": 65535,
         "tx_power_level": 31,
         "radio_fallback": 1,
-        "supply_limited": 0,
         "downlink_rssi": -128,
         "temperature": -32768,
         "humidity": 65535,
@@ -109,7 +100,6 @@
         "supply_voltage": null,
         "tx_power_level": 31,
         "radio_fallback": 1,
-        "supply_limited": 0,
         "downlink_rssi": null,
         "temperature": null,
         "humidity": null,
@@ -124,7 +114,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "state": 1
       },
@@ -132,7 +121,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "state": 1
       }
@@ -145,7 +133,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "count": 305419896
       },
@@ -153,7 +140,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "count": 305419896
       }
@@ -166,7 +152,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "state": 1,
         "temperature": 2350,
@@ -176,7 +161,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "state": 1,
         "temperature": 23.5,
@@ -191,7 +175,6 @@
         "supply_voltage": 3300,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "state": 1,
         "temperature": 2350
@@ -200,7 +183,6 @@
         "supply_voltage": 3.3,
         "tx_power_level": 2,
         "radio_fallback": 0,
-        "supply_limited": 0,
         "downlink_rssi": -70,
         "state": 1,
         "temperature": 23.5

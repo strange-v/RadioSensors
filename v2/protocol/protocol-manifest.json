@@ -224,8 +224,7 @@
         "encoding": "uint8",
         "bits": [
           { "name": "tx_power_level", "quantity": "radio_power_level", "mask": 31 },
-          { "name": "radio_fallback", "quantity": "binary_state", "mask": 32 },
-          { "name": "supply_limited", "quantity": "binary_state", "mask": 64 }
+          { "name": "radio_fallback", "quantity": "binary_state", "mask": 32 }
         ]
       },
       {

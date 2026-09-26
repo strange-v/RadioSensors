@@ -49,7 +49,6 @@ export interface GatewayNode {
   tx_power_target?: number
   tx_power_level?: number
   radio_fallback?: boolean
-  supply_limited?: boolean
   downlink_rssi?: number
 }
 export type PowerPolicy = 'auto' | 'fixed'

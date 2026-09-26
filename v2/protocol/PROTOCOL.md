@@ -148,7 +148,7 @@ Every telemetry frame has a five-byte common prefix:
 
 | Offset | Bytes | Field | Encoding |
 | ---: | ---: | --- | --- |
-| 1 | 1 | `radio_state` | Bits 0..4 `tx_power_level` `0..31`; bit 5 `radio_fallback`; bit 6 `supply_limited`; bit 7 zero |
+| 1 | 1 | `radio_state` | Bits 0..4 `tx_power_level` `0..31`; bit 5 `radio_fallback`; bits 6..7 zero |
 | 2 | 1 | `downlink_rssi` | Signed dBm of the acknowledgement to the node's previous report, measured while its sync word arrives; `INT8_MIN` means not measured |
 | 3 | 2 | `supply_voltage` | Unsigned little-endian millivolts; `UINT16_MAX` means unavailable |
 
@@ -182,7 +182,6 @@ Radio power is desired state, not a command. The node owns its level and reports
 | Start | Node | After commissioning and after every restart it transmits at its ceiling |
 | Apply | Node | A target takes effect after the acknowledgement that carried it; the node keeps the level only in RAM |
 | Fallback | Node | After three consecutive reports without acknowledgement it switches to its ceiling and sets `radio_fallback`; the next applied target clears it |
-| Supply limit | Node | `supply_limited` is reserved for a limit below the ceiling derived from supply sag; nodes send zero |
 | Target | Gateway | A per-node policy: automatic, or a fixed level within the ceiling |
 | Hold | Gateway | While it averages a newly reported level it keeps wanting its previous level, so the next acknowledgement returns a restarted node there; a `radio_fallback` report is taken at its word |
 

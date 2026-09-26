@@ -154,7 +154,7 @@ private:
         WatchdogWindow watchdog;
         const protocol::TelemetryPrefix prefix{
             supplyVoltage_.report(battery_.readMillivolts()),
-            protocol::encodeRadioState(powerLevel_, radioFallback_, false),
+            protocol::encodeRadioState(powerLevel_, radioFallback_),
             downlinkRssi_};
         uint8_t frame[Profile::kTelemetrySize];
         const size_t size =

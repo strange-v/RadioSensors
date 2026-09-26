@@ -40,11 +40,11 @@ type MockNode = {
   node_id: number; device_uid: string; display_name: string; profile_id: number; firmware: string; state: string
   last_seen_at_ms?: number; rssi?: number; has_telemetry: boolean
   max_power_level: number; power_policy: string; fixed_power_level?: number; tx_power_target?: number
-  tx_power_level?: number; radio_fallback?: boolean; supply_limited?: boolean; downlink_rssi?: number
+  tx_power_level?: number; radio_fallback?: boolean; downlink_rssi?: number
 }
 const radio = (level: number, over: Partial<MockNode> = {}) => ({
   max_power_level: 2, power_policy: 'auto', tx_power_target: level, tx_power_level: level,
-  radio_fallback: false, supply_limited: false, downlink_rssi: -66, ...over,
+  radio_fallback: false, downlink_rssi: -66, ...over,
 })
 const nodes: MockNode[] = [
   { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true, ...radio(1, { max_power_level: 31 }) },
