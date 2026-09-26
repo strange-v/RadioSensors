@@ -22,6 +22,10 @@
 #if !defined(GATEWAY_RFM69_IRQ)
 #error "Define GATEWAY_RFM69_IRQ in the PlatformIO environment build_flags."
 #endif
+// Optional: the GPIO wired to the module's RESET pin, -1 when not wired.
+#if !defined(GATEWAY_RFM69_RESET)
+#define GATEWAY_RFM69_RESET -1
+#endif
 #if !defined(GATEWAY_RFM69_FREQUENCY)
 #error "Define GATEWAY_RFM69_FREQUENCY in build_flags."
 #endif
@@ -51,6 +55,14 @@ static_assert(
         GATEWAY_RFM69_MOSI != GATEWAY_RFM69_IRQ &&
         GATEWAY_RFM69_CS != GATEWAY_RFM69_IRQ,
     "RFM69 SPI and interrupt pins must be distinct.");
+static_assert(
+    GATEWAY_RFM69_RESET < 0 ||
+        (GATEWAY_RFM69_RESET != GATEWAY_RFM69_SCK &&
+         GATEWAY_RFM69_RESET != GATEWAY_RFM69_MISO &&
+         GATEWAY_RFM69_RESET != GATEWAY_RFM69_MOSI &&
+         GATEWAY_RFM69_RESET != GATEWAY_RFM69_CS &&
+         GATEWAY_RFM69_RESET != GATEWAY_RFM69_IRQ),
+    "RFM69 reset pin must be distinct from its SPI and interrupt pins.");
 #if defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
 static_assert(
     (GATEWAY_RFM69_SCK < 9 || GATEWAY_RFM69_SCK > 14) &&
@@ -75,6 +87,12 @@ static_assert(
         !GATEWAY_RFM69_IS_S3_STRAPPING_PIN(GATEWAY_RFM69_CS) &&
         !GATEWAY_RFM69_IS_S3_STRAPPING_PIN(GATEWAY_RFM69_IRQ),
     "Waveshare RFM69 pins must not use ESP32-S3 strapping GPIOs.");
+static_assert(
+    GATEWAY_RFM69_RESET < 0 ||
+        ((GATEWAY_RFM69_RESET < 9 || GATEWAY_RFM69_RESET > 14) &&
+         (GATEWAY_RFM69_RESET < 33 || GATEWAY_RFM69_RESET > 37) &&
+         !GATEWAY_RFM69_IS_S3_STRAPPING_PIN(GATEWAY_RFM69_RESET)),
+    "Waveshare RFM69 reset pin must avoid W5500, PSRAM, and strapping GPIOs.");
 #undef GATEWAY_RFM69_IS_S3_STRAPPING_PIN
 #endif
 static_assert(
@@ -92,6 +110,7 @@ constexpr int miso = GATEWAY_RFM69_MISO;
 constexpr int mosi = GATEWAY_RFM69_MOSI;
 constexpr int chipSelect = GATEWAY_RFM69_CS;
 constexpr int interrupt = GATEWAY_RFM69_IRQ;
+constexpr int reset = GATEWAY_RFM69_RESET;
 constexpr uint8_t frequencyBand = GATEWAY_RFM69_FREQUENCY;
 constexpr uint16_t nodeId = GATEWAY_RFM69_NODE_ID;
 constexpr bool highPower = GATEWAY_RFM69_HIGH_POWER != 0;

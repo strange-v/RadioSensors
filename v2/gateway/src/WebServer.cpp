@@ -1655,8 +1655,9 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"node_id\":%u,\"network_id\":%u,\"variant\":\"%s\","
         "\"configured_power_dbm\":%d,\"encryption_enabled\":%s,"
         "\"profile\":\"%s\",\"spi_host\":\"%s\","
-        "\"pins\":{\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"irq\":%d},"
-        "\"counters\":{\"interrupts\":%lu,\"packets\":%lu,\"bytes\":%lu,"
+        "\"pins\":{\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"irq\":%d,\"reset\":%d},"
+        "\"counters\":{\"interrupts\":%lu,\"missed_interrupts\":%lu,"
+        "\"packets\":%lu,\"bytes\":%lu,"
         "\"empty_wakeups\":%lu,\"ack_requests_ignored\":%lu,"
         "\"telemetry_acks_sent\":%lu,\"telemetry_rejected_inactive\":%lu,"
         "\"telemetry_frames_queued\":%lu,\"telemetry_frames_dropped\":%lu,"
@@ -1758,7 +1759,9 @@ void handleStatus(AsyncWebServerRequest* request) {
         radio::config::mosi,
         radio::config::chipSelect,
         radio::config::interrupt,
+        radio::config::reset,
         radioSnapshot.interrupts,
+        radioSnapshot.missedInterrupts,
         radioSnapshot.packets,
         radioSnapshot.bytes,
         radioSnapshot.emptyWakeups,

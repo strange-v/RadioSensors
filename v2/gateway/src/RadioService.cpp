@@ -29,9 +29,19 @@ constexpr UBaseType_t kCommandQueueDepth = 8;
 constexpr uint8_t kInitializationAttempts = 3;
 constexpr uint32_t kInitializationRecoveryDelayMs = 25;
 constexpr TickType_t kCommandCompletionTimeout = pdMS_TO_TICKS(3000);
+// How long the radio task waits for an interrupt before checking DIO0 itself.
+constexpr TickType_t kMissedInterruptCheck = pdMS_TO_TICKS(5000);
+
+// Exposes the library's pending-interrupt flag, so a missed DIO0 edge can be
+// serviced as if the interrupt had fired.
+class GatewayRfm69 : public RFM69 {
+public:
+    using RFM69::RFM69;
+    void markInterrupt() { _haveData = true; }
+};
 
 SPIClass radioSpi(config::spiHost);
-RFM69 rfm69(
+GatewayRfm69 rfm69(
     config::chipSelect,
     config::interrupt,
     config::highPower,
@@ -79,6 +89,7 @@ std::atomic<uint32_t> nextCompletionId{1};
 
 struct TaskStats {
     uint32_t interrupts = 0;
+    uint32_t missedInterrupts = 0;
     uint32_t packets = 0;
     uint32_t bytes = 0;
     uint32_t emptyWakeups = 0;
@@ -126,9 +137,6 @@ void IRAM_ATTR onRadioInterrupt() {
 }
 
 void drainReceivedFrame() {
-    portENTER_CRITICAL(&statsMux);
-    ++taskStats.interrupts;
-    portEXIT_CRITICAL(&statsMux);
     if (!rfm69.receiveDone()) {
         portENTER_CRITICAL(&statsMux);
         ++taskStats.emptyWakeups;
@@ -381,18 +389,45 @@ bool queueAndWaitForCompletion(RadioCommand& command) {
     return result;
 }
 
+void serviceInterrupt() {
+    portENTER_CRITICAL(&statsMux);
+    ++taskStats.interrupts;
+    portEXIT_CRITICAL(&statsMux);
+    drainReceivedFrame();
+}
+
+// DIO0 signals PayloadReady by a rising edge only. An edge lost to an ESP32
+// reset or a race leaves the line high with the frame unread, and the radio
+// would never interrupt again.
+void serviceMissedInterrupt() {
+    if (currentState.load() != State::Receiving || RFM69::_mode != RF69_MODE_RX ||
+        digitalRead(config::interrupt) != HIGH) {
+        return;
+    }
+    portENTER_CRITICAL(&statsMux);
+    ++taskStats.missedInterrupts;
+    portEXIT_CRITICAL(&statsMux);
+    rfm69.markInterrupt();
+    drainReceivedFrame();
+}
+
 void radioTask(void*) {
     for (;;) {
-        QueueSetMemberHandle_t ready = xQueueSelectFromSet(radioQueueSet, portMAX_DELAY);
+        QueueSetMemberHandle_t ready =
+            xQueueSelectFromSet(radioQueueSet, kMissedInterruptCheck);
+        if (ready == nullptr) {
+            serviceMissedInterrupt();
+            continue;
+        }
         uint8_t signal = 0;
         if (ready == interruptQueue && xQueueReceive(interruptQueue, &signal, 0) == pdPASS) {
-            drainReceivedFrame();
+            serviceInterrupt();
             continue;
         }
 
         // If RX and a command became ready together, always drain the FIFO first.
         if (xQueueReceive(interruptQueue, &signal, 0) == pdPASS) {
-            drainReceivedFrame();
+            serviceInterrupt();
         }
         RadioCommand command{};
         if (xQueueReceive(commandQueue, &command, 0) == pdPASS) {
@@ -400,6 +435,17 @@ void radioTask(void*) {
             memset(&command, 0, sizeof(command));
         }
     }
+}
+
+// The module keeps its state through an ESP32 reset; without the RESET line
+// only a power cycle clears one left mid-reception.
+void resetModule() {
+    if (config::reset < 0) return;
+    pinMode(config::reset, OUTPUT);
+    digitalWrite(config::reset, HIGH);
+    delayMicroseconds(100);
+    digitalWrite(config::reset, LOW);
+    delay(5);
 }
 
 }  // namespace
@@ -416,6 +462,7 @@ bool begin() {
            radiosensors::gateway_storage::kRadioKeySize);
     currentNetworkId.store(operationalNetworkId);
     pinMode(config::interrupt, INPUT);
+    resetModule();
 
     bool initialized = false;
     for (uint8_t attempt = 1; attempt <= kInitializationAttempts; ++attempt) {
@@ -698,6 +745,7 @@ Snapshot snapshot() {
 
     portENTER_CRITICAL(&statsMux);
     result.interrupts = taskStats.interrupts;
+    result.missedInterrupts = taskStats.missedInterrupts;
     result.packets = taskStats.packets;
     result.bytes = taskStats.bytes;
     result.emptyWakeups = taskStats.emptyWakeups;

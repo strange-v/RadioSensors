@@ -21,7 +21,7 @@ PlatformIO is pinned in `platformio.ini`, along with exact library versions. On 
 
 ## Hardware
 
-WT32 RFM69 wiring: SCK 12, MISO 15, MOSI 4, CS 14, DIO0/IRQ 36. Waveshare RFM69 uses a separate HSPI bus from W5500: SCK 43, MISO 44, MOSI 1, CS 2, DIO0/IRQ 38. Add a pull-up from RFM69 CS to 3.3 V so it remains deselected through reset and UART recovery.
+WT32 RFM69 wiring: SCK 12, MISO 15, MOSI 4, CS 14, DIO0/IRQ 36. Waveshare RFM69 uses a separate HSPI bus from W5500: SCK 43, MISO 44, MOSI 1, CS 2, DIO0/IRQ 38, RESET 39. `GATEWAY_RFM69_RESET` names the GPIO wired to the module's RESET pin and is optional; without it the module keeps its state through an ESP32 reset and only a power cycle clears it. Add a pull-up from RFM69 CS to 3.3 V so it remains deselected through reset and UART recovery.
 
 Waveshare BOOT/GPIO0 is the runtime physical-presence button and GPIO21 drives the onboard RGB LED. WT32 compiles from the same source but currently has no equivalent runtime button/LED workflow and is outside the primary hardware acceptance scope.
 

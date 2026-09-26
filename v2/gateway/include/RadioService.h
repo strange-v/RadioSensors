@@ -39,6 +39,7 @@ struct Snapshot {
     int8_t configuredPowerDbm;
     bool encryptionEnabled;
     uint32_t interrupts;
+    uint32_t missedInterrupts;
     uint32_t packets;
     uint32_t bytes;
     uint32_t emptyWakeups;
