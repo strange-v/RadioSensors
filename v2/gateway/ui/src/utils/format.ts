@@ -30,6 +30,12 @@ export function signal(rssi: number | undefined): string {
   return isMeasuredRssi(rssi) ? `${rssi} dBm` : '—'
 }
 
+// Two decimals: a CR2032 spends its useful life between about 3.0 and 2.7 V,
+// so tenths would hide most of the discharge.
+export function volts(millivolts: number | undefined): string {
+  return millivolts === undefined ? '—' : `${(millivolts / 1000).toFixed(2)} V`
+}
+
 export function megahertz(hz: number): string {
   // 868.00 MHz claims a precision the radio does not have. Trailing zeros go,
   // but genuine fractions must survive: 868.3 and 433.92 are real band centres.

@@ -10,7 +10,7 @@ import Modal from '../components/Modal.vue'
 import NodeDetail from '../components/NodeDetail.vue'
 import SignalBars from '../components/SignalBars.vue'
 import { PAIRING_KEY_HEX_LENGTH, PAIRING_UID_HEX_LENGTH, parsePairingPaste } from '../utils/hexCredentials'
-import { lastSeen, nodeName, signal } from '../utils/format'
+import { lastSeen, nodeName, signal, volts } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -77,18 +77,24 @@ async function refreshSelected() {
   followSelected()
 }
 
-type SortKey = 'name' | 'rssi' | 'lastSeen'
+type SortKey = 'name' | 'rssi' | 'supply' | 'lastSeen'
 const sortKey = ref<SortKey>('name')
 const sortAscending = ref(true)
 
 const named = (node: GatewayNode) => nodeName(t, node)
 
+function sortValue(node: GatewayNode): number | undefined {
+  if (sortKey.value === 'rssi') return node.rssi
+  if (sortKey.value === 'supply') return node.supply_mv
+  return node.last_seen_at_ms
+}
+
 const sortedNodes = computed(() => {
   const direction = sortAscending.value ? 1 : -1
   return [...nodes.value].sort((left, right) => {
     if (sortKey.value === 'name') return named(left).localeCompare(named(right), locale.value) * direction
-    const a = sortKey.value === 'rssi' ? left.rssi : left.last_seen_at_ms
-    const b = sortKey.value === 'rssi' ? right.rssi : right.last_seen_at_ms
+    const a = sortValue(left)
+    const b = sortValue(right)
     // Nodes that never reported have no value to compare, so they stay at the
     // bottom whichever direction is chosen instead of flipping to the top.
     if (a === undefined) return b === undefined ? 0 : 1
@@ -99,7 +105,8 @@ const sortedNodes = computed(() => {
 
 function sortBy(key: SortKey) {
   if (sortKey.value === key) sortAscending.value = !sortAscending.value
-  else { sortKey.value = key; sortAscending.value = key === 'name' }
+  // The weakest supply is the one worth seeing first.
+  else { sortKey.value = key; sortAscending.value = key === 'name' || key === 'supply' }
 }
 
 // `quiet` is the periodic refresh: no spinner, the shorter poll timeout, and a
@@ -286,6 +293,7 @@ onBeforeUnmount(() => { window.clearInterval(pairingTimer); window.clearInterval
             <button type="button" :class="{ active: sortKey === 'name' }" @click="sortBy('name')">{{ $t('nodes.columnName') }}<span v-if="sortKey === 'name'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
             <span>{{ $t('nodes.columnFirmware') }}</span>
             <button type="button" :class="{ active: sortKey === 'rssi' }" @click="sortBy('rssi')">{{ $t('nodes.columnSignal') }}<span v-if="sortKey === 'rssi'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
+            <button type="button" :class="{ active: sortKey === 'supply' }" @click="sortBy('supply')">{{ $t('nodes.columnSupply') }}<span v-if="sortKey === 'supply'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
             <button type="button" :class="{ active: sortKey === 'lastSeen' }" @click="sortBy('lastSeen')">{{ $t('nodes.columnLastSeen') }}<span v-if="sortKey === 'lastSeen'" aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button>
             <span>{{ $t('nodes.columnState') }}</span>
           </div>
@@ -297,6 +305,7 @@ onBeforeUnmount(() => { window.clearInterval(pairingTimer); window.clearInterval
               <template v-if="node.has_telemetry === false"><small>{{ $t('nodes.noTelemetry') }}</small></template>
               <template v-else><SignalBars :rssi="node.rssi" /><span class="node-rssi">{{ signal(node.rssi) }}</span></template>
             </span>
+            <span class="node-supply">{{ volts(node.supply_mv) }}</span>
             <span class="node-seen"><strong>{{ lastSeen(t, node.last_seen_at_ms) }}</strong></span>
             <span class="inline-status" :class="{ warning: node.state !== 'active' }">{{ $t(`nodes.state.${node.state}`) }}</span>
           </button>

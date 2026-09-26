@@ -237,7 +237,7 @@ button.node-row:hover { background: var(--surface-hover); }
    `auto` tracks, which used to be unusable here for exactly that reason. Every
    responsive change belongs on the list, not on the rows. */
 .node-list.detailed {
-  --node-columns: 32px minmax(140px, 1.4fr) minmax(70px, .45fr) minmax(105px, .6fr) minmax(80px, .5fr) minmax(96px, .5fr);
+  --node-columns: 32px minmax(140px, 1.4fr) minmax(70px, .45fr) minmax(105px, .6fr) minmax(64px, .4fr) minmax(80px, .5fr) minmax(96px, .5fr);
   grid-template-columns: var(--node-columns);
   column-gap: var(--space-3);
 }
@@ -283,7 +283,7 @@ button.node-row:hover { background: var(--surface-hover); }
 .node-list-head button.active { color: var(--primary); }
 .node-list.detailed .node-row + .node-row { box-shadow: 0 -1px 0 var(--line); }
 
-.node-firmware { color: var(--ink-soft); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.node-firmware, .node-supply { color: var(--ink-soft); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .node-signal { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-soft); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .node-signal small { color: var(--muted); font-size: var(--text-xs); }
 
@@ -457,11 +457,11 @@ label small.invalid { color: var(--danger); }
   .summary-strip strong { font-size: var(--text-xl); }
   .node-row { grid-template-columns: 32px minmax(100px, 1fr) auto; }
   .node-seen { display: none; }
-  /* Six sortable columns do not fit a phone; the list keeps its default order
+  /* Seven columns do not fit a phone; the list keeps its default order
      and drops to name plus signal. */
   /* Bars alone carry the reading on a phone; the exact dBm figure would wrap.
      SignalBars keeps it in its aria-label. */
-  .node-list-head, .node-firmware, .node-rssi { display: none; }
+  .node-list-head, .node-firmware, .node-supply, .node-rssi { display: none; }
   .node-list.detailed { --node-columns: 32px minmax(90px, 1fr) auto auto; }
   .attention-banner, .notice { align-items: flex-start; flex-direction: column; }
   .offline-banner { padding-inline: var(--space-3); }

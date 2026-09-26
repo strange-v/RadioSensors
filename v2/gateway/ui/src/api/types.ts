@@ -50,6 +50,8 @@ export interface GatewayNode {
   tx_power_level?: number
   radio_fallback?: boolean
   downlink_rssi?: number
+  // Absent when the node could not measure its supply.
+  supply_mv?: number
 }
 export type PowerPolicy = 'auto' | 'fixed'
 export interface PowerPolicyWrite { power_policy: PowerPolicy; fixed_power_level?: number }

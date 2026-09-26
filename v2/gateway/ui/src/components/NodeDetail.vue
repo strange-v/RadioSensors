@@ -13,7 +13,7 @@ import Modal from './Modal.vue'
 import NodeCommands from './NodeCommands.vue'
 import NodeRadio from './NodeRadio.vue'
 import SignalBars from './SignalBars.vue'
-import { byteLength, isMeasuredRssi, lastSeen, nodeName, signal, truncateToBytes } from '../utils/format'
+import { byteLength, isMeasuredRssi, lastSeen, nodeName, signal, truncateToBytes, volts } from '../utils/format'
 import { groupHex } from '../utils/hexCredentials'
 
 const props = defineProps<{ node: GatewayNode }>()
@@ -162,6 +162,7 @@ async function remove() {
         <div><dt>{{ $t('nodes.profileLabel') }}</dt><dd>{{ node.profile_id }}</dd></div>
         <div><dt>{{ $t('nodes.columnFirmware') }}</dt><dd>{{ node.firmware || '—' }}</dd></div>
         <div><dt>{{ $t('nodes.columnLastSeen') }}</dt><dd>{{ lastSeen(t, node.last_seen_at_ms) }}</dd></div>
+        <div><dt>{{ $t('nodes.columnSupply') }}</dt><dd>{{ volts(node.supply_mv) }}</dd></div>
         <div><dt>{{ $t('radio.uplink') }}</dt><dd>
           <span class="node-signal"><SignalBars v-if="isMeasuredRssi(node.rssi)" :rssi="node.rssi" />{{ signal(node.rssi) }}</span>
         </dd></div>

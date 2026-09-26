@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 RADIO_COUNTERS = (
     "interrupts",
     "missed_interrupts",
+    "module_restores",
+    "module_restore_failures",
     "packets",
     "ack_requests_ignored",
     "telemetry_acks_sent",
@@ -122,7 +124,8 @@ def main():
             handle.flush()
             print(", ".join(f"{key}={row.get(key)}" for key in (
                 "logged_at", "uptime_seconds", "free_heap", "packets",
-                "missed_interrupts", "telemetry_frames_dropped", "error")))
+                "missed_interrupts", "module_restores", "telemetry_frames_dropped",
+                "error")))
             time.sleep(max(0.0, interval - (time.monotonic() - started)))
 
 

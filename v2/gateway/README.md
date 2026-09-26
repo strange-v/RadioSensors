@@ -119,7 +119,7 @@ esp-coredump --chip esp32s3 info_corefile -t raw -c core.bin .pio\build\gateway_
 
 ## Runtime
 
-One priority-11 task owns RFM69 and all FIFO/SPI operations. Active telemetry enters bounded queues and is acknowledged only after acceptance. Commissioning and NVS writes execute outside the radio task. The main loop keeps the latest opaque telemetry frame for each node and publishes it through the binary WebSocket.
+One priority-11 task owns RFM69 and all FIFO/SPI operations. After 5 s without an interrupt it services a DIO0 edge it missed (`missed_interrupts` in `/ui/status`), and every 5 s it checks that the module is in RX and reads back 24 configuration registers. A module that left RX or no longer matches what the task wrote is reset through `GATEWAY_RFM69_RESET` when wired and configured again on the current network and key; `module_restores` and `module_restore_failures` count the outcomes, and the serial log names the register. Active telemetry enters bounded queues and is acknowledged only after acceptance. Commissioning and NVS writes execute outside the radio task. The main loop keeps the latest opaque telemetry frame for each node and publishes it through the binary WebSocket.
 
 The gateway serves two API surfaces: `/api` is the external client contract (`info`, the node registry read) and moves only with `api_version`, while `/ui` is everything the Web UI needs and moves with the firmware. Outside both sit `/health`, an unauthenticated liveness probe carrying only `status` and `boot_id`, and `/ws`. See `API.md`. Persistent settings, authentication, registry, and secrets use independent dual-slot stores. SNTP uses configured NTP servers and reapplies changes without reboot.
 

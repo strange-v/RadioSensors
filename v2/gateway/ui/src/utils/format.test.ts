@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import SignalBars from '../components/SignalBars.vue'
-import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, byteLength, isMeasuredRssi, isValidHostname, signal, truncateToBytes } from './format'
+import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, byteLength, isMeasuredRssi, isValidHostname, signal, truncateToBytes, volts } from './format'
 
 // The RFM69 driver returns -RegRssiValue/2 from an 8-bit register, so every
 // genuine reading is a negative whole dBm no lower than -128.
@@ -28,6 +28,17 @@ describe('signal', () => {
   it('renders a dash rather than "0 dBm" for a missing measurement', () => {
     expect(signal(undefined)).toBe('—')
     expect(signal(0)).toBe('—')
+  })
+})
+
+describe('volts', () => {
+  it('shows millivolts as volts with two decimals', () => {
+    expect(volts(2987)).toBe('2.99 V')
+    expect(volts(3000)).toBe('3.00 V')
+  })
+
+  it('shows a dash when the node did not measure its supply', () => {
+    expect(volts(undefined)).toBe('—')
   })
 })
 

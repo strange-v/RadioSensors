@@ -40,17 +40,17 @@ type MockNode = {
   node_id: number; device_uid: string; display_name: string; profile_id: number; firmware: string; state: string
   last_seen_at_ms?: number; rssi?: number; has_telemetry: boolean
   max_power_level: number; power_policy: string; fixed_power_level?: number; tx_power_target?: number
-  tx_power_level?: number; radio_fallback?: boolean; downlink_rssi?: number
+  tx_power_level?: number; radio_fallback?: boolean; downlink_rssi?: number; supply_mv?: number
 }
 const radio = (level: number, over: Partial<MockNode> = {}) => ({
   max_power_level: 2, power_policy: 'auto', tx_power_target: level, tx_power_level: level,
-  radio_fallback: false, downlink_rssi: -66, ...over,
+  radio_fallback: false, downlink_rssi: -66, supply_mv: 2987, ...over,
 })
 const nodes: MockNode[] = [
-  { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true, ...radio(1, { max_power_level: 31 }) },
+  { node_id: 2, device_uid: 'A1B2C3D4E5F60718293A', display_name: 'Кухня', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 120_000, rssi: -68, has_telemetry: true, ...radio(1, { max_power_level: 31, supply_mv: 4312 }) },
   { node_id: 3, device_uid: '0F1E2D3C4B5A69788796', display_name: 'Гараж', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 40_000, rssi: -74, has_telemetry: true, ...radio(2) },
   { node_id: 4, device_uid: '112233445566778899AA', display_name: '', profile_id: 2, firmware: '2.0.4', state: 'pending', has_telemetry: false, max_power_level: 2, power_policy: 'auto' },
-  { node_id: 5, device_uid: 'BBCCDDEEFF0011223344', display_name: 'Тепличка', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 300_000, rssi: -89, has_telemetry: true, ...radio(2, { radio_fallback: true, downlink_rssi: -93 }) },
+  { node_id: 5, device_uid: 'BBCCDDEEFF0011223344', display_name: 'Тепличка', profile_id: 1, firmware: '2.1.0', state: 'active', last_seen_at_ms: now - 300_000, rssi: -89, has_telemetry: true, ...radio(2, { radio_fallback: true, downlink_rssi: -93, supply_mv: 2641 }) },
   { node_id: 6, device_uid: 'C0FFEE00112233445566', display_name: 'Газ', profile_id: 6, firmware: '0.1.0', state: 'active', last_seen_at_ms: now - 90_000, rssi: -71, has_telemetry: true, ...radio(2, { power_policy: 'fixed', fixed_power_level: 1, tx_power_target: 1 }) },
 ]
 

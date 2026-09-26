@@ -201,7 +201,8 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
       "rssi": -74,
       "tx_power_level": 2,
       "radio_fallback": false,
-      "downlink_rssi": -71
+      "downlink_rssi": -71,
+      "supply_mv": 2987
     },
     {
       "node_id": 8,
@@ -223,7 +224,7 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
 
 `max_power_level` is the transmit power ceiling the node reported at pairing, `0..31`. `power_policy` is `auto` or `fixed`; `fixed_power_level` is present exactly when it is `fixed`. `tx_power_target` is the level the gateway currently wants and is absent before the node's first report since boot or a policy change.
 
-`has_telemetry` is always present. `last_seen_at_ms`, `rssi`, `tx_power_level`, and `radio_fallback` are present exactly when it is true; `downlink_rssi` also requires that the node has heard an acknowledgement. These radio fields come from the node's latest report ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)). A zero last-seen timestamp means the frame arrived before gateway time synchronization. The registry response never contains radio payload bytes.
+`has_telemetry` is always present. `last_seen_at_ms`, `rssi`, `tx_power_level`, and `radio_fallback` are present exactly when it is true; `downlink_rssi` also requires that the node has heard an acknowledgement, and `supply_mv`, the node's supply voltage in millivolts, that the node measured it. These fields come from the node's latest report ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)). A zero last-seen timestamp means the frame arrived before gateway time synchronization. The registry response never contains radio payload bytes.
 
 `PATCH /ui/nodes` renames a node, changes its radio power policy, or both, and requires an admin session plus CSRF:
 

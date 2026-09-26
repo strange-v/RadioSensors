@@ -1,6 +1,7 @@
 #include "RadioService.h"
 
 #include <RFM69.h>
+#include <RFM69registers.h>
 #include <JoinRequest.h>
 #include <SPI.h>
 #include <TelemetryFrames.h>
@@ -31,6 +32,26 @@ constexpr uint32_t kInitializationRecoveryDelayMs = 25;
 constexpr TickType_t kCommandCompletionTimeout = pdMS_TO_TICKS(3000);
 // How long the radio task waits for an interrupt before checking DIO0 itself.
 constexpr TickType_t kMissedInterruptCheck = pdMS_TO_TICKS(5000);
+constexpr uint32_t kRegisterCheckIntervalMs = 5000;
+// Longest wait for ModeReady before OpMode is trusted; the switch to RX takes
+// well under a millisecond.
+constexpr uint32_t kModeReadyTimeoutMs = 5;
+constexpr uint8_t kOpModeModeMask = 0x1C;
+
+// Configuration registers only the radio task writes. A module that reset
+// itself or lost a setting keeps DIO0 low and never interrupts, so only
+// reading them back shows it. The AES key registers are write-only; a reset
+// shows in PacketConfig2's AesOn bit and SyncValue2. OpMode is not here: the
+// sequencer passes through FS on its way to RX, so it is checked for RX once
+// the module reports ModeReady.
+constexpr uint8_t kCheckedRegisters[] = {
+    REG_DATAMODUL, REG_BITRATEMSB, REG_BITRATELSB,
+    REG_FDEVMSB, REG_FDEVLSB, REG_FRFMSB, REG_FRFMID, REG_FRFLSB,
+    REG_PALEVEL, REG_OCP, REG_RXBW, REG_DIOMAPPING1, REG_DIOMAPPING2,
+    REG_RSSITHRESH, REG_SYNCCONFIG, REG_SYNCVALUE1, REG_SYNCVALUE2,
+    REG_PACKETCONFIG1, REG_PAYLOADLENGTH, REG_FIFOTHRESH, REG_PACKETCONFIG2,
+    REG_TESTPA1, REG_TESTPA2, REG_TESTDAGC,
+};
 
 // Exposes the library's pending-interrupt flag, so a missed DIO0 edge can be
 // serviced as if the interrupt had fired.
@@ -90,6 +111,8 @@ std::atomic<uint32_t> nextCompletionId{1};
 struct TaskStats {
     uint32_t interrupts = 0;
     uint32_t missedInterrupts = 0;
+    uint32_t moduleRestores = 0;
+    uint32_t moduleRestoreFailures = 0;
     uint32_t packets = 0;
     uint32_t bytes = 0;
     uint32_t emptyWakeups = 0;
@@ -124,6 +147,10 @@ portMUX_TYPE statsMux = portMUX_INITIALIZER_UNLOCKED;
 uint8_t detectedVersion = 0;
 uint32_t configuredFrequencyHz = 0;
 uint32_t configuredBitRate = 0;
+// What the module read back right after the radio task configured it.
+uint8_t expectedRegisters[sizeof(kCheckedRegisters)]{};
+std::atomic<bool> expectedRegistersValid{false};
+uint32_t lastRegisterCheckMs = 0;
 
 void IRAM_ATTR onRadioInterrupt() {
     BaseType_t higherPriorityTaskWoken = pdFALSE;
@@ -273,6 +300,105 @@ void drainReceivedFrame() {
         rfm69.receiveDone();
 }
 
+// The module keeps its state through an ESP32 reset; without the RESET line
+// only a power cycle clears one left mid-reception.
+void resetModule() {
+    if (config::reset < 0) return;
+    pinMode(config::reset, OUTPUT);
+    digitalWrite(config::reset, HIGH);
+    delayMicroseconds(100);
+    digitalWrite(config::reset, LOW);
+    delay(5);
+}
+
+uint8_t readCheckedRegister(const uint8_t address) {
+    const uint8_t value = rfm69.readReg(address);
+    // RestartRx is a trigger, not a setting.
+    return address == REG_PACKETCONFIG2
+        ? static_cast<uint8_t>(value & ~RF_PACKET2_RXRESTART)
+        : value;
+}
+
+// Called once the radio task has configured the module and returned it to RX.
+void rememberRegisters() {
+    expectedRegistersValid.store(false);
+    // checkModule() restores a module the library did not leave in RX.
+    if (currentState.load() != State::Receiving || RFM69::_mode != RF69_MODE_RX) {
+        return;
+    }
+    for (size_t index = 0; index < sizeof(kCheckedRegisters); ++index) {
+        expectedRegisters[index] = readCheckedRegister(kCheckedRegisters[index]);
+    }
+    expectedRegistersValid.store(true);
+}
+
+// initialize() leaves the module at the library's low-power defaults.
+void configurePower() {
+    rfm69.setHighPower(config::highPower);
+    rfm69.setPowerDBm(config::txPowerDbm);
+}
+
+void restoreModule() {
+    resetModule();
+    // setMode() skips the mode the library believes the module is in, so a
+    // module that left RX behind its back would never be sent back.
+    RFM69::_mode = RF69_MODE_STANDBY;
+    const bool restored =
+        rfm69.initialize(
+            config::frequencyBand, config::nodeId, currentNetworkId.load()) &&
+        rfm69.getVersion() == kExpectedVersion;
+    if (restored) {
+        configurePower();
+        rfm69.encrypt(currentProfile.load() == Profile::Commissioning
+            ? reinterpret_cast<const char*>(pairingKey)
+            : operationalKey);
+        rfm69.receiveDone();
+        rememberRegisters();
+    }
+    portENTER_CRITICAL(&statsMux);
+    if (restored) ++taskStats.moduleRestores;
+    else ++taskStats.moduleRestoreFailures;
+    portEXIT_CRITICAL(&statsMux);
+    Serial.println(restored
+        ? "RFM69 restored"
+        : "RFM69 restore failed; retrying at the next check");
+}
+
+// Reads OpMode's mode bits once the sequencer has finished a transition.
+uint8_t settledMode() {
+    const uint32_t started = millis();
+    while ((rfm69.readReg(REG_IRQFLAGS1) & RF_IRQFLAGS1_MODEREADY) == 0 &&
+           millis() - started < kModeReadyTimeoutMs) {}
+    return rfm69.readReg(REG_OPMODE) & kOpModeModeMask;
+}
+
+void checkModule() {
+    if (currentState.load() != State::Receiving) return;
+    // Between operations the radio task always leaves the library in RX.
+    if (RFM69::_mode != RF69_MODE_RX) {
+        Serial.printf("RFM69 left in mode %u instead of RX\n", RFM69::_mode);
+        restoreModule();
+        return;
+    }
+    const uint8_t mode = settledMode();
+    if (mode != RF_OPMODE_RECEIVER) {
+        Serial.printf("RFM69 OpMode mode bits read 0x%02x instead of RX\n", mode);
+        restoreModule();
+        return;
+    }
+    if (!expectedRegistersValid.load()) return;
+    for (size_t index = 0; index < sizeof(kCheckedRegisters); ++index) {
+        const uint8_t actual = readCheckedRegister(kCheckedRegisters[index]);
+        if (actual != expectedRegisters[index]) {
+            Serial.printf(
+                "RFM69 register 0x%02x reads 0x%02x, expected 0x%02x\n",
+                kCheckedRegisters[index], actual, expectedRegisters[index]);
+            restoreModule();
+            return;
+        }
+    }
+}
+
 void processCommand(const RadioCommand& command) {
     if (command.kind == CommandKind::BeginCommissioning) {
         memcpy(pairingKey, command.key, sizeof(pairingKey));
@@ -331,6 +457,7 @@ void processCommand(const RadioCommand& command) {
         }
     }
     rfm69.receiveDone();
+    rememberRegisters();
     portENTER_CRITICAL(&statsMux);
     ++taskStats.commandsProcessed;
     portEXIT_CRITICAL(&statsMux);
@@ -415,37 +542,30 @@ void radioTask(void*) {
     for (;;) {
         QueueSetMemberHandle_t ready =
             xQueueSelectFromSet(radioQueueSet, kMissedInterruptCheck);
+        uint8_t signal = 0;
         if (ready == nullptr) {
             serviceMissedInterrupt();
-            continue;
-        }
-        uint8_t signal = 0;
-        if (ready == interruptQueue && xQueueReceive(interruptQueue, &signal, 0) == pdPASS) {
+        } else if (ready == interruptQueue &&
+                   xQueueReceive(interruptQueue, &signal, 0) == pdPASS) {
             serviceInterrupt();
-            continue;
+        } else {
+            // If RX and a command became ready together, always drain the FIFO first.
+            if (xQueueReceive(interruptQueue, &signal, 0) == pdPASS) {
+                serviceInterrupt();
+            }
+            RadioCommand command{};
+            if (xQueueReceive(commandQueue, &command, 0) == pdPASS) {
+                processCommand(command);
+                memset(&command, 0, sizeof(command));
+            }
         }
-
-        // If RX and a command became ready together, always drain the FIFO first.
-        if (xQueueReceive(interruptQueue, &signal, 0) == pdPASS) {
-            serviceInterrupt();
-        }
-        RadioCommand command{};
-        if (xQueueReceive(commandQueue, &command, 0) == pdPASS) {
-            processCommand(command);
-            memset(&command, 0, sizeof(command));
+        // Timed here rather than on the idle timeout, which steady traffic
+        // would never let expire.
+        if (millis() - lastRegisterCheckMs >= kRegisterCheckIntervalMs) {
+            lastRegisterCheckMs = millis();
+            checkModule();
         }
     }
-}
-
-// The module keeps its state through an ESP32 reset; without the RESET line
-// only a power cycle clears one left mid-reception.
-void resetModule() {
-    if (config::reset < 0) return;
-    pinMode(config::reset, OUTPUT);
-    digitalWrite(config::reset, HIGH);
-    delayMicroseconds(100);
-    digitalWrite(config::reset, LOW);
-    delay(5);
 }
 
 }  // namespace
@@ -500,8 +620,7 @@ bool begin() {
         return false;
     }
 
-    rfm69.setHighPower(config::highPower);
-    rfm69.setPowerDBm(config::txPowerDbm);
+    configurePower();
     configuredFrequencyHz = rfm69.getFrequency();
     configuredBitRate = rfm69.getBitRate();
 
@@ -530,6 +649,8 @@ bool begin() {
         return false;
     }
 
+    // Keeps the first check out of the rest of begin(), which still uses SPI.
+    lastRegisterCheckMs = millis();
     if (xTaskCreatePinnedToCore(
             radioTask,
             "rfm69-rx",
@@ -552,6 +673,7 @@ bool begin() {
     }
     rfm69.receiveDone();
     currentState.store(State::Receiving);
+    rememberRegisters();
 
     Serial.printf(
         "RFM69 ready: version=0x%02x frequency=%luHz bitrate=%lubps "
@@ -746,6 +868,8 @@ Snapshot snapshot() {
     portENTER_CRITICAL(&statsMux);
     result.interrupts = taskStats.interrupts;
     result.missedInterrupts = taskStats.missedInterrupts;
+    result.moduleRestores = taskStats.moduleRestores;
+    result.moduleRestoreFailures = taskStats.moduleRestoreFailures;
     result.packets = taskStats.packets;
     result.bytes = taskStats.bytes;
     result.emptyWakeups = taskStats.emptyWakeups;

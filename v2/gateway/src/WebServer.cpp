@@ -503,6 +503,10 @@ void handleNodes(AsyncWebServerRequest* request) {
                 if (view.downlinkRssi != radiosensors::protocol::kNoDownlinkRssi) {
                     document["downlink_rssi"] = view.downlinkRssi;
                 }
+                if (view.supplyMillivolts !=
+                    radiosensors::protocol::kInvalidSupplyVoltage) {
+                    document["supply_mv"] = view.supplyMillivolts;
+                }
             }
         } else {
             document["has_telemetry"] = false;
@@ -1657,6 +1661,7 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"profile\":\"%s\",\"spi_host\":\"%s\","
         "\"pins\":{\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"irq\":%d,\"reset\":%d},"
         "\"counters\":{\"interrupts\":%lu,\"missed_interrupts\":%lu,"
+        "\"module_restores\":%lu,\"module_restore_failures\":%lu,"
         "\"packets\":%lu,\"bytes\":%lu,"
         "\"empty_wakeups\":%lu,\"ack_requests_ignored\":%lu,"
         "\"telemetry_acks_sent\":%lu,\"telemetry_rejected_inactive\":%lu,"
@@ -1762,6 +1767,8 @@ void handleStatus(AsyncWebServerRequest* request) {
         radio::config::reset,
         radioSnapshot.interrupts,
         radioSnapshot.missedInterrupts,
+        radioSnapshot.moduleRestores,
+        radioSnapshot.moduleRestoreFailures,
         radioSnapshot.packets,
         radioSnapshot.bytes,
         radioSnapshot.emptyWakeups,
