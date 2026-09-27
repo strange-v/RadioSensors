@@ -1,4 +1,5 @@
-export interface SetupStatus { setup_required: boolean; physical_window_active: boolean; remaining_seconds: number }
+export interface SetupStatus { setup_required: boolean; physical_window_active: boolean; remaining_seconds: number; recovery_required?: boolean; recovery_reason?: string }
+export interface BackupPreview { gateway_id: string; created_at_ms: number; node_count: number; hostname: string; mdns_enabled: boolean }
 export interface SetupRequest { username: string; password: string; hostname?: string; operational_network_id?: number }
 export interface SessionUser { id: number; username: string; role: 'admin' | 'viewer' }
 export interface Session { user: SessionUser; csrf_token: string }

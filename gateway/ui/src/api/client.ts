@@ -18,12 +18,13 @@ const REQUEST_TIMEOUT_MS = 30_000
 // gateway that is already slow.
 const POLL_TIMEOUT_MS = 8_000
 
-async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS, binary = false): Promise<T> {
   const controller = new AbortController()
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(path, { ...init, credentials: 'same-origin', signal: controller.signal, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(csrfToken && init?.method && !['GET', 'HEAD'].includes(init.method) ? { 'X-CSRF-Token': csrfToken } : {}), ...init?.headers } })
     gatewayReachable.value = true
+    if (response.ok && binary) return await response.blob() as T
     const body = await response.json().catch(() => ({})) as { error?: string }
     if (!response.ok) throw new ApiError(response.status, body.error ?? 'generic')
     return body as T
@@ -55,6 +56,9 @@ export function forgetSession() {
 }
 
 export const api = {
+  exportBackup: (password: string) => request<Blob>('/ui/backup/export', { method: 'POST', body: JSON.stringify({ password }) }, 120_000, true),
+  previewBackup: (file: string, password: string) => request<import('./types').BackupPreview>('/ui/backup/preview', { method: 'POST', headers: { 'X-Backup-Request': '1' }, body: JSON.stringify({ file, password }) }, 120_000),
+  restoreBackup: (file: string, password: string, username: string, adminPassword: string) => request<void>('/ui/backup/restore', { method: 'POST', headers: { 'X-Backup-Request': '1' }, body: JSON.stringify({ file, password, username, admin_password: adminPassword }) }, 120_000),
   setupStatus: () => request<SetupStatus>('/ui/setup'),
   setup: async (payload: SetupRequest) => rememberSession(await request<Session>('/ui/setup', { method: 'POST', body: JSON.stringify(payload) })),
   login: async (username: string, password: string) => rememberSession(await request<Session>('/ui/session', { method: 'POST', body: JSON.stringify({ username, password }) })),

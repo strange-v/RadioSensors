@@ -5,10 +5,12 @@
 
 #include <atomic>
 
+#include "BackupService.h"
 #include "DeviceIdentity.h"
 #include "Diagnostics.h"
 #include "EthernetService.h"
 #include "OtaConfig.h"
+#include "RecoveryService.h"
 #include "WebUiService.h"
 
 namespace gateway::ota {
@@ -89,7 +91,8 @@ void loop() {
         Serial.printf("OTA ready: %s.local:%u\n", identity::hostname(), kOtaPort);
     }
 
-    ArduinoOTA.handle();
+    recovery::Guard guard(0);
+    if (guard && !recovery::blocked() && !backup::busy()) ArduinoOTA.handle();
 }
 
 bool enabled() {

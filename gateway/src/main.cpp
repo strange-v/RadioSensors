@@ -17,6 +17,7 @@
 #include "PasswordHashService.h"
 #include "PowerControlService.h"
 #include "RadioService.h"
+#include "RecoveryService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
 #include "WebUiService.h"
@@ -58,7 +59,8 @@ void setup() {
     Serial.printf("PoE profile: %s\n", gateway::board::current.hasPoe ? "yes" : "no");
     Serial.printf("Reset reason: %s\n", gateway::diagnostics::resetReason());
 
-    gateway::configuration_store::begin();
+    gateway::recovery::begin();
+    if (!gateway::recovery::blocked()) gateway::configuration_store::begin();
     gateway::identity::begin();
     Serial.printf("Hostname: %s\n", gateway::identity::hostname());
     Serial.printf("Gateway ID: %s\n", gateway::identity::gatewayId());
@@ -67,20 +69,20 @@ void setup() {
         Serial.println("Password hash worker initialization failed");
     }
     gateway::authentication::begin();
-    gateway::registry_store::begin();
+    if (!gateway::recovery::blocked()) gateway::registry_store::begin();
     gateway::telemetry_store::begin();
     gateway::status::begin();
     gateway::ethernet::begin();
     gateway::time_service::begin();
     gateway::mdns_service::begin();
     gateway::web_ui::begin();
-    const bool radioReady = gateway::radio::begin();
+    const bool radioReady = !gateway::recovery::blocked() && gateway::radio::begin();
     if (radioReady) {
         gateway::commissioning::begin();
     } else {
         Serial.println("Commissioning disabled because RFM69 is unavailable");
     }
-    gateway::commands::begin(radioReady);
+    if (!gateway::recovery::blocked()) gateway::commands::begin(radioReady);
     gateway::web_server::begin();
     gateway::ota::begin();
 
@@ -91,6 +93,7 @@ void setup() {
 }
 
 void loop() {
+    gateway::recovery::loop();
     gateway::time_service::loop();
     gateway::mdns_service::loop();
     gateway::radio::ReceivedFrame telemetry{};

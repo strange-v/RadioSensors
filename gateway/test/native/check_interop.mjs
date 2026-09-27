@@ -1,0 +1,20 @@
+import { readFileSync } from 'node:fs'
+import { createDecipheriv, pbkdf2Sync } from 'node:crypto'
+import assert from 'node:assert/strict'
+
+const file = readFileSync(process.argv[2])
+assert.equal(file.subarray(0, 8).toString('hex'), '4f534b4201010100')
+assert.equal(file.readUInt32LE(8), 100_000)
+assert.equal(file.readUInt32LE(12), file.length - 60)
+const key = pbkdf2Sync('backup test password', file.subarray(16, 32), 100_000, 32, 'sha256')
+const decipher = createDecipheriv('aes-256-gcm', key, file.subarray(32, 44))
+decipher.setAAD(file.subarray(0, 44)); decipher.setAuthTag(file.subarray(-16))
+const payload = JSON.parse(Buffer.concat([decipher.update(file.subarray(44, -16)), decipher.final()]))
+assert.equal(payload.version, 1)
+assert.equal(payload.network_id, 123)
+assert.equal(payload.settings.hostname, 'greenhouse')
+assert.equal(payload.nodes[0].name, 'Лічильник')
+assert.equal(payload.nodes[0].id, 7)
+assert.equal(payload.device_secret, Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('hex'))
+assert.equal(payload.installation_key, Buffer.from(Array.from({ length: 16 }, (_, i) => i * 7)).toString('hex'))
+console.log('Mbed TLS backup decrypted and validated independently by Node.js crypto')

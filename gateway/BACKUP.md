@@ -1,0 +1,82 @@
+# Installation backup and recovery
+
+## Use
+
+1. As an admin, open **Settings → Installation backup**, enter a separate backup password twice, and download the `.oskbackup` file. Keep the password in a password manager. Make a fresh copy after changing settings or nodes.
+2. Prepare a gateway with compatible firmware and Web UI. Switch off the original gateway before activating a replacement.
+3. On a clean gateway, briefly press BOOT to open setup, choose **Restore backup**, select the file and enter its password. Review the gateway ID, date and node count.
+4. Enter a new administrator username/password, confirm, and restore. After restart, sign in and create a new Home Assistant token. A restored hostname can change the address; DHCP/MAC remain specific to the physical board.
+
+| Included | Excluded |
+| --- | --- |
+| Hostname, mDNS, NTP, setup/pairing durations | Users, password hashes, API tokens, sessions |
+| Node UID/ID, profile, firmware metadata, state, nonce, name, power policy | Command book and telemetry |
+| Radio network ID, installation key, device secret | Firmware, Web UI, OTA password, MAC, DHCP lease |
+
+Restoring the radio credentials and registry avoids re-pairing nodes present in the backup. The device secret preserves `gateway_id`. A backup cannot recover later changes; a node whose credentials changed after export may need pairing again. Lost backup passwords cannot be recovered.
+
+## Factory reset
+
+On a running Waveshare gateway, hold BOOT for **10 seconds** until the LED flashes red. Release, then press again within **5 seconds**. Without the second press, reset is cancelled. A short press acts on release and controls setup/pairing.
+
+Reset clears settings, users, tokens, registry, commands, installation keys and the device secret. Firmware and Web UI remain. Nodes retain their credentials. Interrupted reset resumes at boot; interrupted restore requires reset followed by another import. The button works without valid application settings, but requires running firmware and writable NVS. WT32, an unbootable gateway, or an NVS failure that prevents recording reset requires [cable recovery](README.md#erasing-nvs). Holding BOOT during power-on/reset selects the ROM bootloader.
+
+## API
+
+These endpoints belong to `/ui`, use JSON requests, and send `Cache-Control: no-store` for exports/previews. Backup passwords are 12–128 UTF-8 bytes without NUL. Admin credentials follow ordinary setup validation. Import requests require `X-Backup-Request: 1` and an open physical setup window. The request body limit is 35,000 bytes; export accepts at most 1,024 bytes.
+
+| POST endpoint | Request | Result |
+| --- | --- | --- |
+| `/ui/backup/export` | `{"password":"…"}`; admin session + CSRF | Binary `.oskbackup` attachment |
+| `/ui/backup/preview` | `{"file":"base64…","password":"…"}` | `gateway_id`, `created_at_ms`, `node_count`, `hostname`, `mdns_enabled` |
+| `/ui/backup/restore` | Preview fields plus `username`, `admin_password` | `{"status":"restarting"}` |
+
+Preview writes nothing. Restore decrypts and validates the supplied file again; it does not rely on a cached preview. Only a gateway with ready storage, no users, no installation key and no registry records accepts import. Bearer tokens do not authorize export. Busy backup/OTA/reset operations are mutually excluded; snapshot capture holds the persistent mutation lock only while copying settings, secrets and registry.
+
+| Error | Meaning |
+| --- | --- |
+| `409 backup_busy` | Pairing or another operation prevents backup |
+| `409 restore_requires_clean_gateway` | Reset before importing |
+| `409 recovery_required` | Recovery is blocked or the mutation lock is busy |
+| `403 physical_setup_required` | Open/reopen the physical setup window |
+| `422 invalid_backup_password` | Invalid export password length |
+| `422 invalid_backup` | Wrong password, corrupt/unsupported file, or invalid contents |
+| `500 restore_failed` | Reset and retry if recovery is required |
+
+`GET /ui/setup` includes `recovery_required` and `recovery_reason` (`none`, `restore_incomplete`, `reset_incomplete`, `storage_unavailable`, `restarting`). The UI offers reset instructions when recovery is required.
+
+## Container version 1
+
+Maximum file size: **24,636 bytes**. Multibyte header integers are little-endian. The entire 44-byte header is AES-GCM additional authenticated data.
+
+| Offset | Bytes | Value |
+| ---: | ---: | --- |
+| 0 | 4 | ASCII `OSKB` |
+| 4 | 1 | Container version `1` |
+| 5 | 1 | KDF `1`: PBKDF2-HMAC-SHA256, 32-byte output |
+| 6 | 1 | Cipher `1`: AES-256-GCM |
+| 7 | 1 | Reserved, zero |
+| 8 | 4 | Exactly 100,000 KDF iterations |
+| 12 | 4 | Ciphertext length, at most 24,576 |
+| 16 | 16 | Random salt |
+| 32 | 12 | Random nonce |
+| 44 | variable | Encrypted UTF-8 JSON |
+| end | 16 | Authentication tag |
+
+Each export uses hardware randomness for salt and nonce. The KDF runs through the password-hash worker; parsing happens only after GCM authentication succeeds. No plaintext backup is written to flash. This protects the backup file, not HTTP traffic: use the gateway only on the trusted private LAN described in [API.md](API.md#security-and-backup).
+
+Payload keys are `version` (`1`), `created_at_ms` (UTC milliseconds, zero if unavailable), `settings`, `network_id`, `installation_key`, `device_secret`, `nodes`. Keys and UIDs are lowercase hexadecimal. Settings contain `hostname`, `mdns`, `ntp`, `pairing_seconds`, `setup_seconds`, `servers`. Each node contains `uid`, `id`, `profile`, `firmware` (three integers), `state` (1 pending, 2 active, 3 disabled), `nonce`, `name`, `max_power`, `power_policy`. Values obey [storage limits](STORAGE.md); unknown nonzero profile IDs are preserved. Different container/payload versions are rejected.
+
+## Interrupted operations
+
+NVS namespace `gateway-recover`, key `operation` (`uint8`): 0 idle, 1 restore incomplete, 2 factory reset requested. Unknown values or unreadable control data block normal startup.
+
+Restore validates all data and the new admin before persisting marker 1. It clears the five installation namespaces, writes and reads back each snapshot, then commits marker 0 and restarts. Marker 1 prevents storage initialization, radio, commissioning and command processing at boot. The previous installation is not retained.
+
+Button confirmation persists marker 2 and restarts. Before stores initialize, boot clears the five namespaces and commits marker 0. The control namespace is never part of that erase. Firmware and `web` partitions are untouched.
+
+## Verification
+
+`scripts/run_backup_tests_wsl.sh` builds native tests against the actual codec, crypto, restore and recovery services with a fault-injected NVS adapter. Set `MBEDTLS_DIR` to a built Mbed TLS 3.x source tree containing `library/libmbedcrypto.a`; ArduinoJson comes from the Waveshare PlatformIO dependencies. Tests use ASan/UBSan and emit a fixture at `/tmp/osk-backup-tests/test.oskbackup` for `test/native/check_interop.mjs`.
+
+Hardware acceptance on Waveshare covers BOOT/LED timing, actual power cuts during reset/restore, maximum-registry heap and KDF latency, and restored node traffic/gateway identity. WT32 builds the same services but has no runtime physical-presence input; its UI setup/restore requires a board-specific implementation of that input. Native fault injection does not replace hardware checks.

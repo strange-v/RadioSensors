@@ -10,6 +10,7 @@
 
 #include "NodeRegistryStore.h"
 #include "RadioService.h"
+#include "RecoveryService.h"
 #include "TimeService.h"
 
 namespace gateway::commands {
@@ -206,7 +207,9 @@ void handleCommandResult(const radio::ReceivedFrame& received) {
     const uint8_t nodeId = static_cast<uint8_t>(received.senderId);
     uint8_t deviceUid[protocol::kDeviceUidSize]{};
     uint16_t profileId = 0;
-    if (!registry_store::activeIdentity(nodeId, deviceUid, profileId) || !lock()) {
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() ||
+        !registry_store::activeIdentity(nodeId, deviceUid, profileId) || !lock()) {
         count(&Counters::rejectedFrames);
         return;
     }
@@ -317,7 +320,8 @@ QueueResult queue(
     if (!protocol::profileSupportsCommand(profileId, type)) {
         return QueueResult::Unsupported;
     }
-    if (!lock()) return QueueResult::NotInitialized;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !lock()) return QueueResult::NotInitialized;
     candidate = book;
     uint16_t commandId = 0;
     QueueResult result = QueueResult::StorageError;
@@ -350,7 +354,8 @@ QueueResult queue(
 }
 
 CancelResult cancel(const uint8_t nodeId) {
-    if (!lock()) return CancelResult::NotInitialized;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !lock()) return CancelResult::NotInitialized;
     candidate = book;
     CancelResult result = CancelResult::NotFound;
     if (command_book::cancel(candidate, nodeId)) {
@@ -361,7 +366,8 @@ CancelResult cancel(const uint8_t nodeId) {
 }
 
 bool removeNode(const uint8_t nodeId) {
-    if (!lock()) return false;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !lock()) return false;
     candidate = book;
     bool removed = command_book::removeNode(candidate, nodeId) && commitCandidate();
     if (nodeId < kNodeIdSlots) deliveries[nodeId] = Delivery{};
@@ -370,7 +376,8 @@ bool removeNode(const uint8_t nodeId) {
 }
 
 bool clear() {
-    if (!lock()) return false;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !lock()) return false;
     candidate = book;
     command_book::clear(candidate);
     const bool cleared = book.count == 0 || commitCandidate();

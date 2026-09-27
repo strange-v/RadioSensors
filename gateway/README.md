@@ -82,6 +82,8 @@ Changing a partition table is not part of an application OTA. Existing gateways 
 
 ## Erasing NVS
 
+For routine backup, restore and Waveshare button reset, see [Installation backup and recovery](BACKUP.md). Cable erase is the fallback when firmware or NVS cannot perform button reset.
+
 Erasing the NVS partition returns a gateway to its first-boot state without touching the firmware, OTA state, or Web UI. Use it when storage no longer loads, for example after a storage layout change: the serial log reports `Gateway storage contains data but no valid snapshot`, the UI asks for initial setup, and setup fails with `setup_storage_failed`.
 
 The erase deletes every store: settings, users and API tokens, the installation key and network ID, the device secret, the node registry, and the command book. `gateway_id` derives from the device secret, so clients see a new gateway, and every paired node must be factory-reset and paired again.
@@ -130,5 +132,6 @@ References:
 - [REST API](API.md)
 - [WebSocket binary protocol](WEBSOCKET.md)
 - [Persistent storage](STORAGE.md)
+- [Installation backup and recovery](BACKUP.md)
 - [System architecture](../ARCHITECTURE.md)
 - [Unfinished work](../ROADMAP.md)

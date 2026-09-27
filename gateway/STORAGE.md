@@ -229,4 +229,4 @@ There is no transaction across namespaces. Settings touch only `gateway-config`;
 
 Diagnostic export may contain decoded settings, public identity, non-secret registry metadata, and diagnostics. It excludes password hashes, token hashes, radio keys, and device secret.
 
-An encrypted migration backup includes logical content from every persistent store, including installation secrets, but not unused padding or slot CRCs. Its KDF and authenticated-encryption container are specified separately. Restore validates all limits and relationships before committing anything and preserves the previous stores if validation fails.
+An [encrypted installation backup](BACKUP.md) contains logical settings, installation secrets and registry records. It excludes authentication, commands, padding, generations and slot CRCs. Restore accepts only a clean gateway, validates the full file before writing, and creates a new admin. `gateway-recover/operation` blocks normal startup after an interrupted restore and resumes an interrupted factory reset. Invalid files leave the gateway unchanged; interrupted writes require reset and another import.

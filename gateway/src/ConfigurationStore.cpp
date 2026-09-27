@@ -4,6 +4,7 @@
 #include <esp_random.h>
 
 #include "NodeRegistryStore.h"
+#include "RecoveryService.h"
 
 namespace gateway::configuration_store {
 namespace {
@@ -164,7 +165,8 @@ uint32_t secretsGeneration() {
 }
 
 SaveStatus saveSettings(const GatewaySettings& value) {
-    if (!initialized) return SaveStatus::NotInitialized;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !initialized) return SaveStatus::NotInitialized;
     uint8_t encoded[kSettingsSnapshotSize]{};
     if (encodeSettings(value, 0, encoded, sizeof(encoded)) != CodecStatus::Ok)
         return SaveStatus::Invalid;
@@ -175,7 +177,8 @@ SaveStatus saveSettings(const GatewaySettings& value) {
 }
 
 SaveStatus saveAuthentication(const AuthenticationData& value) {
-    if (!initialized) return SaveStatus::NotInitialized;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !initialized) return SaveStatus::NotInitialized;
     uint8_t encoded[kAuthSnapshotSize]{};
     if (encodeAuthentication(value, 0, encoded, sizeof(encoded)) != CodecStatus::Ok)
         return SaveStatus::Invalid;
@@ -187,7 +190,8 @@ SaveStatus saveAuthentication(const AuthenticationData& value) {
 }
 
 SaveStatus saveSecrets(const InstallationSecrets& value) {
-    if (!initialized) return SaveStatus::NotInitialized;
+    recovery::Guard guard;
+    if (!guard || recovery::blocked() || !initialized) return SaveStatus::NotInitialized;
     uint8_t encoded[kSecretsSnapshotSize]{};
     if (encodeSecrets(value, 0, encoded, sizeof(encoded)) != CodecStatus::Ok)
         return SaveStatus::Invalid;

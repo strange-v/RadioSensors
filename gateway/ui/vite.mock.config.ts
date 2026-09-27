@@ -3,6 +3,7 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 import packageJson from './package.json'
+import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:crypto'
 
 const now = Date.now()
 
@@ -163,6 +164,42 @@ function mockApi(): Plugin {
       server.middlewares.use((req, res, next) => {
         const path = (req.url ?? '').split('?')[0]
         if (!path.startsWith('/api') && !path.startsWith('/ui') && path !== '/health') return next()
+        if (path === '/ui/mock/recovery' && req.method === 'POST') {
+          readBody(req, body => {
+            routes['/ui/setup'] = { setup_required: body.mode !== 'configured', physical_window_active: body.mode === 'clean', remaining_seconds: body.mode === 'clean' ? 600 : 0, recovery_required: body.mode === 'incomplete' }
+            json(res, 200, routes['/ui/setup'])
+          })
+          return
+        }
+        if (path === '/ui/backup/export' && req.method === 'POST') {
+          readBody(req, body => {
+            const payload = Buffer.from(JSON.stringify({ version: 1, created_at_ms: Date.now(), settings: { hostname: 'osk-restored', mdns: true, ntp: true, pairing_seconds: 120, setup_seconds: 600, servers: ['pool.ntp.org'] }, network_id: 123, installation_key: '01'.repeat(16), device_secret: '02'.repeat(32), nodes: nodes.map(n => ({ uid: n.device_uid.toLowerCase(), id: n.node_id, profile: n.profile_id, firmware: [1, 0, 0], state: n.state === 'active' ? 2 : 1, nonce: 1, name: n.display_name, max_power: n.max_power_level, power_policy: 0 })) }))
+            const header = Buffer.alloc(44); header.write('OSKB'); header[4] = header[5] = header[6] = 1; header.writeUInt32LE(100_000, 8); header.writeUInt32LE(payload.length, 12); randomBytes(28).copy(header, 16)
+            const cipher = createCipheriv('aes-256-gcm', pbkdf2Sync(String(body.password), header.subarray(16, 32), 100_000, 32, 'sha256'), header.subarray(32, 44))
+            cipher.setAAD(header)
+            const encrypted = Buffer.concat([cipher.update(payload), cipher.final()])
+            res.setHeader('Content-Type', 'application/octet-stream'); res.end(Buffer.concat([header, encrypted, cipher.getAuthTag()]))
+          })
+          return
+        }
+        if ((path === '/ui/backup/preview' || path === '/ui/backup/restore') && req.method === 'POST') {
+          readBody(req, body => {
+            const setup = routes['/ui/setup'] as { physical_window_active: boolean; recovery_required?: boolean }
+            if (setup.recovery_required) return json(res, 409, { error: 'recovery_required' })
+            if (!setup.physical_window_active) return json(res, 403, { error: 'physical_setup_required' })
+            try {
+              const file = Buffer.from(String(body.file), 'base64')
+              if (file.length <= 60 || file.length > 24636 || file.subarray(0, 8).toString('hex') !== '4f534b4201010100' || file.readUInt32LE(8) !== 100_000 || file.readUInt32LE(12) !== file.length - 60) throw new Error('invalid')
+              const decipher = createDecipheriv('aes-256-gcm', pbkdf2Sync(String(body.password), file.subarray(16, 32), 100_000, 32, 'sha256'), file.subarray(32, 44))
+              decipher.setAAD(file.subarray(0, 44)); decipher.setAuthTag(file.subarray(-16))
+              const payload = JSON.parse(Buffer.concat([decipher.update(file.subarray(44, -16)), decipher.final()]).toString())
+              if (path.endsWith('/preview')) return json(res, 200, { gateway_id: health.gateway_id, created_at_ms: payload.created_at_ms, node_count: payload.nodes.length, hostname: payload.settings.hostname, mdns_enabled: payload.settings.mdns })
+              routes['/ui/setup'] = { setup_required: false, physical_window_active: false, remaining_seconds: 0 }
+              json(res, 200, { status: 'restarting' })
+            } catch { json(res, 422, { error: 'invalid_backup' }) }
+          })
+          return
+        }
         if (path === '/ui/pairing/open' && req.method === 'POST') {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })

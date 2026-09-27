@@ -1,9 +1,12 @@
 #include "GatewayStatus.h"
 
+#include <ResetButton.h>
+
 #include <atomic>
 
 #include "RadioService.h"
 #include "ConfigurationStore.h"
+#include "RecoveryService.h"
 
 namespace gateway::status {
 namespace {
@@ -20,6 +23,7 @@ std::atomic<Indication> current{Indication::Operational};
 std::atomic<uint32_t> pairingEndsAt{0};
 std::atomic<uint32_t> setupEndsAt{0};
 std::atomic<uint32_t> indicationEndsAt{0};
+radiosensors::ResetButton resetButton;
 bool rawButtonPressed = false;
 bool stableButtonPressed = false;
 uint32_t rawButtonChangedAt = 0;
@@ -77,6 +81,10 @@ void toggleSetup(const uint32_t now) {
 
 void render(const uint32_t now) {
     const uint32_t phase = now % 1000;
+    if (resetButton.confirming() || recovery::blocked()) {
+        setRgb(phase % 250 < 125 ? kBrightness : 0, 0, 0);
+        return;
+    }
     switch (current.load()) {
         case Indication::Unconfigured:
             setRgb(0, phase < 500 ? kBrightness : 0, 0);
@@ -162,7 +170,16 @@ void loop() {
     }
     if (pressed != stableButtonPressed && now - rawButtonChangedAt >= kDebounceMs) {
         stableButtonPressed = pressed;
-        if (stableButtonPressed) {
+    }
+    const auto action = resetButton.update(stableButtonPressed, now);
+    if (action == radiosensors::ResetButton::Action::ConfirmReset) {
+        if (!recovery::requestFactoryReset()) {
+            current.store(Indication::Error);
+            indicationEndsAt.store(now + 3000);
+        }
+    } else if (action == radiosensors::ResetButton::Action::ShortPress && !recovery::blocked()) {
+        recovery::Guard guard(0);
+        if (guard) {
             if (setupRequired()) toggleSetup(now);
             else togglePairing(now);
         }
@@ -182,11 +199,11 @@ uint32_t pairingRemainingSeconds() {
 }
 
 bool setupRequired() {
-    return configuration_store::authentication().userCount == 0;
+    return recovery::blocked() || configuration_store::authentication().userCount == 0;
 }
 
 bool setupActive() {
-    if (!setupRequired()) return false;
+    if (recovery::blocked() || !setupRequired()) return false;
     const uint32_t deadline = setupEndsAt.load();
     return deadline != 0 && static_cast<int32_t>(deadline - millis()) > 0;
 }

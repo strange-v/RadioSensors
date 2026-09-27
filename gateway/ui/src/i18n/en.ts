@@ -1,4 +1,16 @@
 export const en = {
+  backup: {
+    title: 'Installation backup', intro: 'Save settings, nodes and radio keys in an encrypted file. Users, API tokens and command history are not included.',
+    password: 'Backup password', passwordHint: 'Use 12–128 UTF-8 bytes. Keep this password in your password manager; it cannot be recovered.', confirmPassword: 'Repeat backup password',
+    download: 'Download backup', working: 'Working…', downloaded: 'Backup download started. Keep the file somewhere safe and make a fresh copy after changing nodes or settings.',
+    resetTitle: 'Reset this gateway', resetHint: 'On Waveshare, hold BOOT for 10 seconds until the LED flashes red. Release, then press again within 5 seconds to confirm. Without confirmation, nothing is erased. WT32 requires a cable reset.',
+    resetConsequence: 'Reset erases settings, accounts, tokens, nodes and keys. Firmware and Web UI remain. Nodes keep their credentials and can reconnect after restoring a matching backup.',
+    newInstallation: 'New installation', restore: 'Restore backup', restoreIntro: 'Restore settings and nodes on this clean gateway. You will create a new administrator and a new Home Assistant token.',
+    file: 'Backup file', inspect: 'Check backup', gateway: 'Gateway ID', created: 'Backup date', defaultHostname: 'Default name of this device', newAdminPassword: 'New administrator password',
+    confirmRestore: 'The old gateway is switched off. I understand that only nodes and settings present in this backup will be restored.',
+    restored: 'Backup restored', restoredHint: 'The gateway is restarting. After it starts, sign in with the new administrator account and create a new Home Assistant token. Its network name may change; use the sign-in link or find its address in your router.',
+    recoveryTitle: 'Gateway reset required', recoveryHint: 'Recovery did not finish or storage is unavailable. Reset the gateway, then import your backup again. If button reset fails, erase NVS over a cable.',
+  },
   common: {
     gateway: 'Gateway', uiVersion: 'UI {version}', refresh: 'Refresh', retry: 'Try again', loading: 'Connecting to gateway…', unavailable: 'Unavailable', yes: 'Yes', no: 'No', details: 'Technical diagnostics', healthy: 'Healthy', attention: 'Needs attention', working: 'Working', connected: 'Connected', disconnected: 'Disconnected', synchronized: 'Synchronized', ready: 'Ready', view: 'View', viewAll: 'All nodes', close: 'Close', cancel: 'Cancel', planned: 'Planned', language: 'Language',
   },
@@ -118,6 +130,7 @@ export const en = {
     problem: { invalid_name: 'Enter a name of 1–32 UTF-8 bytes.', capacity_reached: 'The gateway already stores the maximum number of keys.' },
   },
   error: {
+    backup_busy: 'Finish pairing or the current gateway operation, then try again.', invalid_backup_password: 'Use a backup password of 12–128 UTF-8 bytes.', backup_failed: 'Could not create or process the backup. Try again.', invalid_backup: 'Wrong backup password, damaged file, or unsupported backup format.', restore_requires_clean_gateway: 'Reset the gateway before restoring a backup.', restore_failed: 'Restore did not finish. Reset the gateway and import the backup again.', recovery_required: 'The gateway is busy or needs recovery. If this persists, reset it and restore your backup.',
     invalid_pairing_credentials: 'Enter the 20-hex-character UID and 32-hex-character factory key.',
     user_not_found: 'That user no longer exists.', username_already_exists: 'That username is already taken.', user_capacity_reached: 'The gateway already stores the maximum number of users.', last_admin_required: 'The gateway keeps at least one enabled administrator.', invalid_user_values: 'Check the username, password, and role.', user_storage_failed: 'The change to the users could not be saved.',
     pairing_timeout: 'The node did not connect before the window closed. The button on the node may not have been pressed, or the node may be out of range.',

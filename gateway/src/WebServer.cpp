@@ -13,6 +13,7 @@
 #include <nvs.h>
 #include <esp_random.h>
 #include <esp_timer.h>
+#include <mbedtls/base64.h>
 
 #include <atomic>
 #include <memory>
@@ -20,6 +21,7 @@
 
 #include "ApiVersion.h"
 #include "AuthenticationService.h"
+#include "BackupService.h"
 #include "BoardProfile.h"
 #include "CommandService.h"
 #include "CommissioningService.h"
@@ -35,6 +37,7 @@
 #include "PowerControlService.h"
 #include "RadioConfig.h"
 #include "RadioService.h"
+#include "RecoveryService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
 #include "WebUiService.h"
@@ -164,6 +167,10 @@ void sendPrincipal(
 bool authorizeSession(
     AsyncWebServerRequest* request, authentication::Principal& principal,
     const bool requireCsrf = false) {
+    if (recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return false;
+    }
     char sessionToken[authentication::kSessionTokenCharacters + 1]{};
     if (!readSessionToken(request, sessionToken) ||
         !authentication::authorize(
@@ -246,10 +253,15 @@ void handleSetupStatus(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->printf(
         "{\"setup_required\":%s,\"physical_window_active\":%s,"
-        "\"remaining_seconds\":%lu}",
+        "\"remaining_seconds\":%lu,\"recovery_required\":%s,"
+        "\"recovery_reason\":\"%s\"}",
         status::setupRequired() ? "true" : "false",
         status::setupActive() ? "true" : "false",
-        static_cast<unsigned long>(status::setupRemainingSeconds()));
+        static_cast<unsigned long>(status::setupRemainingSeconds()),
+        recovery::blocked() || !configuration_store::ready() ? "true" : "false",
+        !configuration_store::ready() && !recovery::blocked()
+            ? "storage_unavailable"
+            : recovery::reason());
     request->send(response);
 }
 
@@ -263,6 +275,11 @@ uint8_t randomOperationalNetworkId() {
 }
 
 void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     if (setupMutex == nullptr || xSemaphoreTake(setupMutex, 0) != pdTRUE) {
         sendError(request, 409, "setup_busy");
         return;
@@ -385,6 +402,176 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
     } else {
         request->send(201, "application/json", "{\"status\":\"configured\"}");
     }
+}
+
+// Wipes the passwords from the parsed document and the raw body it came from.
+struct BackupRequestSecrets {
+    AsyncWebServerRequest* request;
+    JsonVariant& json;
+
+    ~BackupRequestSecrets() {
+        for (const char* field : {"password", "admin_password"}) {
+            const JsonString value = json[field].as<JsonString>();
+            if (value.c_str() != nullptr) {
+                backup::wipe(const_cast<char*>(value.c_str()), value.size());
+            }
+        }
+        // AsyncJson owns this allocation until the request is destroyed.
+        if (request->_tempObject != nullptr) {
+            backup::wipe(request->_tempObject, request->contentLength());
+        }
+    }
+};
+
+void handleBackupExport(AsyncWebServerRequest* request, JsonVariant& json) {
+    BackupRequestSecrets sensitive{request, json};
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    backup::Operation operation;
+    if (!operation || recovery::blocked() || status::pairingActive()) {
+        sendError(request, 409, "backup_busy");
+        return;
+    }
+    const JsonString password = json["password"].as<JsonString>();
+    if (!backup::validPassword(password.c_str(), password.size())) {
+        sendError(request, 422, "invalid_backup_password");
+        return;
+    }
+    std::unique_ptr<backup::Snapshot> snapshot(new (std::nothrow) backup::Snapshot);
+    if (!snapshot) {
+        sendError(request, 503, "backup_failed");
+        return;
+    }
+    if (!backup::capture(*snapshot)) {
+        sendError(request, 409, "backup_busy");
+        return;
+    }
+    std::string file;
+    if (!backup::encrypt(*snapshot, password.c_str(), password.size(), file)) {
+        sendError(request, 500, "backup_failed");
+        return;
+    }
+    AsyncResponseStream* response =
+        request->beginResponseStream("application/octet-stream");
+    response->addHeader("Cache-Control", "no-store");
+    response->addHeader(
+        "Content-Disposition", "attachment; filename=osk-sense.oskbackup");
+    response->write(reinterpret_cast<const uint8_t*>(file.data()), file.size());
+    request->send(response);
+}
+
+void sendBackupPreview(
+    AsyncWebServerRequest* request, const backup::Snapshot& snapshot) {
+    char gatewayId[33];
+    backup::gatewayId(snapshot, gatewayId);
+    JsonDocument document;
+    document["gateway_id"] = gatewayId;
+    document["created_at_ms"] = snapshot.createdAt;
+    document["node_count"] = snapshot.nodes.size();
+    document["hostname"] =
+        std::string(snapshot.settings.hostname, snapshot.settings.hostnameLength);
+    document["mdns_enabled"] = snapshot.settings.mdnsEnabled;
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    serializeJson(document, *response);
+    request->send(response);
+}
+
+// Serves both /ui/backup/preview and /ui/backup/restore: each decrypts and
+// validates the uploaded file itself rather than trusting an earlier preview.
+void handleBackupImport(AsyncWebServerRequest* request, JsonVariant& json) {
+    BackupRequestSecrets sensitive{request, json};
+    backup::Operation operation;
+    if (!operation) {
+        sendError(request, 409, "backup_busy");
+        return;
+    }
+    recovery::Guard guard(0);
+    if (!guard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
+    if (!backup::cleanGateway()) {
+        sendError(request, 409, "restore_requires_clean_gateway");
+        return;
+    }
+    if (!status::setupActive()) {
+        sendError(request, 403, "physical_setup_required");
+        return;
+    }
+    // A custom header prevents a cross-origin form from consuming the setup window.
+    if (!request->hasHeader("X-Backup-Request") ||
+        request->getHeader("X-Backup-Request")->value() != "1") {
+        sendError(request, 403, "invalid_request");
+        return;
+    }
+    const JsonString password = json["password"].as<JsonString>();
+    const JsonString encoded = json["file"].as<JsonString>();
+    if (!backup::validPassword(password.c_str(), password.size()) ||
+        encoded.size() == 0 || encoded.size() > 4 * ((backup::kMaxFile + 2) / 3)) {
+        sendError(request, 422, "invalid_backup");
+        return;
+    }
+    std::unique_ptr<uint8_t[]> bytes(new (std::nothrow) uint8_t[backup::kMaxFile]);
+    std::unique_ptr<backup::Snapshot> snapshot(new (std::nothrow) backup::Snapshot);
+    if (!bytes || !snapshot) {
+        sendError(request, 503, "backup_failed");
+        return;
+    }
+    size_t length = 0;
+    if (mbedtls_base64_decode(
+            bytes.get(), backup::kMaxFile, &length,
+            reinterpret_cast<const uint8_t*>(encoded.c_str()), encoded.size()) != 0 ||
+        !backup::decrypt(
+            bytes.get(), length, password.c_str(), password.size(), *snapshot)) {
+        sendError(request, 422, "invalid_backup");
+        return;
+    }
+    // The key derivation takes seconds; the window may have closed meanwhile.
+    if (!status::setupActive()) {
+        sendError(request, 403, "physical_setup_required");
+        return;
+    }
+    if (request->url().endsWith("/preview")) {
+        sendBackupPreview(request, *snapshot);
+        return;
+    }
+
+    const JsonString username = json["username"].as<JsonString>();
+    const JsonString adminPassword = json["admin_password"].as<JsonString>();
+    if (!radiosensors::user_management::validUsername(username.c_str(), username.size()) ||
+        adminPassword.size() < 8 || adminPassword.size() > 128 ||
+        memchr(adminPassword.c_str(), 0, adminPassword.size()) != nullptr) {
+        sendError(request, 422, "invalid_setup_values");
+        return;
+    }
+    auto admin = radiosensors::gateway_storage::defaultAuthentication();
+    admin.userCount = 1;
+    admin.nextUserId = 2;
+    auto& user = admin.users[0];
+    user.id = 1;
+    user.enabled = true;
+    user.role = radiosensors::gateway_storage::UserRole::Admin;
+    user.usernameLength = username.size();
+    memcpy(user.username, username.c_str(), username.size());
+    radiosensors::user_management::PasswordCredential credential{};
+    if (!hashPassword(adminPassword.c_str(), adminPassword.size(), credential)) {
+        sendError(request, 500, "password_hash_failed");
+        return;
+    }
+    user.hashAlgorithm = credential.algorithm;
+    user.pbkdf2Iterations = credential.iterations;
+    memcpy(user.salt, credential.salt, sizeof(user.salt));
+    memcpy(user.passwordHash, credential.hash, sizeof(user.passwordHash));
+    backup::wipe(&credential, sizeof(credential));
+
+    const bool restored = backup::restore(*snapshot, admin);
+    backup::wipe(&admin, sizeof(admin));
+    if (!restored) {
+        sendError(request, 500, "restore_failed");
+        return;
+    }
+    request->send(200, "application/json", "{\"status\":\"restarting\"}");
 }
 
 void handleLogin(AsyncWebServerRequest* request, JsonVariant& json) {
@@ -548,6 +735,11 @@ bool sendRegistryCommitError(
 
 // Renames a node, changes its radio power policy, or both.
 void handlePatchNode(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>()) {
@@ -621,6 +813,11 @@ void handlePatchNode(AsyncWebServerRequest* request, JsonVariant& json) {
 }
 
 void handleDeleteNode(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>() ||
@@ -727,6 +924,11 @@ void handleCommands(AsyncWebServerRequest* request) {
 }
 
 void handleQueueCommand(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>()) {
@@ -790,6 +992,11 @@ void handleQueueCommand(AsyncWebServerRequest* request, JsonVariant& json) {
 }
 
 void handleCancelCommand(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>() ||
@@ -819,6 +1026,11 @@ void handleCancelCommand(AsyncWebServerRequest* request, JsonVariant& json) {
 uint32_t restartAtMs = 0;
 
 void handleResetRadioNetwork(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
 
@@ -967,6 +1179,11 @@ void handleUsers(AsyncWebServerRequest* request) {
 }
 
 void handleCreateUser(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>()) {
@@ -1028,6 +1245,11 @@ void handleCreateUser(AsyncWebServerRequest* request, JsonVariant& json) {
 }
 
 void handleUpdateUser(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>() || !json["id"].is<uint32_t>()) {
@@ -1091,6 +1313,11 @@ void handleUpdateUser(AsyncWebServerRequest* request, JsonVariant& json) {
 }
 
 void handleDeleteUser(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>() || !json["id"].is<uint32_t>()) {
@@ -1142,6 +1369,11 @@ void handleTokens(AsyncWebServerRequest* request) {
 }
 
 void handleCreateToken(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>() || managementMutex == nullptr ||
@@ -1209,6 +1441,11 @@ void handleCreateToken(AsyncWebServerRequest* request, JsonVariant& json) {
 }
 
 void handleDeleteToken(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>() || !json["id"].is<uint32_t>()) {
@@ -1274,6 +1511,11 @@ void handleSettings(AsyncWebServerRequest* request) {
 }
 
 void handleUpdateSettings(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>()) {
@@ -1383,6 +1625,11 @@ bool decodeHex(const char* input, uint8_t* output, const size_t size) {
 }
 
 void handleOpenPairing(AsyncWebServerRequest* request, JsonVariant& json) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!json.is<JsonObject>()) {
@@ -1412,6 +1659,11 @@ void handleOpenPairing(AsyncWebServerRequest* request, JsonVariant& json) {
 }
 
 void handleClosePairing(AsyncWebServerRequest* request) {
+    recovery::Guard recoveryGuard(0);
+    if (!recoveryGuard || recovery::blocked()) {
+        sendError(request, 409, "recovery_required");
+        return;
+    }
     authentication::Principal principal{};
     if (!authorizeAdmin(request, principal, true)) return;
     if (!commissioning::close()) {
@@ -1892,6 +2144,12 @@ void begin() {
     server.on("/ui/setup", HTTP_GET, handleSetupStatus);
     auto& setupHandler = server.on("/ui/setup", HTTP_POST, handleInitialSetup);
     setupHandler.setMaxContentLength(1024);
+    auto& backupExport = server.on("/ui/backup/export", HTTP_POST, handleBackupExport);
+    backupExport.setMaxContentLength(1024);
+    auto& backupPreview = server.on("/ui/backup/preview", HTTP_POST, handleBackupImport);
+    backupPreview.setMaxContentLength(35000);
+    auto& backupRestore = server.on("/ui/backup/restore", HTTP_POST, handleBackupImport);
+    backupRestore.setMaxContentLength(35000);
     auto& loginHandler = server.on(
         "/ui/session", HTTP_POST, handleLogin);
     loginHandler.setMaxContentLength(512);

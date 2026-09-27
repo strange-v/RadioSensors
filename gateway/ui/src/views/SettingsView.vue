@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, errorCode } from '../api/client'
+import { api, errorCode, isAdmin } from '../api/client'
+import BackupCard from '../components/BackupCard.vue'
 import type { GatewaySettings } from '../api/types'
 import Icon from '../components/Icon.vue'
 import { HOSTNAME_MAX_BYTES, isValidHostname } from '../utils/format'
@@ -20,4 +21,5 @@ onMounted(async () => { try { apply(await api.settings()) } catch (error) { fail
     <section class="panel settings-card editable"><span class="settings-icon" aria-hidden="true"><Icon name="timer-outline" /></span><div><h2>{{ $t('settings.windows') }}</h2><p>{{ $t('settings.windowsHint') }}</p><label><span>{{ $t('settings.pairingSeconds') }}</span><input v-model.number="form.pairingSeconds" type="number" min="30" max="900"></label><label><span>{{ $t('settings.setupSeconds') }}</span><input v-model.number="form.setupSeconds" type="number" min="60" max="1800"></label></div></section>
     <div class="settings-actions"><small v-if="invalid">{{ $t('settings.invalid') }}</small><button class="button primary" :disabled="saving || invalid || !settings" type="submit">{{ saving ? $t('settings.saving') : $t('settings.save') }}</button></div>
   </form>
+  <BackupCard v-if="isAdmin" />
 </div></template>

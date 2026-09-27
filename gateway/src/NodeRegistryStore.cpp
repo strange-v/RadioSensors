@@ -9,6 +9,8 @@
 #include <new>
 #include <string.h>
 
+#include "RecoveryService.h"
+
 namespace gateway::registry_store {
 namespace {
 
@@ -260,7 +262,8 @@ bool snapshot(Snapshot& value) {
 RegistryCommitStatus reserveAndSave(
     const radiosensors::protocol::JoinRequest& request,
     radiosensors::registry::ReserveResult& result) {
-    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
     const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
@@ -289,7 +292,8 @@ RegistryCommitStatus confirmAndSave(
     const uint8_t nodeId,
     const uint32_t nonce,
     radiosensors::registry::ConfirmStatus& result) {
-    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
     const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
@@ -313,7 +317,8 @@ RegistryCommitStatus confirmAndSave(
 RegistryCommitStatus renameAndSave(
     const uint8_t nodeId, const char* const displayName, const size_t length,
     radiosensors::registry::RenameStatus& result) {
-    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
     const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
@@ -337,7 +342,8 @@ RegistryCommitStatus renameAndSave(
 RegistryCommitStatus setPowerPolicyAndSave(
     const uint8_t nodeId, const uint8_t policy,
     radiosensors::registry::PowerPolicyStatus& result) {
-    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
     const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
@@ -360,7 +366,8 @@ RegistryCommitStatus setPowerPolicyAndSave(
 
 RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
     removed = false;
-    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
     const uint64_t lockStartedUs = commitClockUs();
     const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
@@ -384,7 +391,8 @@ RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
 
 RegistryCommitStatus clearAndSave(size_t& removed) {
     removed = 0;
-    if (!initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
     xSemaphoreTake(mutex, portMAX_DELAY);
     const uint64_t lockStartedUs = commitClockUs();
     const size_t previous = nodes.size();

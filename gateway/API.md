@@ -105,7 +105,7 @@ A consumer must ignore fields it does not recognize. Adding a field therefore ne
 Returns whether an administrator must be created and whether the physical window is open.
 
 ```json
-{"setup_required":true,"physical_window_active":false,"remaining_seconds":0}
+{"setup_required":true,"physical_window_active":false,"remaining_seconds":0,"recovery_required":false,"recovery_reason":"none"}
 ```
 
 ### `POST /ui/setup`
@@ -386,4 +386,4 @@ It exists so something on the network can tell the gateway is up without a crede
 
 ## Security and backup
 
-The gateway serves HTTP and WebSocket only and is intended exclusively for a trusted private LAN. It does not provide TLS/WSS and must not be exposed directly to the Internet or an untrusted network. LAN traffic capture, DNS/mDNS spoofing, and a compromised LAN client are outside the accepted threat model. Diagnostic export excludes password hashes, token hashes, radio keys, and device secrets. A complete migration backup must be encrypted and authenticated; its container is not yet specified.
+The gateway serves HTTP and WebSocket only and is intended exclusively for a trusted private LAN. It does not provide TLS/WSS and must not be exposed directly to the Internet or an untrusted network. LAN traffic capture, DNS/mDNS spoofing, and a compromised LAN client are outside the accepted threat model. Diagnostic export excludes password hashes, token hashes, radio keys, and device secrets. [Installation backup](BACKUP.md) provides authenticated encryption for settings, nodes and installation keys, with restore restricted to a clean gateway in its physical setup window.
