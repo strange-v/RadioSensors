@@ -24,8 +24,7 @@ public:
         TwoWire& wire, const uint8_t address,
         const ClimateReportPolicy reportPolicy)
         : temperature_(wire, address),
-          reportPolicy_(reportPolicy),
-          reportSchedule_(reportPolicy.intervalForMillivolts(0)) {}
+          reportSchedule_(reportPolicy) {}
 
     void begin() { temperature_.begin(); }
 
@@ -55,22 +54,29 @@ public:
 
     void reportAcknowledged(
         const uint32_t now, const uint16_t supplyMillivolts) {
-        const uint32_t nextInterval =
-            reportPolicy_.intervalForMillivolts(supplyMillivolts);
-        reportSchedule_.setInterval(nextInterval);
-        reportSchedule_.transmissionSucceeded(now);
-#if defined(NODE_DEBUG)
-        debugValue(F("clim next s="), nextInterval / 1000UL);
-#endif
+        scheduleNext(now, supplyMillivolts);
+    }
+
+    void reportFailed(const uint32_t now, const uint16_t supplyMillivolts) {
+        scheduleNext(now, supplyMillivolts);
     }
 
     void applyCommand(const protocol::Command&, protocol::CommandResult&) {}
     void commissioned() {}
 
 private:
+    void scheduleNext(const uint32_t now, const uint16_t supplyMillivolts) {
+        const uint32_t nextInterval =
+            reportSchedule_.attempted(now, supplyMillivolts);
+#if defined(NODE_DEBUG)
+        debugValue(F("clim next s="), nextInterval / 1000UL);
+#else
+        (void)nextInterval;
+#endif
+    }
+
     Tmp112Sensor temperature_;
-    ClimateReportPolicy reportPolicy_;
-    RollingKeepAlive reportSchedule_;
+    ClimateReportSchedule reportSchedule_;
 };
 
 }  // namespace node

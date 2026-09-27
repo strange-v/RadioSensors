@@ -13,6 +13,7 @@
 using namespace radiosensors::node::storage;
 using radiosensors::node::CounterReportSchedule;
 using radiosensors::node::ClimateReportPolicy;
+using radiosensors::node::ClimateReportSchedule;
 using radiosensors::node::ConfirmedInput;
 using radiosensors::node::InputChange;
 using radiosensors::node::MinimumPhaseFilter;
@@ -24,6 +25,8 @@ using radiosensors::node::HintedSessionPolicy;
 using radiosensors::node::PowerDecision;
 using radiosensors::node::afterAcknowledged;
 using radiosensors::node::afterUnacknowledged;
+using radiosensors::node::kTelemetryAttempts;
+using radiosensors::node::telemetryAttempts;
 using radiosensors::node::kCounterMinimumReportMs;
 using radiosensors::node::recoverI2cBus;
 
@@ -236,6 +239,14 @@ void test_node_falls_back_to_its_ceiling_after_three_lost_reports() {
     TEST_ASSERT_TRUE(decision.fallback);
     TEST_ASSERT_FALSE(afterUnacknowledged(5, false, 3, 5).change);
     TEST_ASSERT_FALSE(afterUnacknowledged(5, true, 9, 5).change);
+}
+
+void test_node_probes_with_one_transmission_after_three_lost_reports() {
+    TEST_ASSERT_EQUAL_UINT8(kTelemetryAttempts, telemetryAttempts(0, false));
+    TEST_ASSERT_EQUAL_UINT8(kTelemetryAttempts, telemetryAttempts(2, false));
+    TEST_ASSERT_EQUAL_UINT8(1, telemetryAttempts(3, false));
+    TEST_ASSERT_EQUAL_UINT8(1, telemetryAttempts(255, false));
+    TEST_ASSERT_EQUAL_UINT8(kTelemetryAttempts, telemetryAttempts(9, true));
 }
 
 void test_network_config_falls_back_from_corrupt_new_slot() {
@@ -552,24 +563,73 @@ void test_keep_alive_handles_clock_wrap() {
     TEST_ASSERT_TRUE(schedule.due(0x00000300UL));
 }
 
-void test_radio_retry_uses_bounded_exponential_backoff() {
+void test_radio_retry_steps_up_to_fifteen_minutes() {
+    constexpr uint32_t minute = 60UL * 1000UL;
     RadioRetryBackoff retry;
     TEST_ASSERT_TRUE(retry.allowed(0));
     retry.failed(0);
-    TEST_ASSERT_FALSE(retry.allowed(59999));
-    TEST_ASSERT_TRUE(retry.allowed(60000));
-    retry.failed(60000);
-    TEST_ASSERT_FALSE(retry.allowed(359999));
-    TEST_ASSERT_TRUE(retry.allowed(360000));
-    retry.failed(360000);
-    TEST_ASSERT_TRUE(retry.allowed(1260000));
-    retry.failed(1260000);
-    TEST_ASSERT_FALSE(retry.allowed(4859999));
-    TEST_ASSERT_TRUE(retry.allowed(4860000));
-    retry.failed(4860000);
-    TEST_ASSERT_TRUE(retry.allowed(8460000));
+    TEST_ASSERT_FALSE(retry.allowed(minute - 1U));
+    TEST_ASSERT_TRUE(retry.allowed(minute));
+    retry.failed(minute);
+    TEST_ASSERT_FALSE(retry.allowed(6U * minute - 1U));
+    TEST_ASSERT_TRUE(retry.allowed(6U * minute));
+    retry.failed(6U * minute);
+    TEST_ASSERT_FALSE(retry.allowed(21U * minute - 1U));
+    TEST_ASSERT_TRUE(retry.allowed(21U * minute));
+    retry.failed(21U * minute);
+    TEST_ASSERT_FALSE(retry.allowed(36U * minute - 1U));
+    TEST_ASSERT_TRUE(retry.allowed(36U * minute));
     retry.succeeded();
-    TEST_ASSERT_TRUE(retry.allowed(8460001));
+    TEST_ASSERT_TRUE(retry.allowed(36U * minute + 1U));
+
+    // A new outage starts again from one minute.
+    retry.failed(40U * minute);
+    TEST_ASSERT_TRUE(retry.allowed(41U * minute));
+}
+
+void test_radio_retry_turns_hourly_after_a_silent_day() {
+    constexpr uint32_t minute = 60UL * 1000UL;
+    constexpr uint32_t day = 24UL * 60UL * minute;
+    RadioRetryBackoff retry;
+    retry.failed(1000);
+    retry.failed(day);
+    TEST_ASSERT_TRUE(retry.allowed(day + 5U * minute));
+    retry.failed(day + 1000U);
+    TEST_ASSERT_FALSE(retry.allowed(day + 1000U + 60U * minute - 1U));
+    TEST_ASSERT_TRUE(retry.allowed(day + 1000U + 60U * minute));
+
+    // Stays hourly once the clock wraps back to just after the first failure.
+    retry.failed(2000);
+    TEST_ASSERT_FALSE(retry.allowed(2000U + 60U * minute - 1U));
+
+    retry.succeeded();
+    retry.failed(0);
+    TEST_ASSERT_TRUE(retry.allowed(minute));
+}
+
+void test_radio_retry_none_never_waits() {
+    RadioRetryBackoff retry = RadioRetryBackoff::none();
+    retry.failed(0);
+    TEST_ASSERT_TRUE(retry.allowed(1));
+    retry.failed(1);
+    retry.failed(2);
+    retry.failed(3);
+    TEST_ASSERT_TRUE(retry.allowed(4));
+}
+
+void test_climate_schedule_follows_voltage_of_failed_reports() {
+    const ClimateReportPolicy policy = ClimateReportPolicy::adaptive(
+        64000UL, 320000UL, 2500);
+    ClimateReportSchedule schedule(policy);
+    TEST_ASSERT_TRUE(schedule.due(0));
+    TEST_ASSERT_EQUAL_UINT32(64000UL, schedule.attempted(0, 2800));
+    TEST_ASSERT_FALSE(schedule.due(63999UL));
+    TEST_ASSERT_TRUE(schedule.due(64000UL));
+
+    // Unacknowledged, and the charge fell: the next report slows down.
+    TEST_ASSERT_EQUAL_UINT32(320000UL, schedule.attempted(64000UL, 2400));
+    TEST_ASSERT_FALSE(schedule.due(64000UL + 319999UL));
+    TEST_ASSERT_TRUE(schedule.due(64000UL + 320000UL));
 }
 
 void test_fixed_climate_policy_ignores_supply_voltage() {
@@ -723,6 +783,7 @@ int main(int, char**) {
     RUN_TEST(test_network_config_rejects_nonzero_reserved_bytes);
     RUN_TEST(test_power_target_is_clamped_and_ends_a_fallback);
     RUN_TEST(test_node_falls_back_to_its_ceiling_after_three_lost_reports);
+    RUN_TEST(test_node_probes_with_one_transmission_after_three_lost_reports);
     RUN_TEST(test_network_config_falls_back_from_corrupt_new_slot);
     RUN_TEST(test_network_config_generation_wrap_selects_latest);
     RUN_TEST(test_factory_reset_preserves_counter_area);
@@ -741,7 +802,10 @@ int main(int, char**) {
     RUN_TEST(test_counter_coalesces_pulses_for_one_minute);
     RUN_TEST(test_setting_counter_is_urgent_once);
     RUN_TEST(test_keep_alive_handles_clock_wrap);
-    RUN_TEST(test_radio_retry_uses_bounded_exponential_backoff);
+    RUN_TEST(test_radio_retry_steps_up_to_fifteen_minutes);
+    RUN_TEST(test_radio_retry_turns_hourly_after_a_silent_day);
+    RUN_TEST(test_radio_retry_none_never_waits);
+    RUN_TEST(test_climate_schedule_follows_voltage_of_failed_reports);
     RUN_TEST(test_fixed_climate_policy_ignores_supply_voltage);
     RUN_TEST(test_adaptive_climate_policy_uses_v1_threshold_semantics);
     RUN_TEST(test_supply_voltage_reports_lower_of_before_and_previous_after);

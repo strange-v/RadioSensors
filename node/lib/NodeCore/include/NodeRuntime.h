@@ -32,6 +32,7 @@ namespace node {
 //   size_t encodeTelemetry(const protocol::TelemetryPrefix& prefix,
 //                          uint8_t* output, size_t capacity);
 //   void reportAcknowledged(uint32_t now, uint16_t supplyMillivolts);
+//   void reportFailed(uint32_t now, uint16_t supplyMillivolts);
 //   void applyCommand(const protocol::Command& command,
 //                     protocol::CommandResult& result);
 //       // a profile command; `result.status` arrives as Unsupported
@@ -45,12 +46,14 @@ public:
     NodeRuntime(
         Profile& profile, NodeRadio& radio,
         CommissioningService& commissioning, LowPowerClock& clock,
-        ProvisioningButton& button)
+        ProvisioningButton& button,
+        const RadioRetryBackoff radioRetry = RadioRetryBackoff())
         : profile_(profile),
           radio_(radio),
           commissioning_(commissioning),
           clock_(clock),
-          button_(button) {}
+          button_(button),
+          radioRetry_(radioRetry) {}
 
     void begin() {
 #if defined(NODE_DEBUG)
@@ -165,7 +168,9 @@ private:
         if (size != 0) {
             acknowledged = radio_.sendTelemetry(
                 commissioning_.config().gatewayId, frame,
-                static_cast<uint8_t>(size), ack, ackRssi);
+                static_cast<uint8_t>(size),
+                telemetryAttempts(unacknowledgedReports_, urgent), ack,
+                ackRssi);
             supplyVoltage_.transmitted(battery_.readMillivolts());
         }
         if (acknowledged) {
@@ -184,6 +189,7 @@ private:
             debugValue(F(" rssi=-"), static_cast<uint8_t>(-downlinkRssi_));
 #endif
         } else {
+            profile_.reportFailed(now, prefix.supplyMillivolts);
             radioRetry_.failed(now);
 #if defined(NODE_DEBUG)
             debugLine(F("tx fail"));

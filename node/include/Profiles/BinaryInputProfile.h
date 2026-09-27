@@ -67,6 +67,8 @@ public:
         reportSchedule_.transmissionSucceeded(now);
     }
 
+    void reportFailed(uint32_t, uint16_t) {}
+
     void applyCommand(const protocol::Command&, protocol::CommandResult&) {}
     void commissioned() {}
 

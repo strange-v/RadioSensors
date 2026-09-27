@@ -47,6 +47,33 @@ inline bool intervalElapsed(
     return static_cast<uint32_t>(now - since) >= interval;
 }
 
+// Each report, acknowledged or not, schedules the next one on the interval
+// for the supply voltage it measured, so a node that loses the gateway while
+// its charge falls still slows down.
+class ClimateReportSchedule {
+public:
+    explicit ClimateReportSchedule(const ClimateReportPolicy policy)
+        : policy_(policy) {}
+
+    bool due(const uint32_t now) const {
+        return !hasAttempt_ || intervalElapsed(now, lastAttempt_, intervalMs_);
+    }
+
+    // Returns the interval until the next report.
+    uint32_t attempted(const uint32_t now, const uint16_t supplyMillivolts) {
+        intervalMs_ = policy_.intervalForMillivolts(supplyMillivolts);
+        lastAttempt_ = now;
+        hasAttempt_ = true;
+        return intervalMs_;
+    }
+
+private:
+    ClimateReportPolicy policy_;
+    uint32_t intervalMs_ = 0;
+    uint32_t lastAttempt_ = 0;
+    bool hasAttempt_ = false;
+};
+
 class RollingKeepAlive {
 public:
     explicit RollingKeepAlive(const uint32_t intervalMs)
@@ -147,10 +174,18 @@ private:
     bool urgent_ = false;
 };
 
+// Delays telemetry after a report went unacknowledged: 1, 5, then every 15
+// minutes, and hourly once the gateway has been silent for a day, which spares
+// the battery of a node whose gateway is gone for good.
 class RadioRetryBackoff {
 public:
+    // For an image whose report schedule already paces its retries.
+    static RadioRetryBackoff none() { return RadioRetryBackoff(false); }
+
+    RadioRetryBackoff() : RadioRetryBackoff(true) {}
+
     bool allowed(const uint32_t now) const {
-        return !waiting_ || intervalElapsed(now, failedAt_, delayMs_);
+        return !enabled_ || !waiting_ || intervalElapsed(now, failedAt_, delayMs_);
     }
 
     void failed(const uint32_t now) {
@@ -158,28 +193,38 @@ public:
             60UL * 1000UL,
             5UL * 60UL * 1000UL,
             15UL * 60UL * 1000UL,
-            60UL * 60UL * 1000UL,
         };
-        if (failureLevel_ == 0xFF) {
+        static constexpr uint8_t kLastLevel = sizeof(delays) / sizeof(delays[0]) - 1;
+        static constexpr uint32_t kSilentDayMs = 24UL * 60UL * 60UL * 1000UL;
+        static constexpr uint32_t kSilentDayDelayMs = 60UL * 60UL * 1000UL;
+        if (!waiting_) {
+            firstFailedAt_ = now;
             failureLevel_ = 0;
-        } else if (failureLevel_ < 3) {
-            ++failureLevel_;
+            silentForDay_ = false;
+        } else {
+            if (failureLevel_ < kLastLevel) ++failureLevel_;
+            // Latched: the elapsed time wraps after 49 days.
+            if (intervalElapsed(now, firstFailedAt_, kSilentDayMs)) {
+                silentForDay_ = true;
+            }
         }
         failedAt_ = now;
-        delayMs_ = delays[failureLevel_];
+        delayMs_ = silentForDay_ ? kSilentDayDelayMs : delays[failureLevel_];
         waiting_ = true;
     }
 
-    void succeeded() {
-        failureLevel_ = 0xFF;
-        waiting_ = false;
-    }
+    void succeeded() { waiting_ = false; }
 
 private:
+    explicit RadioRetryBackoff(const bool enabled) : enabled_(enabled) {}
+
+    uint32_t firstFailedAt_ = 0;
     uint32_t failedAt_ = 0;
     uint32_t delayMs_ = 0;
-    uint8_t failureLevel_ = 0xFF;
+    uint8_t failureLevel_ = 0;
+    bool enabled_;
     bool waiting_ = false;
+    bool silentForDay_ = false;
 };
 
 // Limits command sessions that a telemetry acknowledgement starts. A gateway

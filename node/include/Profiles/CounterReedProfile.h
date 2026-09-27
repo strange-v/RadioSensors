@@ -81,6 +81,8 @@ public:
         reportSchedule_.transmissionSucceeded(now);
     }
 
+    void reportFailed(uint32_t, uint16_t) {}
+
     void applyCommand(
         const protocol::Command& command, protocol::CommandResult& result) {
         if (command.type != static_cast<uint8_t>(protocol::CommandType::SetCount)) {

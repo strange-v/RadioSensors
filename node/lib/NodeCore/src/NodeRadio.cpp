@@ -9,7 +9,6 @@ namespace radiosensors {
 namespace node {
 
 namespace {
-constexpr uint8_t kTelemetryAttempts = 3;
 constexpr uint32_t kAckWaitMs = 40;
 
 static_assert(radio_aes::kStandbyMode == RF69_MODE_STANDBY, "RFM69 mode");
@@ -52,13 +51,14 @@ void NodeRadio::setPowerLevel(const uint8_t level) {
 
 bool NodeRadio::sendTelemetry(
     const uint8_t gatewayId, const uint8_t* frame, const uint8_t size,
-    protocol::TelemetryAck& ack, int8_t& downlinkRssi) {
+    const uint8_t attempts, protocol::TelemetryAck& ack,
+    int8_t& downlinkRssi) {
     ack = protocol::TelemetryAck{false, false, 0};
     // sendWithRetry() without its RSSI: the RFM69 keeps measuring the channel
     // after a frame ends, so a read after reception sees anything from the
     // frame to the noise floor. Sample it when the sync word matches, while
     // the acknowledgement is still arriving.
-    for (uint8_t attempt = 0; attempt < kTelemetryAttempts; ++attempt) {
+    for (uint8_t attempt = 0; attempt < attempts; ++attempt) {
         radio_.send(gatewayId, frame, size, true);
         const uint32_t sent = millis();
         bool synced = false;

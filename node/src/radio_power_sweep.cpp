@@ -6,6 +6,7 @@
 #include "CommissioningService.h"
 #include "LowPowerClock.h"
 #include "NodeRadio.h"
+#include "RadioPowerState.h"
 #include "UnusedPins.h"
 
 #if NODE_POWER_SWEEP_FIRST_LEVEL > NODE_POWER_SWEEP_LAST_LEVEL
@@ -89,7 +90,8 @@ void transmitAtCurrentLevel() {
     int8_t ackRssi = protocol::kNoDownlinkRssi;
     radio.sendTelemetry(
         commissioning.config().gatewayId, frame,
-        static_cast<uint8_t>(sizeof(frame)), ack, ackRssi);
+        static_cast<uint8_t>(sizeof(frame)), node::kTelemetryAttempts, ack,
+        ackRssi);
     // Match the production transaction, which samples loaded supply after
     // every transmission even though this diagnostic does not retain it.
     battery.readMillivolts();

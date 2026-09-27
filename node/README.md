@@ -64,9 +64,9 @@ The tool reads the 10-byte SIGROW UID, refuses to replace an existing valid reco
 
 ## Implemented runtimes
 
-Every image supports per-node-key UID commissioning, recovery of provisional commissioning, dual-slot network configuration, Vcc measurement, acknowledged telemetry, bounded 1/5/15/60-minute radio retry, and RTC power-down scheduling independent of sleeping `millis()`. The climate image adds TMP112 one-shot measurement; the binary-input images add the PA5 contact state, with SHT40 temperature and humidity on `binary_sht40`; the counter image adds the PA5 pulse input and the wear-levelled counter journal.
+Every image supports per-node-key UID commissioning, recovery of provisional commissioning, dual-slot network configuration, Vcc measurement, acknowledged telemetry, [retries](#lost-gateway) paced for a lost gateway, and RTC power-down scheduling independent of sleeping `millis()`. The climate image adds TMP112 one-shot measurement; the binary-input images add the PA5 contact state, with SHT40 temperature and humidity on `binary_sht40`; the counter image adds the PA5 pulse input and the wear-levelled counter journal.
 
-The solar/supercapacitor climate policy schedules nominal 60 seconds above 2500 mV and 300 seconds at or below it. The 32-second RTC step yields about 64/320 seconds. Battery-powered climate builds use one compile-time interval and do not persist it.
+The solar/supercapacitor climate policy schedules nominal 60 seconds above 2500 mV and 300 seconds at or below it, by the voltage each report measured, acknowledged or not. The 32-second RTC step yields about 64/320 seconds. Battery-powered climate builds use one compile-time interval and do not persist it.
 
 `*_debug` environments log at 9600 baud on PB2. They preserve the RTC timebase but never call `sleep_cpu()`; idle iterations use a short delay. Do not use them to measure sleep current.
 
@@ -101,6 +101,15 @@ Each image has a transmit power ceiling for its board and supply, `NODE_RADIO_MA
 
 Level and fallback flag are held only in RAM, so adapting the level never writes EEPROM. After a restart the first report goes out at the ceiling, and its acknowledgement returns the node to the level the gateway still wants.
 
+## Lost gateway
+
+| | Battery images | Solar `climate_tmp112` |
+| --- | --- | --- |
+| Next attempt after an unacknowledged report | 1 min, 5 min, then every 15 min; hourly once the gateway has been silent for 24 h | The next report interval, about 64 s, or 320 s at low charge |
+| Transmissions per report | 3; 1 after three consecutive unacknowledged reports, except for a binary state change or a set count | 3; 1 after three consecutive unacknowledged reports |
+
+The solar climate image has no finite charge to spare: a drained supercapacitor recovers at sunrise, and the low-charge interval keeps the node alive through the night.
+
 ## Command sessions
 
 An active node opens a command session when its button is short-pressed, or when a telemetry acknowledgement carries the command-pending flag ([PROTOCOL.md](../protocol/PROTOCOL.md)). It sends Command ready, listens 250 ms for the answer, and repeats up to three times with the same nonce. Input polling pauses meanwhile, as during a commissioning window.
@@ -109,7 +118,7 @@ An active node opens a command session when its button is short-pressed, or when
 | --- | --- | --- |
 | `set_count` | counter image | Pending result, ring write, Applied result ([EEPROM.md](EEPROM.md)); the new count is reported immediately |
 
-Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the 1/5/15/60-minute telemetry retry delays. A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.
+Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the battery images' telemetry retry delays ([Lost gateway](#lost-gateway)). A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.
 
 ## Fault recovery
 

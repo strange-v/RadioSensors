@@ -6,6 +6,7 @@
 #include "CommissioningService.h"
 #include "LowPowerClock.h"
 #include "NodeRadio.h"
+#include "RadioPowerState.h"
 #include "ProvisioningButton.h"
 #include "UnusedPins.h"
 #include "WatchdogWindow.h"
@@ -62,7 +63,8 @@ void transmit() {
     node::WatchdogWindow watchdog;
     if (radio.sendTelemetry(
             commissioning.config().gatewayId, frame,
-            static_cast<uint8_t>(sizeof(frame)), ack, ackRssi)) {
+            static_cast<uint8_t>(sizeof(frame)), node::kTelemetryAttempts,
+            ack, ackRssi)) {
         ++acknowledged;
         if (ack.hasPowerTarget) ++powerTargets;
     }

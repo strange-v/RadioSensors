@@ -5,8 +5,20 @@
 namespace radiosensors {
 namespace node {
 
-// Consecutive reports without acknowledgement before the node raises itself.
+// Consecutive reports without acknowledgement before the node raises itself
+// and sends single transmissions.
 constexpr uint8_t kFallbackReports = 3;
+constexpr uint8_t kTelemetryAttempts = 3;
+
+// Once the gateway looks gone, each report only probes for its return, at a
+// third of the charge. An event keeps every attempt: it may be the first
+// report after the gateway is back.
+inline uint8_t telemetryAttempts(
+    const uint8_t unacknowledgedReports, const bool urgent) {
+    return urgent || unacknowledgedReports < kFallbackReports
+        ? kTelemetryAttempts
+        : 1;
+}
 
 struct PowerDecision {
     bool change;
