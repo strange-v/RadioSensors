@@ -7,7 +7,9 @@
 
 namespace gateway::backup {
 
-constexpr size_t kMaxPayload = 24576;
+// The largest valid installation (64 nodes, every field at its longest, names of
+// JSON-escaped quotes) encodes to 16,421 bytes; the native test pins that case.
+constexpr size_t kMaxPayload = 17408;
 constexpr size_t kHeaderSize = 44;
 constexpr size_t kTagSize = 16;
 constexpr size_t kMaxFile = kHeaderSize + kMaxPayload + kTagSize;

@@ -26,6 +26,7 @@ Database flash;
 std::map<unsigned, std::string> handles;
 int writes = 0, cutAt = -1;
 bool cutBefore = false, badReadback = false;
+const char* fixturePath = nullptr;
 struct PowerCut {};
 struct Restart {};
 TestEsp ESP;
@@ -151,10 +152,19 @@ void codecAndCrypto() {
         auto damaged = file; damaged[offset] ^= 1; assert(!decrypt(damaged));
     }
     char id[33], restoredId[33]; backup::gatewayId(s, id); backup::gatewayId(decoded, restoredId); assert(!strcmp(id, restoredId));
-    std::ofstream("/tmp/osk-backup-tests/test.oskbackup", std::ios::binary).write(file.data(), file.size());
+    if (fixturePath) std::ofstream(fixturePath, std::ios::binary).write(file.data(), file.size());
+    // The largest valid installation must fit kMaxPayload.
+    s.settings.hostnameLength = 32; memset(s.settings.hostname, 'a', 32);
+    s.settings.ntpServerCount = 3;
+    for (size_t i = 0; i < 3; ++i) { s.settings.ntpServerLengths[i] = 63; memset(s.settings.ntpServers[i], 'a' + i, 63); }
+    s.settings.pairingWindowSeconds = 900; s.settings.setupWindowSeconds = 1800;
+    s.secrets.operationalNetworkId = 255; s.createdAt = UINT64_MAX;
     registry::NodeRecord records[registry::kMaxNodes]{};
     for (size_t i = 0; i < registry::kMaxNodes; ++i) {
-        records[i] = s.nodes.records()[0]; records[i].nodeId = i+1; records[i].deviceUid[0] = i+1;
+        records[i] = s.nodes.records()[0]; records[i].nodeId = 36 + i; records[i].deviceUid[0] = i+1;
+        records[i].profileId = UINT16_MAX; records[i].firmware = {255, 255, 255};
+        records[i].state = registry::NodeState::Disabled; records[i].requestNonce = UINT32_MAX;
+        records[i].maxPowerLevel = 31; records[i].powerPolicy = 32;
         records[i].displayNameLength = 48; memset(records[i].displayName, '"', 48);
     }
     assert(s.nodes.restore(records, registry::kMaxNodes)); assert(backup::encode(s, json));
@@ -215,4 +225,8 @@ void buttonTests() {
     ResetButton wrap; wrap.update(true, UINT32_MAX - 5000); wrap.update(true, 5000); assert(wrap.confirming());
     std::cout << "Button: short/long press, release, confirmation expiry and clock wrap passed\n";
 }
-int main() { codecAndCrypto(); restorePowerCuts(); resetPowerCuts(); buttonTests(); }
+int main(int argc, char** argv) {
+    // Optional: where to write an encrypted fixture for check_interop.mjs.
+    fixturePath = argc > 1 ? argv[1] : nullptr;
+    codecAndCrypto(); restorePowerCuts(); resetPowerCuts(); buttonTests();
+}

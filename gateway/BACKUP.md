@@ -23,7 +23,7 @@ Reset clears settings, users, tokens, registry, commands, installation keys and 
 
 ## API
 
-These endpoints belong to `/ui`, use JSON requests, and send `Cache-Control: no-store` for exports/previews. Backup passwords are 12–128 UTF-8 bytes without NUL. Admin credentials follow ordinary setup validation. Import requests require `X-Backup-Request: 1` and an open physical setup window. The request body limit is 35,000 bytes; export accepts at most 1,024 bytes.
+These endpoints belong to `/ui`, use JSON requests, and send `Cache-Control: no-store` for exports/previews. Backup passwords are 12–128 UTF-8 bytes without NUL. Admin credentials follow ordinary setup validation. Import requests require `X-Backup-Request: 1` and an open physical setup window. The request body limit is 24,924 bytes; export accepts at most 1,024 bytes.
 
 | POST endpoint | Request | Result |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ Preview writes nothing. Restore decrypts and validates the supplied file again; 
 
 ## Container version 1
 
-Maximum file size: **24,636 bytes**. Multibyte header integers are little-endian. The entire 44-byte header is AES-GCM additional authenticated data.
+Maximum file size: **17,468 bytes**. Multibyte header integers are little-endian. The entire 44-byte header is AES-GCM additional authenticated data.
 
 | Offset | Bytes | Value |
 | ---: | ---: | --- |
@@ -57,7 +57,7 @@ Maximum file size: **24,636 bytes**. Multibyte header integers are little-endian
 | 6 | 1 | Cipher `1`: AES-256-GCM |
 | 7 | 1 | Reserved, zero |
 | 8 | 4 | Exactly 100,000 KDF iterations |
-| 12 | 4 | Ciphertext length, at most 24,576 |
+| 12 | 4 | Ciphertext length, at most 17,408 |
 | 16 | 16 | Random salt |
 | 32 | 12 | Random nonce |
 | 44 | variable | Encrypted UTF-8 JSON |
@@ -77,6 +77,6 @@ Button confirmation persists marker 2 and restarts. Before stores initialize, bo
 
 ## Verification
 
-`scripts/run_backup_tests_wsl.sh` builds native tests against the actual codec, crypto, restore and recovery services with a fault-injected NVS adapter. Set `MBEDTLS_DIR` to a built Mbed TLS 3.x source tree containing `library/libmbedcrypto.a`; ArduinoJson comes from the Waveshare PlatformIO dependencies. Tests use ASan/UBSan and emit a fixture at `/tmp/osk-backup-tests/test.oskbackup` for `test/native/check_interop.mjs`.
+`wsl bash gateway/scripts/run_backup_tests_wsl.sh` builds native tests against the actual codec, crypto, restore and recovery services with a fault-injected NVS adapter, under ASan/UBSan. It needs `curl`, `make`, `g++` and Node.js (Windows `node.exe` works). The first run downloads the pinned Mbed TLS and ArduinoJson releases, checks their SHA-256, and builds Mbed TLS into `~/.cache/osk-sense-native`; `MBEDTLS_DIR` overrides that with another built 3.x tree. The script then decrypts the test's encrypted fixture with `test/native/check_interop.mjs`, an independent Node.js implementation.
 
 Hardware acceptance on Waveshare covers BOOT/LED timing, actual power cuts during reset/restore, maximum-registry heap and KDF latency, and restored node traffic/gateway identity. WT32 builds the same services but has no runtime physical-presence input; its UI setup/restore requires a board-specific implementation of that input. Native fault injection does not replace hardware checks.

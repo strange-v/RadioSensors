@@ -477,6 +477,11 @@ void sendBackupPreview(
     request->send(response);
 }
 
+// Base64 file, both passwords at their worst JSON escaping (\u00XX per byte),
+// the username, and the keys.
+constexpr size_t kMaxBackupImportBody =
+    4 * ((backup::kMaxFile + 2) / 3) + 2 * 6 * 128 + 32 + 64;
+
 // Serves both /ui/backup/preview and /ui/backup/restore: each decrypts and
 // validates the uploaded file itself rather than trusting an earlier preview.
 void handleBackupImport(AsyncWebServerRequest* request, JsonVariant& json) {
@@ -2147,9 +2152,9 @@ void begin() {
     auto& backupExport = server.on("/ui/backup/export", HTTP_POST, handleBackupExport);
     backupExport.setMaxContentLength(1024);
     auto& backupPreview = server.on("/ui/backup/preview", HTTP_POST, handleBackupImport);
-    backupPreview.setMaxContentLength(35000);
+    backupPreview.setMaxContentLength(kMaxBackupImportBody);
     auto& backupRestore = server.on("/ui/backup/restore", HTTP_POST, handleBackupImport);
-    backupRestore.setMaxContentLength(35000);
+    backupRestore.setMaxContentLength(kMaxBackupImportBody);
     auto& loginHandler = server.on(
         "/ui/session", HTTP_POST, handleLogin);
     loginHandler.setMaxContentLength(512);
