@@ -2,7 +2,7 @@
 
 ## Use
 
-1. As an admin, open **Settings → Installation backup**, enter a separate backup password twice, and download the `.oskbackup` file. Keep the password in a password manager. Make a fresh copy after changing settings or nodes.
+1. As an admin, open **Administration → Installation backup**, enter a separate backup password twice, and download the `.oskbackup` file. Keep the password in a password manager. Make a fresh copy after changing settings or nodes.
 2. Prepare a gateway with compatible firmware and Web UI. Switch off the original gateway before activating a replacement.
 3. On a clean gateway, briefly press the gateway button to open setup, choose **Restore backup**, select the file and enter its password. Review the gateway ID, date and node count.
 4. Enter a new administrator username/password, confirm, and restore. After restart, sign in and create a new Home Assistant token. A restored hostname can change the address; DHCP/MAC remain specific to the physical board.

@@ -16,9 +16,10 @@ async function save() {
 }
 </script>
 <template>
-  <section class="panel backup-panel">
-    <h2>{{ $t('backup.title') }}</h2>
-    <p>{{ $t('backup.intro') }}</p>
+  <section class="panel admin-card">
+    <header class="panel-heading">
+      <div><h2>{{ $t('backup.title') }}</h2><p>{{ $t('backup.intro') }}</p></div>
+    </header>
     <form class="form-stack" @submit.prevent="save">
       <label><span>{{ $t('backup.password') }}</span><input v-model="password" type="password" autocomplete="new-password" :disabled="working"><small>{{ $t('backup.passwordHint') }}</small></label>
       <label><span>{{ $t('backup.confirmPassword') }}</span><input v-model="confirmation" type="password" autocomplete="new-password" :disabled="working"></label>

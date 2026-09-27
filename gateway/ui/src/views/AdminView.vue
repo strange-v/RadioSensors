@@ -1,15 +1,16 @@
 <script setup lang="ts">
 // Everything that acts on the gateway the moment you press it, kept apart
-// from Settings, whose single Save button owns its whole form. Users and API
-// tokens today; backup/restore belongs here as it lands.
+// from Settings, whose single Save button owns its whole form.
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, errorCode, forgetSession } from '../api/client'
 import type { Health } from '../api/types'
+import BackupCard from '../components/BackupCard.vue'
 import Icon from '../components/Icon.vue'
 import RadioResetDialog from '../components/RadioResetDialog.vue'
 import TokensCard from '../components/TokensCard.vue'
 import UsersCard from '../components/UsersCard.vue'
+import { vMasonry } from '../utils/masonry'
 
 const router = useRouter()
 const health = ref<Health | null>(null)
@@ -32,10 +33,12 @@ onMounted(async () => {
   <div class="page">
     <div class="page-heading"><div><h1>{{ $t('admin.title') }}</h1><p>{{ $t('admin.subtitle') }}</p></div></div>
 
-    <div class="admin-grid">
+    <div v-masonry class="admin-grid">
       <UsersCard @signed-out="signedOut" />
 
       <TokensCard />
+
+      <BackupCard />
 
       <section class="panel admin-card">
         <header class="panel-heading">
