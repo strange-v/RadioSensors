@@ -446,11 +446,18 @@ void handleBackupExport(AsyncWebServerRequest* request, JsonVariant& json) {
         sendError(request, 409, "backup_busy");
         return;
     }
+    const uint32_t startedAt = millis();
     std::string file;
     if (!backup::encrypt(*snapshot, password.c_str(), password.size(), file)) {
+        Serial.println("Backup export failed: encryption error");
         sendError(request, 500, "backup_failed");
         return;
     }
+    Serial.printf(
+        "Backup exported: %u nodes, %u bytes in %lu ms\n",
+        static_cast<unsigned>(snapshot->nodes.size()),
+        static_cast<unsigned>(file.size()),
+        static_cast<unsigned long>(millis() - startedAt));
     AsyncResponseStream* response =
         request->beginResponseStream("application/octet-stream");
     response->addHeader("Cache-Control", "no-store");
@@ -523,15 +530,21 @@ void handleBackupImport(AsyncWebServerRequest* request, JsonVariant& json) {
         sendError(request, 503, "backup_failed");
         return;
     }
+    const uint32_t startedAt = millis();
     size_t length = 0;
     if (mbedtls_base64_decode(
             bytes.get(), backup::kMaxFile, &length,
             reinterpret_cast<const uint8_t*>(encoded.c_str()), encoded.size()) != 0 ||
         !backup::decrypt(
             bytes.get(), length, password.c_str(), password.size(), *snapshot)) {
+        Serial.println("Backup import rejected: wrong password or invalid file");
         sendError(request, 422, "invalid_backup");
         return;
     }
+    Serial.printf(
+        "Backup decrypted: %u nodes in %lu ms\n",
+        static_cast<unsigned>(snapshot->nodes.size()),
+        static_cast<unsigned long>(millis() - startedAt));
     // The key derivation takes seconds; the window may have closed meanwhile.
     if (!status::setupActive()) {
         sendError(request, 403, "physical_setup_required");

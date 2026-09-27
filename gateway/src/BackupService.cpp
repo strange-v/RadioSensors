@@ -96,7 +96,15 @@ bool restore(
         registry::encodeRegistrySnapshot(
             snapshot.nodes, 1, bytes, kBufferSize, registrySize) ==
             registry::SnapshotStatus::Ok;
-    if (ok) ok = recovery::startRestore();
+    if (!ok) {
+        wipe(bytes, kBufferSize);
+        Serial.println("Backup restore rejected: snapshot does not encode");
+        return false;
+    }
+    Serial.printf(
+        "Backup restore: writing %u nodes and installation secrets\n",
+        static_cast<unsigned>(snapshot.nodes.size()));
+    ok = recovery::startRestore();
     if (ok) ok = recovery::eraseInstallation();
     if (ok) ok = writeVerified("node-reg", "registry_a", bytes, registrySize);
     if (ok) {
@@ -120,7 +128,12 @@ bool restore(
             "gateway-auth", "auth_a", bytes, gateway_storage::kAuthSnapshotSize);
     }
     wipe(bytes, kBufferSize);
-    return ok && recovery::finishRestore();
+    if (!ok || !recovery::finishRestore()) {
+        Serial.println("Backup restore failed while writing; factory reset required");
+        return false;
+    }
+    Serial.println("Backup restore complete; restarting");
+    return true;
 }
 
 }  // namespace gateway::backup

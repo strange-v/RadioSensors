@@ -4,6 +4,7 @@
 
 #include <atomic>
 
+#include "BoardProfile.h"
 #include "RadioService.h"
 #include "ConfigurationStore.h"
 #include "RecoveryService.h"
@@ -15,7 +16,6 @@ constexpr uint32_t kDebounceMs = 50;
 constexpr uint8_t kBrightness = 20;
 
 #if defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
-constexpr int kBootButtonPin = 0;
 constexpr int kRgbPin = 21;
 #endif
 
@@ -24,6 +24,8 @@ std::atomic<uint32_t> pairingEndsAt{0};
 std::atomic<uint32_t> setupEndsAt{0};
 std::atomic<uint32_t> indicationEndsAt{0};
 radiosensors::ResetButton resetButton;
+bool resetArmed = false;
+bool resetWaiting = false;
 bool rawButtonPressed = false;
 bool stableButtonPressed = false;
 uint32_t rawButtonChangedAt = 0;
@@ -56,7 +58,7 @@ void togglePairing(const uint32_t now) {
         }
         pairingEndsAt.store(0);
         current.store(idleIndication());
-        Serial.println("Pairing window closed by BOOT button");
+        Serial.println("Pairing window closed by button");
     } else {
         Serial.println("Pairing requires QR credentials from the management UI");
     }
@@ -67,7 +69,7 @@ void toggleSetup(const uint32_t now) {
     if (setupActive()) {
         setupEndsAt.store(0);
         current.store(Indication::Unconfigured);
-        Serial.println("Initial setup window closed by BOOT button");
+        Serial.println("Initial setup window closed by button");
         return;
     }
     const radiosensors::gateway_storage::GatewaySettings settings =
@@ -75,7 +77,7 @@ void toggleSetup(const uint32_t now) {
     setupEndsAt.store(now + static_cast<uint32_t>(settings.setupWindowSeconds) * 1000U);
     current.store(Indication::Setup);
     indicationEndsAt.store(0);
-    Serial.printf("Initial setup window opened by BOOT button for %u seconds\n",
+    Serial.printf("Initial setup window opened by button for %u seconds\n",
                   settings.setupWindowSeconds);
 }
 
@@ -128,12 +130,10 @@ void render(const uint32_t now) {
 }  // namespace
 
 void begin() {
-#if defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
-    pinMode(kBootButtonPin, INPUT_PULLUP);
-    rawButtonPressed = digitalRead(kBootButtonPin) == LOW;
+    pinMode(board::buttonPin, INPUT_PULLUP);
+    rawButtonPressed = digitalRead(board::buttonPin) == LOW;
     stableButtonPressed = rawButtonPressed;
     rawButtonChangedAt = millis();
-#endif
     current.store(idleIndication());
     render(millis());
 }
@@ -162,8 +162,7 @@ void loop() {
         current.store(pairingActive() ? Indication::Pairing : idleIndication());
     }
 
-#if defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
-    const bool pressed = digitalRead(kBootButtonPin) == LOW;
+    const bool pressed = digitalRead(board::buttonPin) == LOW;
     if (pressed != rawButtonPressed) {
         rawButtonPressed = pressed;
         rawButtonChangedAt = now;
@@ -172,7 +171,20 @@ void loop() {
         stableButtonPressed = pressed;
     }
     const auto action = resetButton.update(stableButtonPressed, now);
-    if (action == radiosensors::ResetButton::Action::ConfirmReset) {
+    const bool confirmed = action == radiosensors::ResetButton::Action::ConfirmReset;
+    if (resetButton.armed() && !resetArmed) {
+        Serial.println("Factory reset armed: release the button, then press it again within 5 s");
+    }
+    if (resetButton.waiting() && !resetWaiting) {
+        Serial.println("Factory reset: waiting 5 s for the confirming press");
+    }
+    if (resetWaiting && !resetButton.waiting() && !confirmed) {
+        Serial.println("Factory reset cancelled: no confirming press");
+    }
+    resetArmed = resetButton.armed();
+    resetWaiting = resetButton.waiting();
+    if (confirmed) {
+        Serial.println("Factory reset confirmed by button");
         if (!recovery::requestFactoryReset()) {
             current.store(Indication::Error);
             indicationEndsAt.store(now + 3000);
@@ -184,7 +196,6 @@ void loop() {
             else togglePairing(now);
         }
     }
-#endif
     render(now);
 }
 

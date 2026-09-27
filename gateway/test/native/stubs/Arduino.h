@@ -13,3 +13,9 @@ inline void xSemaphoreGiveRecursive(SemaphoreHandle_t mutex) { mutex->unlock(); 
 uint32_t millis();
 struct TestEsp { void restart(); };
 extern TestEsp ESP;
+struct TestSerial {
+    void println(const char*) {}
+    template<typename... Arguments> void printf(const char*, Arguments...) {}
+    void flush() {}
+};
+inline TestSerial Serial;

@@ -4,7 +4,7 @@
 
 1. As an admin, open **Settings → Installation backup**, enter a separate backup password twice, and download the `.oskbackup` file. Keep the password in a password manager. Make a fresh copy after changing settings or nodes.
 2. Prepare a gateway with compatible firmware and Web UI. Switch off the original gateway before activating a replacement.
-3. On a clean gateway, briefly press BOOT to open setup, choose **Restore backup**, select the file and enter its password. Review the gateway ID, date and node count.
+3. On a clean gateway, briefly press the gateway button to open setup, choose **Restore backup**, select the file and enter its password. Review the gateway ID, date and node count.
 4. Enter a new administrator username/password, confirm, and restore. After restart, sign in and create a new Home Assistant token. A restored hostname can change the address; DHCP/MAC remain specific to the physical board.
 
 | Included | Excluded |
@@ -17,9 +17,9 @@ Restoring the radio credentials and registry avoids re-pairing nodes present in 
 
 ## Factory reset
 
-On a running Waveshare gateway, hold BOOT for **10 seconds** until the LED flashes red. Release, then press again within **5 seconds**. Without the second press, reset is cancelled. A short press acts on release and controls setup/pairing.
+On a running gateway, hold the button (BOOT on Waveshare, GPIO32 on WT32) for **10 seconds**; the Waveshare LED then flashes red, and WT32 reports it only in the serial log. Release, then press again within **5 seconds**. Without the second press, reset is cancelled. A short press acts on release and controls setup/pairing.
 
-Reset clears settings, users, tokens, registry, commands, installation keys and the device secret. Firmware and Web UI remain. Nodes retain their credentials. Interrupted reset resumes at boot; interrupted restore requires reset followed by another import. The button works without valid application settings, but requires running firmware and writable NVS. WT32, an unbootable gateway, or an NVS failure that prevents recording reset requires [cable recovery](README.md#erasing-nvs). Holding BOOT during power-on/reset selects the ROM bootloader.
+Reset clears settings, users, tokens, registry, commands, installation keys and the device secret. Firmware and Web UI remain. Nodes retain their credentials. Interrupted reset resumes at boot; interrupted restore requires reset followed by another import. The button works without valid application settings, but requires running firmware and writable NVS. An unbootable gateway, or an NVS failure that prevents recording reset, requires [cable recovery](README.md#erasing-nvs). Holding Waveshare BOOT during power-on/reset selects the ROM bootloader; the WT32 button has no effect on boot.
 
 ## API
 
@@ -63,7 +63,7 @@ Maximum file size: **17,468 bytes**. Multibyte header integers are little-endian
 | 44 | variable | Encrypted UTF-8 JSON |
 | end | 16 | Authentication tag |
 
-Each export uses hardware randomness for salt and nonce. The KDF runs through the password-hash worker; parsing happens only after GCM authentication succeeds. No plaintext backup is written to flash. This protects the backup file, not HTTP traffic: use the gateway only on the trusted private LAN described in [API.md](API.md#security-and-backup).
+Each export uses hardware randomness for salt and nonce. The KDF runs through the password-hash worker; parsing happens only after GCM authentication succeeds. On Waveshare it dominates each request: export takes about 6.4 s, preview 5.8 s and restore 7.3 s, which adds the new admin's password hash. The web server answers nothing else meanwhile. No plaintext backup is written to flash. This protects the backup file, not HTTP traffic: use the gateway only on the trusted private LAN described in [API.md](API.md#security-and-backup).
 
 Payload keys are `version` (`1`), `created_at_ms` (UTC milliseconds, zero if unavailable), `settings`, `network_id`, `installation_key`, `device_secret`, `nodes`. Keys and UIDs are lowercase hexadecimal. Settings contain `hostname`, `mdns`, `ntp`, `pairing_seconds`, `setup_seconds`, `servers`. Each node contains `uid`, `id`, `profile`, `firmware` (three integers), `state` (1 pending, 2 active, 3 disabled), `nonce`, `name`, `max_power`, `power_policy`. Values obey [storage limits](STORAGE.md); unknown nonzero profile IDs are preserved. Different container/payload versions are rejected.
 
@@ -71,7 +71,7 @@ Payload keys are `version` (`1`), `created_at_ms` (UTC milliseconds, zero if una
 
 NVS namespace `gateway-recover`, key `operation` (`uint8`): 0 idle, 1 restore incomplete, 2 factory reset requested. Unknown values or unreadable control data block normal startup.
 
-Restore validates all data and the new admin before persisting marker 1. It clears the five installation namespaces, writes and reads back each snapshot, then commits marker 0 and restarts. Marker 1 prevents storage initialization, radio, commissioning and command processing at boot. The previous installation is not retained.
+Restore validates all data and the new admin before persisting marker 1. It clears the five installation namespaces, writes and reads back each snapshot, then commits marker 0 and restarts. The writes take only the final moments of a restore, so a power cut usually leaves the gateway clean and the import can simply be repeated. Marker 1 prevents storage initialization, radio, commissioning and command processing at boot. The previous installation is not retained.
 
 Button confirmation persists marker 2 and restarts. Before stores initialize, boot clears the five namespaces and commits marker 0. The control namespace is never part of that erase. Firmware and `web` partitions are untouched.
 
@@ -79,4 +79,4 @@ Button confirmation persists marker 2 and restarts. Before stores initialize, bo
 
 `wsl bash gateway/scripts/run_backup_tests_wsl.sh` builds native tests against the actual codec, crypto, restore and recovery services with a fault-injected NVS adapter, under ASan/UBSan. It needs `curl`, `make`, `g++` and Node.js (Windows `node.exe` works). The first run downloads the pinned Mbed TLS and ArduinoJson releases, checks their SHA-256, and builds Mbed TLS into `~/.cache/osk-sense-native`; `MBEDTLS_DIR` overrides that with another built 3.x tree. The script then decrypts the test's encrypted fixture with `test/native/check_interop.mjs`, an independent Node.js implementation.
 
-Hardware acceptance on Waveshare covers BOOT/LED timing, actual power cuts during reset/restore, maximum-registry heap and KDF latency, and restored node traffic/gateway identity. WT32 builds the same services but has no runtime physical-presence input; its UI setup/restore requires a board-specific implementation of that input. Native fault injection does not replace hardware checks.
+The serial log records each factory-reset step, what boot does with the control marker, the outcome and node count of every export, import and restore, and how long export encryption and import decryption took.

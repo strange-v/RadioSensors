@@ -52,6 +52,10 @@ constexpr Lan8720Pins ethernetPins{
     18,
 };
 
+// External button to GND. GPIO32 has an internal pull-up and is not a
+// strapping pin, so holding it at power-on does not change the boot mode.
+constexpr int buttonPin = 32;
+
 #elif defined(GATEWAY_BOARD_WAVESHARE_S3_ETH)
 
 #if !defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -74,6 +78,9 @@ constexpr W5500Pins ethernetPins{
     10,
     9,
 };
+
+// The onboard BOOT button; held at power-on it selects the ROM bootloader.
+constexpr int buttonPin = 0;
 
 #else
 #error "Select a supported gateway board profile."

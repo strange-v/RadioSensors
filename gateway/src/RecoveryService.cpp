@@ -63,16 +63,32 @@ void begin() {
     if (mutex == nullptr) return;
 
     nvs_handle_t handle;
-    if (nvs_open(kControl, NVS_READWRITE, &handle) != ESP_OK) return;
+    if (nvs_open(kControl, NVS_READWRITE, &handle) != ESP_OK) {
+        Serial.println("Recovery: control namespace unavailable; storage disabled");
+        return;
+    }
     uint8_t value = kIdle;
     const esp_err_t result = nvs_get_u8(handle, "operation", &value);
     nvs_close(handle);
-    if (result != ESP_OK && result != ESP_ERR_NVS_NOT_FOUND) return;
+    if (result != ESP_OK && result != ESP_ERR_NVS_NOT_FOUND) {
+        Serial.println("Recovery: control marker unreadable; storage disabled");
+        return;
+    }
 
     if (value == kResetRequested) {
-        state.store(eraseStores() && writeMarker(kIdle) ? kIdle : kResetRequested);
-    } else if (value == kIdle || value == kRestoreIncomplete) {
+        Serial.println("Recovery: erasing installation stores for factory reset");
+        const bool erased = eraseStores() && writeMarker(kIdle);
+        state.store(erased ? kIdle : kResetRequested);
+        Serial.println(erased
+            ? "Recovery: factory reset complete"
+            : "Recovery: factory reset incomplete; retrying at next boot");
+    } else if (value == kRestoreIncomplete) {
         state.store(value);
+        Serial.println("Recovery: backup restore was interrupted; factory reset required");
+    } else if (value == kIdle) {
+        state.store(value);
+    } else {
+        Serial.printf("Recovery: unknown control marker %u; storage disabled\n", value);
     }
 }
 
@@ -106,12 +122,18 @@ bool finishRestore() {
 
 bool requestFactoryReset() {
     Guard guard(0);
-    if (!guard || backup::busy()) return false;
+    if (!guard || backup::busy()) {
+        Serial.println("Factory reset refused: a backup or storage write is in progress");
+        return false;
+    }
     if (!writeMarker(kResetRequested)) {
         state.store(kStorageUnavailable);
+        Serial.println("Factory reset failed: could not record the request in NVS");
         return false;
     }
     state.store(kResetRequested);
+    Serial.println("Factory reset recorded; restarting to erase installation stores");
+    Serial.flush();
     ESP.restart();
     return true;
 }

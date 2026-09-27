@@ -21,9 +21,9 @@ PlatformIO is pinned in `platformio.ini`, along with exact library versions. On 
 
 ## Hardware
 
-WT32 RFM69 wiring: SCK 12, MISO 15, MOSI 4, CS 14, DIO0/IRQ 36. Waveshare RFM69 uses a separate HSPI bus from W5500: SCK 43, MISO 44, MOSI 1, CS 2, DIO0/IRQ 38, RESET 39. `GATEWAY_RFM69_RESET` names the GPIO wired to the module's RESET pin and is optional; without it the module keeps its state through an ESP32 reset and only a power cycle clears it. Add a pull-up from RFM69 CS to 3.3 V so it remains deselected through reset and UART recovery.
+WT32 RFM69 wiring: SCK 12, MISO 15, MOSI 4, CS 14, DIO0/IRQ 36, RESET 33. Waveshare RFM69 uses a separate HSPI bus from W5500: SCK 43, MISO 44, MOSI 1, CS 2, DIO0/IRQ 38, RESET 39. `GATEWAY_RFM69_RESET` names the GPIO wired to the module's RESET pin and is optional; without it the module keeps its state through an ESP32 reset and only a power cycle clears it. Add a pull-up from RFM69 CS to 3.3 V so it remains deselected through reset and UART recovery.
 
-Waveshare BOOT/GPIO0 is the runtime physical-presence button and GPIO21 drives the onboard RGB LED. WT32 compiles from the same source but currently has no equivalent runtime button/LED workflow and is outside the primary hardware acceptance scope.
+The physical-presence button is BOOT/GPIO0 on Waveshare and, on WT32, a push button from GPIO32 to GND using the internal pull-up. GPIO21 drives the Waveshare RGB LED; WT32 has no status LED, so the serial log reports every button action. WT32 is outside the primary hardware acceptance scope.
 
 ## Local secrets and OTA
 
@@ -125,7 +125,7 @@ One priority-11 task owns RFM69 and all FIFO/SPI operations. After 5 s without a
 
 The gateway serves two API surfaces: `/api` is the external client contract (`info`, the node registry read) and moves only with `api_version`, while `/ui` is everything the Web UI needs and moves with the firmware. Outside both sit `/health`, an unauthenticated liveness probe carrying only `status` and `boot_id`, and `/ws`. See `API.md`. Persistent settings, authentication, registry, and secrets use independent dual-slot stores. SNTP uses configured NTP servers and reapplies changes without reboot.
 
-Before the first user exists, the Waveshare status LED blinks green and a short BOOT press opens the physical setup window. `POST /ui/setup` creates the first admin and can set the hostname and operational network ID. Until then the radio sleeps without an installation key; setup hands it the new key, so nodes can be paired without a restart. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short BOOT press can close an active pairing window.
+Before the first user exists, the Waveshare status LED blinks green and a short button press opens the physical setup window. `POST /ui/setup` creates the first admin and can set the hostname and operational network ID. Until then the radio sleeps without an installation key; setup hands it the new key, so nodes can be paired without a restart. Pairing is opened from the management UI after manually entering the node UID and its unique factory key; a short button press can close an active pairing window.
 
 References:
 

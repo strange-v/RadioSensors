@@ -47,6 +47,10 @@ public:
     }
 
     bool confirming() const { return armed_ || waiting_; }
+    // Held long enough; the release is still pending.
+    bool armed() const { return armed_; }
+    // Released after the hold; the confirming press is awaited.
+    bool waiting() const { return waiting_; }
 
 private:
     bool pressed_ = false;
