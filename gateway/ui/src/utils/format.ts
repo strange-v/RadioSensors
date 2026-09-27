@@ -84,6 +84,12 @@ export function isValidHostname(value: string): boolean {
 // browser is set to -- commonly en-US, which prints 12-hour times with AM/PM no
 // matter how the operating system is configured. The hour cycle is pinned to
 // h23 because a device console reads better with unambiguous 24-hour times.
+// Whole seconds as m:ss, for a window that closes on its own.
+export function countdown(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
+}
+
 export function dateTime(locale: string, atMs: number | undefined): string {
   if (!atMs) return '—'
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23' }).format(atMs)

@@ -4,8 +4,8 @@
 
 1. As an admin, open **Administration → Installation backup**, enter a separate backup password twice, and download the `.oskbackup` file. Keep the password in a password manager. Make a fresh copy after changing settings or nodes.
 2. Prepare a gateway with compatible firmware and Web UI. Switch off the original gateway before activating a replacement.
-3. On a clean gateway, briefly press the gateway button to open setup, choose **Restore backup**, select the file and enter its password. Review the gateway ID, date and node count.
-4. Enter a new administrator username/password, confirm, and restore. After restart, sign in and create a new Home Assistant token. A restored hostname can change the address; DHCP/MAC remain specific to the physical board.
+3. On a clean gateway, open setup, choose **Restore backup**, select the file and enter its password. Review the gateway ID, date and node count.
+4. Enter a new administrator username/password and confirm. Press the gateway button to open the setup window, then restore. After restart, sign in and create a new Home Assistant token. A restored hostname can change the address; DHCP/MAC remain specific to the physical board.
 
 | Included | Excluded |
 | --- | --- |
@@ -23,7 +23,7 @@ Reset clears settings, users, tokens, registry, commands, installation keys and 
 
 ## API
 
-These endpoints belong to `/ui`, use JSON requests, and send `Cache-Control: no-store` for exports/previews. Backup passwords are 12–128 UTF-8 bytes without NUL. Admin credentials follow ordinary setup validation. Import requests require `X-Backup-Request: 1` and an open physical setup window. The request body limit is 24,924 bytes; export accepts at most 1,024 bytes.
+These endpoints belong to `/ui`, use JSON requests, and send `Cache-Control: no-store` for exports/previews. Backup passwords are 12–128 UTF-8 bytes without NUL. Admin credentials follow ordinary setup validation. Import requests require `X-Backup-Request: 1`; restore also requires an open physical setup window. The request body limit is 24,924 bytes; export accepts at most 1,024 bytes.
 
 | POST endpoint | Request | Result |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ These endpoints belong to `/ui`, use JSON requests, and send `Cache-Control: no-
 | `/ui/backup/preview` | `{"file":"base64…","password":"…"}` | `gateway_id`, `created_at_ms`, `node_count`, `hostname`, `mdns_enabled` |
 | `/ui/backup/restore` | Preview fields plus `username`, `admin_password` | `{"status":"restarting"}` |
 
-Preview writes nothing. Restore decrypts and validates the supplied file again; it does not rely on a cached preview. Only a gateway with ready storage, no users, no installation key and no registry records accepts import. Bearer tokens do not authorize export. Busy backup/OTA/reset operations are mutually excluded; snapshot capture holds the persistent mutation lock only while copying settings, secrets and registry.
+Preview writes nothing and needs no physical window. Restore decrypts and validates the supplied file again; it does not rely on a cached preview. Only a gateway with ready storage, no users, no installation key and no registry records accepts import. Bearer tokens do not authorize export. Busy backup/OTA/reset operations are mutually excluded; snapshot capture holds the persistent mutation lock only while copying settings, secrets and registry.
 
 | Error | Meaning |
 | --- | --- |

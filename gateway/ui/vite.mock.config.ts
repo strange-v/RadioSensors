@@ -186,10 +186,10 @@ function mockApi(): Plugin {
           readBody(req, body => {
             const setup = routes['/ui/setup'] as { physical_window_active: boolean; recovery_required?: boolean }
             if (setup.recovery_required) return json(res, 409, { error: 'recovery_required' })
-            if (!setup.physical_window_active) return json(res, 403, { error: 'physical_setup_required' })
+            if (path.endsWith('/restore') && !setup.physical_window_active) return json(res, 403, { error: 'physical_setup_required' })
             try {
               const file = Buffer.from(String(body.file), 'base64')
-              if (file.length <= 60 || file.length > 24636 || file.subarray(0, 8).toString('hex') !== '4f534b4201010100' || file.readUInt32LE(8) !== 100_000 || file.readUInt32LE(12) !== file.length - 60) throw new Error('invalid')
+              if (file.length <= 60 || file.length > 17468 || file.subarray(0, 8).toString('hex') !== '4f534b4201010100' || file.readUInt32LE(8) !== 100_000 || file.readUInt32LE(12) !== file.length - 60) throw new Error('invalid')
               const decipher = createDecipheriv('aes-256-gcm', pbkdf2Sync(String(body.password), file.subarray(16, 32), 100_000, 32, 'sha256'), file.subarray(32, 44))
               decipher.setAAD(file.subarray(0, 44)); decipher.setAuthTag(file.subarray(-16))
               const payload = JSON.parse(Buffer.concat([decipher.update(file.subarray(44, -16)), decipher.final()]).toString())

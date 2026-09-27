@@ -5,7 +5,7 @@ export const en = {
     download: 'Download backup', working: 'Working…', downloaded: 'Backup download started. Keep the file somewhere safe and make a fresh copy after changing nodes or settings.',
     resetTitle: 'Reset this gateway', resetHint: 'Hold the gateway button (BOOT on Waveshare) for 10 seconds, until the Waveshare LED flashes red or the serial log reports it. Release, then press again within 5 seconds to confirm. Without confirmation, nothing is erased.',
     resetConsequence: 'Reset erases settings, accounts, tokens, nodes and keys. Firmware and Web UI remain. Nodes keep their credentials and can reconnect after restoring a matching backup.',
-    newInstallation: 'New installation', restore: 'Restore backup', restoreIntro: 'Restore settings and nodes on this clean gateway. You will create a new administrator and a new Home Assistant token.',
+    setupMode: 'Setup mode', newInstallation: 'New installation', restore: 'Restore backup', restoreIntro: 'Restore settings and nodes on this clean gateway. You will create a new administrator and a new Home Assistant token.',
     file: 'Backup file', inspect: 'Check backup', gateway: 'Gateway ID', created: 'Backup date', defaultHostname: 'Default name of this device', newAdminPassword: 'New administrator password',
     confirmRestore: 'The old gateway is switched off. I understand that only nodes and settings present in this backup will be restored.',
     restored: 'Backup restored', restoredHint: 'The gateway is restarting. After it starts, sign in with the new administrator account and create a new Home Assistant token. Its network name may change; use the sign-in link or find its address in your router.',
@@ -21,7 +21,7 @@ export const en = {
   login: { sessionRevoked: 'Your account was changed, so the previous session ended. Sign in again.', title: 'Sign in to the gateway', intro: 'Use the local account created during gateway setup.', username: 'Username', password: 'Password', submit: 'Sign in', signingIn: 'Signing in…' },
   setup: {
     eyebrow: 'First-time setup', title: 'Bring your gateway online', intro: 'Create the first administrator and give this gateway a recognizable name.',
-    physicalTitle: 'Physical confirmation required', physicalClosed: 'Briefly press the gateway button (BOOT on Waveshare) to open the secure setup window.', physicalOpen: 'Setup window is open for {seconds} seconds.',
+    physicalTitle: 'Physical confirmation required', physicalClosed: 'Press the button on the gateway to confirm you are next to it.', physicalOpenTitle: 'Confirmed on the gateway', physicalOpen: 'Submit within {time}.',
     username: 'Administrator username', usernameHint: 'Lowercase letters, numbers, dot, dash, or underscore.', password: 'Password', passwordHint: 'Use at least 8 characters.',
     hostname: 'Network name', hostnamePlaceholder: 'osk-hub-floor1', hostnameHint: 'Lowercase letters, digits and hyphens. Leave empty to keep the default name.', advanced: 'Advanced settings', networkId: 'Operational network ID', networkHint: 'Leave empty to generate a secure random ID.',
     submit: 'Configure gateway', saving: 'Configuring…', successTitle: 'Gateway configured', success: 'The administrator account was created and the gateway is ready to use.', continue: 'Go to overview', alreadyConfigured: 'This gateway is already configured', alreadyConfiguredHint: 'Sign in to open the overview and manage the gateway.',

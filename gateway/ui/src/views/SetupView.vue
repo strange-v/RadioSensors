@@ -4,12 +4,21 @@ import { useI18n } from 'vue-i18n'
 import { api, errorCode } from '../api/client'
 import type { SetupStatus } from '../api/types'
 import Icon from '../components/Icon.vue'
+import PhysicalConfirmation from '../components/PhysicalConfirmation.vue'
 import RestoreBackup from '../components/RestoreBackup.vue'
 import { HOSTNAME_MAX_BYTES, isValidHostname } from '../utils/format'
 const { t } = useI18n(), status = ref<SetupStatus | null>(null), loadError = ref(''), submitError = ref(''), saving = ref(false), completed = ref(false), attempted = ref(false)
 const form = reactive({ username: '', password: '', hostname: '', networkId: '' })
 const restoring = ref(false)
 const restoreCompleted = ref(false)
+const modes = [{ restore: false, id: 'setup-tab-new', label: 'backup.newInstallation' }, { restore: true, id: 'setup-tab-restore', label: 'backup.restore' }] as const
+// Arrow keys move between the tabs; Tab itself goes on into the panel.
+function onTabKey(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || saving.value) return
+  event.preventDefault()
+  restoring.value = event.key === 'Home' ? false : event.key === 'End' ? true : !restoring.value
+  ;(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="tab"]')[restoring.value ? 1 : 0]?.focus()
+}
 let timer: number | undefined
 const byteLength = (value: string) => new TextEncoder().encode(value).length
 const errors = computed(() => ({
@@ -39,15 +48,17 @@ onBeforeUnmount(() => window.clearInterval(timer))
     <section v-else-if="status && !status.setup_required" class="empty-state panel"><span class="state-icon info" aria-hidden="true"><Icon name="check" /></span><h1>{{ $t('setup.alreadyConfigured') }}</h1><p>{{ $t('setup.alreadyConfiguredHint') }}</p><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></section>
     <section v-else-if="status?.recovery_required" class="setup-card"><h2>{{ $t('backup.recoveryTitle') }}</h2><p>{{ $t('backup.recoveryHint') }}</p><p>{{ $t('backup.resetHint') }}</p><p>{{ $t('backup.resetConsequence') }}</p></section>
     <template v-else>
-    <div v-if="!restoreCompleted" class="setup-mode"><button class="button" :class="restoring ? 'secondary' : 'primary'" :disabled="saving" @click="restoring = false">{{ $t('backup.newInstallation') }}</button><button class="button" :class="restoring ? 'primary' : 'secondary'" :disabled="saving" @click="restoring = true">{{ $t('backup.restore') }}</button></div>
-    <RestoreBackup v-if="restoring" :status="status" @busy="saving = $event" @refresh="refresh" @complete="restoreCompleted = true" />
-    <form v-else class="setup-card" novalidate @submit.prevent="submit">
-      <div class="physical-status" :class="{ open: status?.physical_window_active }"><span class="pulse" aria-hidden="true"></span><div><strong>{{ $t('setup.physicalTitle') }}</strong><p>{{ status?.physical_window_active ? $t('setup.physicalOpen', { seconds: status.remaining_seconds }) : $t('setup.physicalClosed') }}</p></div></div>
+    <div v-if="!restoreCompleted" class="tabs" role="tablist" :aria-label="$t('backup.setupMode')" @keydown="onTabKey">
+      <button v-for="mode in modes" :id="mode.id" :key="mode.id" role="tab" type="button" aria-controls="setup-panel" :aria-selected="restoring === mode.restore" :tabindex="restoring === mode.restore ? 0 : -1" :disabled="saving" @click="restoring = mode.restore">{{ $t(mode.label) }}</button>
+    </div>
+    <RestoreBackup v-if="restoring" id="setup-panel" role="tabpanel" aria-labelledby="setup-tab-restore" :status="status" @busy="saving = $event" @refresh="refresh" @complete="restoreCompleted = true" />
+    <form v-else id="setup-panel" class="setup-card" role="tabpanel" aria-labelledby="setup-tab-new" novalidate @submit.prevent="submit">
       <label><span>{{ $t('setup.username') }}</span><input v-model.trim="form.username" autocomplete="username" maxlength="32" placeholder="admin"><small :class="{ invalid: attempted && errors.username }">{{ attempted && errors.username ? errors.username : $t('setup.usernameHint') }}</small></label>
       <label><span>{{ $t('setup.password') }}</span><input v-model="form.password" type="password" autocomplete="new-password" maxlength="128"><small :class="{ invalid: attempted && errors.password }">{{ attempted && errors.password ? errors.password : $t('setup.passwordHint') }}</small></label>
       <label><span>{{ $t('setup.hostname') }}</span><input v-model.trim="form.hostname" autocapitalize="none" autocomplete="off" spellcheck="false" :maxlength="HOSTNAME_MAX_BYTES" :placeholder="$t('setup.hostnamePlaceholder')"><small v-if="attempted && errors.hostname" class="invalid">{{ errors.hostname }}</small><small v-else class="availability-note">{{ $t('setup.hostnameHint') }}</small></label>
       <details><summary>{{ $t('setup.advanced') }}</summary><label><span>{{ $t('setup.networkId') }}</span><input v-model.trim="form.networkId" inputmode="numeric" placeholder="Auto"><small :class="{ invalid: attempted && errors.networkId }">{{ attempted && errors.networkId ? errors.networkId : $t('setup.networkHint') }}</small></label></details>
-      <div v-if="submitError" class="notice error">{{ $t(`error.${submitError}`) }}</div><button class="button primary full" :disabled="saving || !status?.physical_window_active" type="submit">{{ saving ? $t('setup.saving') : $t('setup.submit') }}</button>
+      <PhysicalConfirmation id="setup-physical" :status="status" />
+      <div v-if="submitError" class="notice error">{{ $t(`error.${submitError}`) }}</div><button class="button primary full" :disabled="saving || !status?.physical_window_active" aria-describedby="setup-physical" type="submit">{{ saving ? $t('setup.saving') : $t('setup.submit') }}</button>
     </form>
     </template>
   </template>

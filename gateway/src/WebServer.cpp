@@ -491,8 +491,11 @@ constexpr size_t kMaxBackupImportBody =
 
 // Serves both /ui/backup/preview and /ui/backup/restore: each decrypts and
 // validates the uploaded file itself rather than trusting an earlier preview.
+// Only restore needs the physical window: preview writes nothing and reveals
+// nothing that the holder of the file and its password could not decrypt.
 void handleBackupImport(AsyncWebServerRequest* request, JsonVariant& json) {
     BackupRequestSecrets sensitive{request, json};
+    const bool preview = request->url().endsWith("/preview");
     backup::Operation operation;
     if (!operation) {
         sendError(request, 409, "backup_busy");
@@ -507,11 +510,11 @@ void handleBackupImport(AsyncWebServerRequest* request, JsonVariant& json) {
         sendError(request, 409, "restore_requires_clean_gateway");
         return;
     }
-    if (!status::setupActive()) {
+    if (!preview && !status::setupActive()) {
         sendError(request, 403, "physical_setup_required");
         return;
     }
-    // A custom header prevents a cross-origin form from consuming the setup window.
+    // A custom header keeps cross-origin forms away from this unauthenticated endpoint.
     if (!request->hasHeader("X-Backup-Request") ||
         request->getHeader("X-Backup-Request")->value() != "1") {
         sendError(request, 403, "invalid_request");
@@ -545,13 +548,13 @@ void handleBackupImport(AsyncWebServerRequest* request, JsonVariant& json) {
         "Backup decrypted: %u nodes in %lu ms\n",
         static_cast<unsigned>(snapshot->nodes.size()),
         static_cast<unsigned long>(millis() - startedAt));
+    if (preview) {
+        sendBackupPreview(request, *snapshot);
+        return;
+    }
     // The key derivation takes seconds; the window may have closed meanwhile.
     if (!status::setupActive()) {
         sendError(request, 403, "physical_setup_required");
-        return;
-    }
-    if (request->url().endsWith("/preview")) {
-        sendBackupPreview(request, *snapshot);
         return;
     }
 

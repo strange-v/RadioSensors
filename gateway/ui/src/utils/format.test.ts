@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import SignalBars from '../components/SignalBars.vue'
-import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, byteLength, isMeasuredRssi, isValidHostname, signal, truncateToBytes, volts } from './format'
+import { HOSTNAME_MAX_BYTES, RSSI_MAX_DBM, RSSI_MIN_DBM, byteLength, countdown, isMeasuredRssi, isValidHostname, signal, truncateToBytes, volts } from './format'
 
 // The RFM69 driver returns -RegRssiValue/2 from an 8-bit register, so every
 // genuine reading is a negative whole dBm no lower than -128.
@@ -137,5 +137,16 @@ describe('isValidHostname', () => {
     expect(isValidHostname('hub.local')).toBe(false)
     expect(isValidHostname('шлюз')).toBe(false)
     expect(isValidHostname('a'.repeat(HOSTNAME_MAX_BYTES + 1))).toBe(false)
+  })
+})
+
+describe('countdown', () => {
+  it('shows minutes and zero-padded seconds', () => {
+    expect(countdown(600)).toBe('10:00')
+    expect(countdown(65)).toBe('1:05')
+    expect(countdown(9)).toBe('0:09')
+  })
+  it('never goes below zero', () => {
+    expect(countdown(-3)).toBe('0:00')
   })
 })
