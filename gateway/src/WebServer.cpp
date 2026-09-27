@@ -40,6 +40,7 @@
 #include "RecoveryService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
+#include "UpdateService.h"
 #include "WebUiService.h"
 
 namespace gateway::web_server {
@@ -1708,6 +1709,46 @@ void handleClosePairing(AsyncWebServerRequest* request) {
     sendPairingStatus(request);
 }
 
+void sendUpdateStatus(AsyncWebServerRequest* request, const int code = 200) {
+    const update::Status status = update::status();
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    response->setCode(code);
+    response->addHeader("Cache-Control", "no-store");
+    response->printf(
+        "{\"state\":\"%s\",\"current_version\":\"%s\",\"available_version\":\"%s\","
+        "\"progress\":%u,\"error\":\"%s\",\"pending_verify\":%s}",
+        update::stateName(status.state), firmware::version, status.availableVersion,
+        static_cast<unsigned>(status.progress), status.error,
+        status.pendingVerify ? "true" : "false");
+    request->send(response);
+}
+
+void handleUpdateStatus(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeSession(request, principal)) return;
+    sendUpdateStatus(request);
+}
+
+void handleUpdateCheck(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!update::startCheck()) {
+        sendError(request, 409, "update_busy");
+        return;
+    }
+    sendUpdateStatus(request, 202);
+}
+
+void handleUpdateInstall(AsyncWebServerRequest* request) {
+    authentication::Principal principal{};
+    if (!authorizeAdmin(request, principal, true)) return;
+    if (!update::startInstall()) {
+        sendError(request, 409, "update_unavailable");
+        return;
+    }
+    sendUpdateStatus(request, 202);
+}
+
 size_t encodeTelemetryFrame(
     const telemetry_store::Record& record,
     uint8_t* const output,
@@ -2228,6 +2269,9 @@ void begin() {
         "/ui/pairing/open", HTTP_POST, handleOpenPairing);
     openPairingHandler.setMaxContentLength(256);
     server.on("/ui/pairing/close", HTTP_POST, handleClosePairing);
+    server.on("/ui/update", HTTP_GET, handleUpdateStatus);
+    server.on("/ui/update/check", HTTP_POST, handleUpdateCheck);
+    server.on("/ui/update/install", HTTP_POST, handleUpdateInstall);
     server.on("/ui/commands", HTTP_GET, handleCommands);
     auto& queueCommandHandler = server.on(
         "/ui/commands", HTTP_POST, handleQueueCommand);

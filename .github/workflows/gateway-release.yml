@@ -63,8 +63,9 @@ jobs:
         run: |
           key="$RUNNER_TEMP/signing.pem"
           (umask 077; printf '%s\n' "$SIGNING_KEY" > "$key")
-          openssl dgst -sha256 -sign "$key" -out dist/manifest.sig dist/manifest.json
+          openssl dgst -sha256 -sign "$key" -out "$RUNNER_TEMP/manifest.sig" dist/manifest.json
           rm -f "$key"
+          { openssl base64 -A -in "$RUNNER_TEMP/manifest.sig"; printf '\n'; cat dist/manifest.json; } > dist/manifest.signed
           python gateway/scripts/release/verify_manifest.py dist
 
       - name: Publish

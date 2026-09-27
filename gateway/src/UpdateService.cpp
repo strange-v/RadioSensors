@@ -1,0 +1,323 @@
+#include "UpdateService.h"
+
+#include <Update.h>
+#include <esp_crt_bundle.h>
+#include <esp_http_client.h>
+#include <esp_ota_ops.h>
+#include <mbedtls/sha256.h>
+
+#include <atomic>
+#include <memory>
+#include <new>
+
+#include "BackupService.h"
+#include "BoardProfile.h"
+#include "EthernetService.h"
+#include "FirmwareVersion.h"
+#include "OtaService.h"
+#include "RecoveryService.h"
+#include "TimeService.h"
+
+// Arduino confirms an image on trial during startup unless this returns true;
+// update::loop() confirms it only once the gateway is reachable again.
+extern "C" bool verifyRollbackLater() { return true; }
+
+namespace gateway::update {
+namespace {
+
+constexpr char kReleases[] = "https://github.com/strange-v/RadioSensors/releases";
+constexpr uint32_t kTaskStackSize = 12288;
+// Below the Arduino loop and on the other core from it and the radio task, so
+// TLS handshakes never delay telemetry or the watchdog-guarded loop.
+constexpr UBaseType_t kTaskPriority = 1;
+constexpr BaseType_t kTaskCore = 0;
+constexpr int kHttpTimeoutMs = 20000;
+// GitHub redirects downloads to signed storage URLs of about 1 KB.
+constexpr int kHttpBufferSize = 4096;
+constexpr uint8_t kMaxRedirects = 5;
+constexpr size_t kChunkSize = 2048;
+// An image on trial is confirmed after this long on the network; a crash
+// before then makes the bootloader return to the previous image.
+constexpr uint32_t kConfirmAfterMs = 60000;
+// Without Ethernet for this long the image is rejected: a gateway that cannot
+// reach the network cannot be updated again.
+constexpr uint32_t kRejectAfterMs = 600000;
+
+portMUX_TYPE statusMux = portMUX_INITIALIZER_UNLOCKED;
+Status current;
+release::Release available;
+std::atomic<bool> taskRunning{false};
+bool imageOnTrial = false;
+
+void setState(const State state, const char* error = "") {
+    portENTER_CRITICAL(&statusMux);
+    current.state = state;
+    current.error = error;
+    if (state != State::Installing) current.progress = 0;
+    portEXIT_CRITICAL(&statusMux);
+}
+
+void fail(const char* error) {
+    Serial.printf("Update failed: %s\n", error);
+    setState(State::Failed, error);
+}
+
+using Sink = bool (*)(void* context, const uint8_t* data, size_t size);
+
+// Streams `url` into `sink`, following redirects. Returns an error code, or
+// nullptr once exactly the response body has been delivered.
+const char* download(const char* url, const size_t maxSize, Sink sink, void* context) {
+    esp_http_client_config_t config{};
+    config.url = url;
+    config.crt_bundle_attach = esp_crt_bundle_attach;
+    config.timeout_ms = kHttpTimeoutMs;
+    config.buffer_size = kHttpBufferSize;
+    config.buffer_size_tx = kHttpBufferSize;
+    config.user_agent = "osk-sense-gateway";
+    config.keep_alive_enable = false;
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == nullptr) return "http_init";
+
+    const char* error = "download_failed";
+    int status = 0;
+    int64_t length = -1;
+    for (uint8_t redirect = 0; redirect <= kMaxRedirects; ++redirect) {
+        if (esp_http_client_open(client, 0) != ESP_OK) break;
+        length = esp_http_client_fetch_headers(client);
+        status = esp_http_client_get_status_code(client);
+        if (status != 301 && status != 302 && status != 303 &&
+            status != 307 && status != 308) {
+            break;
+        }
+        esp_http_client_flush_response(client, nullptr);
+        const bool redirected = esp_http_client_set_redirection(client) == ESP_OK;
+        esp_http_client_close(client);
+        if (!redirected) {
+            status = 0;
+            break;
+        }
+    }
+
+    if (status == 404) {
+        error = "not_found";
+    } else if (status == 200) {
+        if (length > static_cast<int64_t>(maxSize)) {
+            error = "too_large";
+        } else {
+            std::unique_ptr<uint8_t[]> chunk(new (std::nothrow) uint8_t[kChunkSize]);
+            size_t total = 0;
+            error = chunk ? nullptr : "out_of_memory";
+            while (error == nullptr) {
+                const int read = esp_http_client_read(
+                    client, reinterpret_cast<char*>(chunk.get()), kChunkSize);
+                if (read < 0) error = "download_failed";
+                if (read <= 0) break;
+                total += static_cast<size_t>(read);
+                if (total > maxSize) error = "too_large";
+                else if (!sink(context, chunk.get(), static_cast<size_t>(read))) error = "write_failed";
+            }
+            if (error == nullptr && !esp_http_client_is_complete_data_received(client)) {
+                error = "download_failed";
+            }
+        }
+    }
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return error;
+}
+
+struct Buffer {
+    uint8_t* data;
+    size_t capacity;
+    size_t size;
+};
+
+bool appendToBuffer(void* context, const uint8_t* data, const size_t size) {
+    auto* buffer = static_cast<Buffer*>(context);
+    if (size > buffer->capacity - buffer->size) return false;
+    memcpy(buffer->data + buffer->size, data, size);
+    buffer->size += size;
+    return true;
+}
+
+const char* networkError() {
+    if (!ethernet::hasIp()) return "network_unavailable";
+    // Certificate validity cannot be checked before the clock is set.
+    if (time_service::state() != time_service::State::Synchronized) {
+        return "time_not_synchronized";
+    }
+    return nullptr;
+}
+
+void check() {
+    if (const char* error = networkError()) return fail(error);
+
+    std::unique_ptr<uint8_t[]> manifest(
+        new (std::nothrow) uint8_t[release::kMaxSignedManifestSize]);
+    if (!manifest) return fail("out_of_memory");
+    Buffer buffer{manifest.get(), release::kMaxSignedManifestSize, 0};
+    char url[128];
+    snprintf(url, sizeof(url), "%s/latest/download/manifest.signed", kReleases);
+    if (const char* error = download(url, buffer.capacity, appendToBuffer, &buffer)) {
+        return fail(error);
+    }
+
+    release::Release result;
+    const release::Status status = release::readSigned(
+        buffer.data, buffer.size, board::current.releaseId, firmware::version, result);
+    if (status == release::Status::NotNewer) {
+        Serial.println("Update check: firmware is current");
+        return setState(State::UpToDate);
+    }
+    if (status != release::Status::Ok) return fail(release::statusName(status));
+
+    available = result;
+    portENTER_CRITICAL(&statusMux);
+    memcpy(current.availableVersion, result.versionText, sizeof(current.availableVersion));
+    portEXIT_CRITICAL(&statusMux);
+    Serial.printf("Update check: %s available\n", result.versionText);
+    setState(State::Available);
+}
+
+struct FirmwareWriter {
+    mbedtls_sha256_context hash;
+    size_t written;
+    size_t size;
+};
+
+bool writeFirmware(void* context, const uint8_t* data, const size_t size) {
+    auto* writer = static_cast<FirmwareWriter*>(context);
+    mbedtls_sha256_update(&writer->hash, data, size);
+    if (Update.write(const_cast<uint8_t*>(data), size) != size) return false;
+    writer->written += size;
+    const uint8_t progress = static_cast<uint8_t>(
+        (static_cast<uint64_t>(writer->written) * 100U) / writer->size);
+    portENTER_CRITICAL(&statusMux);
+    current.progress = progress;
+    portEXIT_CRITICAL(&statusMux);
+    return true;
+}
+
+void install() {
+    if (const char* error = networkError()) return fail(error);
+    const release::Image& image = available.firmware;
+    if (!Update.begin(image.size, U_FLASH)) return fail("flash_begin_failed");
+
+    FirmwareWriter writer{};
+    writer.size = image.size;
+    mbedtls_sha256_init(&writer.hash);
+    mbedtls_sha256_starts(&writer.hash, 0);
+    char url[192];
+    snprintf(url, sizeof(url), "%s/download/%s/%s",
+             kReleases, available.versionText, image.file);
+    Serial.printf("Update: downloading %s\n", url);
+    const char* error = download(url, image.size, writeFirmware, &writer);
+    uint8_t digest[release::kSha256Size];
+    mbedtls_sha256_finish(&writer.hash, digest);
+    mbedtls_sha256_free(&writer.hash);
+
+    if (error == nullptr && writer.written != image.size) error = "size_mismatch";
+    if (error == nullptr && memcmp(digest, image.sha256, sizeof(digest)) != 0) {
+        error = "hash_mismatch";
+    }
+    // Only a complete image with the signed hash becomes the boot partition.
+    if (error != nullptr) {
+        Update.abort();
+        return fail(error);
+    }
+    if (!Update.end()) return fail("image_invalid");
+
+    Serial.printf("Update: %s installed; restarting\n", available.versionText);
+    setState(State::Restarting);
+    recovery::restartSoon();
+}
+
+void checkTask(void*) {
+    check();
+    taskRunning.store(false);
+    vTaskDelete(nullptr);
+}
+
+void installTask(void*) {
+    install();
+    taskRunning.store(false);
+    vTaskDelete(nullptr);
+}
+
+bool startTask(TaskFunction_t function, const char* name, const State state) {
+    bool expected = false;
+    if (!taskRunning.compare_exchange_strong(expected, true)) return false;
+    setState(state);
+    if (xTaskCreatePinnedToCore(
+            function, name, kTaskStackSize, nullptr, kTaskPriority, nullptr,
+            kTaskCore) != pdPASS) {
+        taskRunning.store(false);
+        fail("task_failed");
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+void begin() {
+    esp_ota_img_states_t state{};
+    imageOnTrial =
+        esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK &&
+        state == ESP_OTA_IMG_PENDING_VERIFY;
+    portENTER_CRITICAL(&statusMux);
+    current.pendingVerify = imageOnTrial;
+    portEXIT_CRITICAL(&statusMux);
+    if (imageOnTrial) Serial.println("Firmware image on trial: confirming once the network is up");
+}
+
+void loop() {
+    if (!imageOnTrial) return;
+    const uint32_t now = millis();
+    if (now >= kConfirmAfterMs && ethernet::hasIp()) {
+        imageOnTrial = false;
+        const bool confirmed = esp_ota_mark_app_valid_cancel_rollback() == ESP_OK;
+        portENTER_CRITICAL(&statusMux);
+        current.pendingVerify = !confirmed;
+        portEXIT_CRITICAL(&statusMux);
+        Serial.println(confirmed ? "Firmware image confirmed" : "Firmware image confirmation failed");
+    } else if (now >= kRejectAfterMs) {
+        Serial.println("Firmware image rejected: no network; returning to the previous image");
+        esp_ota_mark_app_invalid_rollback_and_reboot();
+    }
+}
+
+bool startCheck() {
+    if (recovery::blocked()) return false;
+    return startTask(checkTask, "update-check", State::Checking);
+}
+
+bool startInstall() {
+    if (recovery::blocked() || backup::busy() ||
+        ota::state() == ota::State::Updating || status().state != State::Available) {
+        return false;
+    }
+    return startTask(installTask, "update-install", State::Installing);
+}
+
+Status status() {
+    portENTER_CRITICAL(&statusMux);
+    const Status result = current;
+    portEXIT_CRITICAL(&statusMux);
+    return result;
+}
+
+const char* stateName(const State state) {
+    switch (state) {
+        case State::Idle: return "idle";
+        case State::Checking: return "checking";
+        case State::UpToDate: return "up_to_date";
+        case State::Available: return "available";
+        case State::Installing: return "installing";
+        case State::Restarting: return "restarting";
+        case State::Failed: return "failed";
+    }
+    return "unknown";
+}
+
+}  // namespace gateway::update

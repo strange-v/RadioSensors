@@ -70,6 +70,8 @@ Web UI:
 | POST | `/ui/radio/reset` | admin session + CSRF | implemented |
 | POST | `/ui/pairing/open` | admin | implemented |
 | POST | `/ui/pairing/close` | admin | implemented |
+| GET | `/ui/update` | session | implemented |
+| POST | `/ui/update/check`, `/ui/update/install` | admin session + CSRF | implemented |
 | GET, POST, DELETE | `/ui/commands` | session; admin + CSRF for POST and DELETE | implemented |
 | GET | `/ui/export` | admin | planned |
 | POST | `/ui/restore` | admin plus destructive confirmation | planned |
@@ -314,6 +316,28 @@ The operation clears the node registry, the command book, and cached telemetry b
 ```
 
 The gateway's own `deviceSecret` is left untouched, so `gateway_id` and the Home Assistant identity survive the reset. Browser sessions do not: they live in RAM and every client must sign in again once the gateway is back. Physical nodes are not reset remotely — each keeps its old credentials and must be factory-reset before it can be paired again.
+
+## Firmware update
+
+The gateway updates its firmware from the signed GitHub release (see the gateway README, Releases). `GET /ui/update` returns:
+
+```json
+{"state":"available","current_version":"0.9.0","available_version":"0.9.1","progress":0,"error":"","pending_verify":false}
+```
+
+| `state` | Meaning |
+| --- | --- |
+| `idle` | nothing checked since boot |
+| `checking` | fetching and verifying the latest manifest |
+| `up_to_date` | the latest release is not newer |
+| `available` | `available_version` can be installed |
+| `installing` | downloading into the inactive slot; `progress` is 0–100 |
+| `restarting` | installed; the gateway restarts in about a second |
+| `failed` | `error` names the step: `network_unavailable`, `time_not_synchronized`, `not_found`, `download_failed`, `too_large`, `bad_signature`, `malformed`, `unsupported_format`, `board_missing`, `size_mismatch`, `hash_mismatch`, `flash_begin_failed`, `write_failed`, `image_invalid` |
+
+`POST /ui/update/check` starts a check and `POST /ui/update/install` installs the checked release; both answer `202` with the status, or `409 update_busy` / `409 update_unavailable`. An install needs state `available`, no running backup, restore or ArduinoOTA upload.
+
+`pending_verify` is true while a newly installed image is on trial. The gateway confirms it after 60 s with Ethernet up; a crash before that, or 10 minutes without Ethernet, returns it to the previous image.
 
 ## Users and tokens
 

@@ -1,6 +1,7 @@
 #include "ReleaseManifest.h"
 
 #include <ArduinoJson.h>
+#include <mbedtls/base64.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/sha256.h>
 #include <string.h>
@@ -160,6 +161,29 @@ Status read(
         return Status::BadSignature;
     }
     return parse(manifest, size, board, currentVersion, release);
+}
+
+Status readSigned(
+    const uint8_t* signedManifest, const size_t size,
+    const char* board, const char* currentVersion, Release& release) {
+    if (signedManifest == nullptr) return Status::BadSignature;
+    if (size > kMaxSignedManifestSize) return Status::TooLarge;
+    const uint8_t* newline = static_cast<const uint8_t*>(memchr(
+        signedManifest, '\n',
+        size < kMaxSignatureLineLength + 1 ? size : kMaxSignatureLineLength + 1));
+    if (newline == nullptr) return Status::BadSignature;
+    const size_t lineLength = static_cast<size_t>(newline - signedManifest);
+    uint8_t signature[kMaxSignatureSize];
+    size_t signatureSize = 0;
+    if (lineLength == 0 ||
+        mbedtls_base64_decode(
+            signature, sizeof(signature), &signatureSize,
+            signedManifest, lineLength) != 0) {
+        return Status::BadSignature;
+    }
+    return read(
+        newline + 1, size - lineLength - 1, signature, signatureSize,
+        board, currentVersion, release);
 }
 
 const char* statusName(const Status status) {

@@ -1,5 +1,7 @@
 #include "ReleaseManifest.h"
 
+#include <mbedtls/base64.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -129,6 +131,44 @@ void tampering() {
     std::cout << "Release manifest: every flipped manifest and signature byte rejected\n";
 }
 
+std::string base64(const Bytes& bytes) {
+    unsigned char output[200];
+    size_t written = 0;
+    assert(mbedtls_base64_encode(output, sizeof(output), &written, bytes.data(), bytes.size()) == 0);
+    return std::string(reinterpret_cast<char*>(output), written);
+}
+
+Status readEnvelope(const std::string& envelope, const char* current = "0.8.0") {
+    Release release;
+    return readSigned(data(envelope), envelope.size(), "wt32-eth01", current, release);
+}
+
+void signedEnvelope() {
+    const Bytes signature = fromHex(kSignatureHex);
+    const std::string line = base64(signature);
+    assert(line.size() <= kMaxSignatureLineLength);
+    const std::string envelope = line + "\n" + kManifest;
+
+    Release release;
+    assert(readSigned(data(envelope), envelope.size(), "wt32-eth01", "0.8.0", release) == Status::Ok);
+    assert(std::strcmp(release.versionText, "0.9.0") == 0 && release.firmware.size == 843920);
+    assert(readEnvelope(envelope, "0.9.0") == Status::NotNewer);
+
+    assert(readEnvelope(kManifest) == Status::BadSignature);
+    assert(readEnvelope("\n" + kManifest) == Status::BadSignature);
+    assert(readEnvelope(line + "\r\n" + kManifest) == Status::BadSignature);
+    assert(readEnvelope(line + "\n\n" + kManifest) == Status::BadSignature);
+    assert(readEnvelope("!" + line.substr(1) + "\n" + kManifest) == Status::BadSignature);
+    assert(readEnvelope(line) == Status::BadSignature);
+    assert(readEnvelope(line + "\n") == Status::BadSignature);
+    assert(readEnvelope(std::string(kMaxSignatureLineLength + 1, 'A') + "\n" + kManifest) == Status::BadSignature);
+    std::string changed = envelope;
+    changed[line.size() + 10] ^= 0x01;
+    assert(readEnvelope(changed) == Status::BadSignature);
+    assert(readEnvelope(line + "\n" + std::string(kMaxManifestSize + 1, ' ')) == Status::TooLarge);
+    std::cout << "Release manifest: signed envelope split, verified and tampering rejected\n";
+}
+
 void malformed() {
     const std::string sha(64, 'a');
     assert(parseJson(manifestWith(image("f.bin", "1", sha))) == Status::Ok);
@@ -170,5 +210,6 @@ int main(int argc, char** argv) {
     versions();
     publishedRelease();
     tampering();
+    signedEnvelope();
     malformed();
 }

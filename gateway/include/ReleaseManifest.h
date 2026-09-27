@@ -8,6 +8,11 @@ namespace gateway::release {
 constexpr size_t kMaxManifestSize = 4096;
 // DER-encoded ECDSA P-256 signature: at most 72 bytes.
 constexpr size_t kMaxSignatureSize = 72;
+// Base64 of the largest signature.
+constexpr size_t kMaxSignatureLineLength = 96;
+// manifest.signed: the signature line, "\n", then the exact manifest bytes.
+constexpr size_t kMaxSignedManifestSize =
+    kMaxSignatureLineLength + 1 + kMaxManifestSize;
 constexpr size_t kMaxFileNameLength = 64;
 constexpr size_t kMaxVersionLength = 17;  // 65535.65535.65535
 constexpr size_t kSha256Size = 32;
@@ -67,6 +72,11 @@ Status parse(
 Status read(
     const uint8_t* manifest, size_t size,
     const uint8_t* signature, size_t signatureSize,
+    const char* board, const char* currentVersion, Release& release);
+
+// Splits manifest.signed and calls read().
+Status readSigned(
+    const uint8_t* signedManifest, size_t size,
     const char* board, const char* currentVersion, Release& release);
 
 const char* statusName(Status status);

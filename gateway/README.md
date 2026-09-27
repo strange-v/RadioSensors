@@ -47,9 +47,11 @@ Pushing a tag `major.minor.patch` that equals `FirmwareVersion.h` runs `.github/
 | `gateway-<board>-firmware.bin` | App image for an OTA slot |
 | `gateway-<board>-ui.bin` | LittleFS image of that board's `web` partition |
 | `manifest.json` | Version, and per board each image's file, size and SHA-256 |
-| `manifest.sig` | ECDSA P-256 / SHA-256 signature of the exact `manifest.json` bytes, DER |
+| `manifest.signed` | First line: base64 of the DER ECDSA P-256 / SHA-256 signature; then the exact `manifest.json` bytes |
 
 Boards are `wt32-eth01` and `waveshare-s3-eth`. The workflow signs with the `GATEWAY_SIGNING_KEY` repository secret; the matching public key is `gateway-signing.pub.pem`. Only the public key is committed. `scripts/release/verify_manifest.py <dir>` checks a downloaded release the way the gateway does.
+
+The gateway installs a release itself through `/ui/update` (see API.md, Firmware update): it downloads `manifest.signed` from `releases/latest/download/` over HTTPS with the ESP-IDF certificate bundle, verifies the signature against the embedded key, and streams its board's firmware into the inactive OTA slot. The slot becomes bootable only when size and SHA-256 match the manifest.
 
 ## Web UI filesystem
 

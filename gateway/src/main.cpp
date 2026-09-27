@@ -20,6 +20,7 @@
 #include "RecoveryService.h"
 #include "TelemetryStore.h"
 #include "TimeService.h"
+#include "UpdateService.h"
 #include "WebUiService.h"
 
 namespace {
@@ -85,6 +86,7 @@ void setup() {
     if (!gateway::recovery::blocked()) gateway::commands::begin(radioReady);
     gateway::web_server::begin();
     gateway::ota::begin();
+    gateway::update::begin();
 
     // Only loop() feeds the watchdog, so startup, which may outlast its 5 s
     // timeout, runs before the loop task is subscribed.
@@ -123,6 +125,7 @@ void loop() {
     gateway::web_server::loop();
     gateway::authentication::loop();
     gateway::ota::loop();
+    gateway::update::loop();
     gateway::diagnostics::feedWatchdog();
     delay(100);
 }
