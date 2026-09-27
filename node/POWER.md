@@ -4,14 +4,15 @@ Measured reference values and the battery budget model for battery-powered node 
 
 ## Conditions
 
-ATtiny1614 at 4 MHz, RFM69 H module at power level 2 (about 0 dBm on PA_BOOST) unless a row names a lowered level, non-debug builds with unused pins disabled, supplied at 3.0 V by a Nordic PPK2 source meter. `counter_reed` and `binary` run on the internal board. `climate_tmp112` runs on the outdoor board, supplied at the MCU rail unless a row names the supercap connector, which adds the supervisor, load switch, and charging diode. The debug and SerialUPDI adapters are disconnected during measurement.
+Reference measurements use an ATtiny1614 at 4 MHz, an RFM69 H module at power level 2 (about 0 dBm on PA_BOOST) unless a row names a lowered level, non-debug builds with unused pins disabled, and a Nordic PPK2 source meter at 3.0 V. `binary_sht40` uses power level 0. `counter_reed` and `binary` run on the internal board. `climate_tmp112` runs on the outdoor board, supplied at the MCU rail unless a row names the supercap connector, which adds the supervisor, load switch, and charging diode. The debug and SerialUPDI adapters are disconnected during measurement.
 
 ## Idle
 
 | Image | Between wake-ups | One wake-up | Average |
 | --- | ---: | --- | ---: |
 | `counter_reed` | 1.75 µA | 0.27 µC, about 200 µs, 3.3 mA peak | 2.92 µA |
-| `binary` | 1.71 µA | 0.27 µC | 2.90 µA |
+| `binary`, two nodes | 1.71–1.75 µA | 0.27–0.32 µC | 2.90–3.04 µA |
+| `binary_sht40` | 1.62 µA | 0.366 µC above sleep baseline | 3.09 µA |
 | `climate_tmp112` | 2.23 µA | — | 2.2 µA |
 | `climate_tmp112`, supercap connector | 2.99 µA | — | 3.0 µA |
 
@@ -31,12 +32,13 @@ A counter pulse costs two debounce bursts, one when the contact closes and one w
 | Event | Duration | Mean | Peak | Charge |
 | --- | ---: | ---: | ---: | ---: |
 | `binary` state change and acknowledged report | 22.3 ms | 9.8 mA | 29.8 mA | 218 µC |
+| `binary_sht40` send capture | 32.3 ms | 7.8 mA | 33.8 mA | 253 µC |
 | `counter_reed` accepted pulse and acknowledged report in one wake-up | 34.7 ms | 7.2 mA | 30.4 mA | 251 µC |
 | `climate_tmp112` acknowledged report | 46.5 ms | 5.9 mA | 31.6 mA | 274 µC |
 | `climate_tmp112` power-up to first acknowledged report | 88.4 ms | 4.7 mA | 84.6 mA | 414 µC |
 | `climate_tmp112` power-up to first acknowledged report at a lowered level, supercap connector | 88.6 ms | 4.2 mA | 289 mA | 370 µC |
 
-On the internal board an acknowledged report without input work costs about 215 µC. The climate report adds the TMP112 one-shot conversion, which keeps the CPU awake together with the Vcc measurement for 32 ms (61 µC), and the outdoor board's module draws 30.6 mA while transmitting at level 2 and about 22 mA at the lowered level. The power-up peak is inrush into the node's capacitors, at most 0.1 ms. The `binary` event divides as follows; the `counter_reed` report shows the same radio phases. The radio accounts for about 90 % of a report, and its airtime is set by the bit rate: both the frame and the ACK are padded to one 16-byte AES block.
+On the internal board an acknowledged report without input work costs about 215 µC. The climate report adds the TMP112 one-shot conversion, which keeps the CPU awake together with the Vcc measurement for 32 ms (61 µC), and the outdoor board's module draws 30.6 mA while transmitting at level 2 and about 22 mA at the lowered level. The power-up peak is inrush into the node's capacitors, at most 0.1 ms. The main phases of the `binary` event follow; the `counter_reed` report shows the same radio phases. The radio accounts for about 90 % of a report, and its airtime is set by the bit rate: both the frame and the ACK are padded to one 16-byte AES block.
 
 | Phase | Duration | Mean | Charge |
 | --- | ---: | ---: | ---: |
@@ -113,7 +115,7 @@ Voltage drop during a `radio_power_sweep` transmission, measured at the supply t
 I_avg = I_idle + f_event · Q_event + f_report · Q_report
 ```
 
-One report costs about 0.06 µAh; 1 mAh equals 3.6 C.
+The routine reports in the table above cost about 0.06–0.08 µAh; 1 mAh equals 3.6 C.
 
 | Image | Assumption | mAh per year |
 | --- | --- | ---: |
@@ -121,13 +123,21 @@ One report costs about 0.06 µAh; 1 mAh equals 3.6 C.
 | | 150,000 pulses at 50 µC | 2.1 |
 | | about four pulses per minute, one report per active minute | 2.2 |
 | | hourly keep-alive, at most | 0.5 |
-| `binary` | idle 2.90 µA | 25.4 |
+| `binary` | idle 2.90–3.04 µA | 25.4–26.6 |
 | | 40 state changes per day | 0.9 |
 | | hourly keep-alive, at most | 0.5 |
+| `binary_sht40` | measured idle average 3.09 µA, including 250 ms wake-ups | 27.1 |
+| | one 253 µC report every 5 minutes | 7.4 |
+
+| CR2032 node | mAh per year | Nominal life at 220 mAh |
+| --- | ---: | ---: |
+| `counter_reed` | 30.4 | 7.2 years |
+| `binary` | 26.8–28.0 | 7.9–8.2 years |
+| `binary_sht40` | 34.5 | 6.4 years |
+
+These estimates exclude cell self-discharge, capacity lost to voltage sag under transmit load, and failed reports. The `binary_sht40` estimate also excludes input changes; its five-year target needs validation on a real cell.
 
 Supplied through the supercap connector, the solar climate node needs about 7.3 µA while reporting every 64 s and about 3.9 µA at the 320-second low-charge interval.
-
-The counter needs about 30 mAh per year and the binary input about 27 mAh: seven to eight years of a 220 mAh CR2032 before self-discharge and end-of-life voltage sag under the transmit peak. The idle current dominates; the hourly keep-alive costs about 2 % of the budget.
 
 ## Measuring
 
