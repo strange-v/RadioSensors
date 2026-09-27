@@ -1949,6 +1949,7 @@ void handleStatus(AsyncWebServerRequest* request) {
         "\"pins\":{\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"irq\":%d,\"reset\":%d},"
         "\"counters\":{\"interrupts\":%lu,\"missed_interrupts\":%lu,"
         "\"module_restores\":%lu,\"module_restore_failures\":%lu,"
+        "\"frequency_faults\":%lu,"
         "\"packets\":%lu,\"bytes\":%lu,"
         "\"empty_wakeups\":%lu,\"ack_requests_ignored\":%lu,"
         "\"telemetry_acks_sent\":%lu,\"telemetry_rejected_inactive\":%lu,"
@@ -2056,6 +2057,7 @@ void handleStatus(AsyncWebServerRequest* request) {
         radioSnapshot.missedInterrupts,
         radioSnapshot.moduleRestores,
         radioSnapshot.moduleRestoreFailures,
+        radioSnapshot.frequencyFaults,
         radioSnapshot.packets,
         radioSnapshot.bytes,
         radioSnapshot.emptyWakeups,

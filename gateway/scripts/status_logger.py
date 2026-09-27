@@ -25,6 +25,7 @@ RADIO_COUNTERS = (
     "missed_interrupts",
     "module_restores",
     "module_restore_failures",
+    "frequency_faults",
     "packets",
     "ack_requests_ignored",
     "telemetry_acks_sent",

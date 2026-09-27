@@ -42,6 +42,7 @@ struct Snapshot {
     uint32_t missedInterrupts;
     uint32_t moduleRestores;
     uint32_t moduleRestoreFailures;
+    uint32_t frequencyFaults;
     uint32_t packets;
     uint32_t bytes;
     uint32_t emptyWakeups;

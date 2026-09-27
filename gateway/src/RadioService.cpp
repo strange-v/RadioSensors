@@ -45,6 +45,22 @@ constexpr uint32_t kRegisterCheckIntervalMs = 5000;
 constexpr uint32_t kModeReadyTimeoutMs = 5;
 constexpr uint8_t kOpModeModeMask = 0x1C;
 
+// RegFrf as RFM69::initialize() writes it for the configured band.
+constexpr uint8_t kExpectedFrf[] = {
+    config::frequencyBand == RF69_315MHZ ? RF_FRFMSB_315
+        : config::frequencyBand == RF69_433MHZ ? RF_FRFMSB_433_92
+        : config::frequencyBand == RF69_868MHZ ? RF_FRFMSB_868
+        : RF_FRFMSB_915,
+    config::frequencyBand == RF69_315MHZ ? RF_FRFMID_315
+        : config::frequencyBand == RF69_433MHZ ? RF_FRFMID_433_92
+        : config::frequencyBand == RF69_868MHZ ? RF_FRFMID_868
+        : RF_FRFMID_915,
+    config::frequencyBand == RF69_315MHZ ? RF_FRFLSB_315
+        : config::frequencyBand == RF69_433MHZ ? RF_FRFLSB_433_92
+        : config::frequencyBand == RF69_868MHZ ? RF_FRFLSB_868
+        : RF_FRFLSB_915,
+};
+
 // Configuration registers only the radio task writes. A module that reset
 // itself or lost a setting keeps DIO0 low and never interrupts, so only
 // reading them back shows it. The AES key registers are write-only; a reset
@@ -120,6 +136,7 @@ struct TaskStats {
     uint32_t missedInterrupts = 0;
     uint32_t moduleRestores = 0;
     uint32_t moduleRestoreFailures = 0;
+    uint32_t frequencyFaults = 0;
     uint32_t packets = 0;
     uint32_t bytes = 0;
     uint32_t emptyWakeups = 0;
@@ -152,7 +169,8 @@ struct TaskStats {
 TaskStats taskStats;
 portMUX_TYPE statsMux = portMUX_INITIALIZER_UNLOCKED;
 uint8_t detectedVersion = 0;
-uint32_t configuredFrequencyHz = 0;
+// Read back from the module by the radio task at every register check.
+std::atomic<uint32_t> currentFrequencyHz{0};
 uint32_t configuredBitRate = 0;
 // What the module read back right after the radio task configured it.
 uint8_t expectedRegisters[sizeof(kCheckedRegisters)]{};
@@ -318,6 +336,31 @@ void resetModule() {
     delay(5);
 }
 
+uint32_t frfToHz(const uint8_t msb, const uint8_t mid, const uint8_t lsb) {
+    return static_cast<uint32_t>(
+        RF69_FSTEP * ((uint32_t(msb) << 16) | (uint32_t(mid) << 8) | lsb));
+}
+
+// The register snapshot cannot catch a wrong carrier: a module that kept its
+// reset default of 915 MHz through initialize() was remembered that way and
+// then heard nothing. The carrier is therefore compared with the band itself.
+bool frequencyConfigured() {
+    const uint8_t frf[] = {
+        rfm69.readReg(REG_FRFMSB), rfm69.readReg(REG_FRFMID),
+        rfm69.readReg(REG_FRFLSB)};
+    currentFrequencyHz.store(frfToHz(frf[0], frf[1], frf[2]));
+    if (memcmp(frf, kExpectedFrf, sizeof(frf)) == 0) return true;
+    portENTER_CRITICAL(&statsMux);
+    ++taskStats.frequencyFaults;
+    portEXIT_CRITICAL(&statsMux);
+    Serial.printf(
+        "RFM69 frequency reads %luHz, expected %luHz\n",
+        static_cast<unsigned long>(currentFrequencyHz.load()),
+        static_cast<unsigned long>(
+            frfToHz(kExpectedFrf[0], kExpectedFrf[1], kExpectedFrf[2])));
+    return false;
+}
+
 uint8_t readCheckedRegister(const uint8_t address) {
     const uint8_t value = rfm69.readReg(address);
     // RestartRx is a trigger, not a setting.
@@ -353,7 +396,8 @@ void restoreModule() {
     const bool restored =
         rfm69.initialize(
             config::frequencyBand, config::nodeId, currentNetworkId.load()) &&
-        rfm69.getVersion() == kExpectedVersion;
+        rfm69.getVersion() == kExpectedVersion &&
+        frequencyConfigured();
     if (restored) {
         configurePower();
         radio_aes::enable(rfm69, currentProfile.load() == Profile::Commissioning
@@ -390,6 +434,10 @@ void checkModule() {
     const uint8_t mode = settledMode();
     if (mode != RF_OPMODE_RECEIVER) {
         Serial.printf("RFM69 OpMode mode bits read 0x%02x instead of RX\n", mode);
+        restoreModule();
+        return;
+    }
+    if (!frequencyConfigured()) {
         restoreModule();
         return;
     }
@@ -600,13 +648,13 @@ bool begin() {
                 config::sck, config::miso, config::mosi,
                 config::chipSelect)) {
             Serial.printf("RFM69 SPI initialization attempt %u failed\n", attempt);
-        } else if (rfm69.initialize(
+        } else if (!rfm69.initialize(
                        config::frequencyBand, config::nodeId,
                        operationalNetworkId)) {
+            Serial.printf("RFM69 register probe attempt %u failed\n", attempt);
+        } else if (frequencyConfigured()) {
             initialized = true;
             break;
-        } else {
-            Serial.printf("RFM69 register probe attempt %u failed\n", attempt);
         }
         radioSpi.end();
     }
@@ -628,7 +676,6 @@ bool begin() {
     }
 
     configurePower();
-    configuredFrequencyHz = rfm69.getFrequency();
     configuredBitRate = rfm69.getBitRate();
 
     // Without a key the radio sleeps, so it neither receives nor sends in the
@@ -686,7 +733,7 @@ bool begin() {
         "RFM69 ready: version=0x%02x frequency=%luHz bitrate=%lubps "
         "variant=%s power=%ddBm SPI=%s pins=%d/%d/%d/%d irq=%d\n",
         detectedVersion,
-        configuredFrequencyHz,
+        currentFrequencyHz.load(),
         configuredBitRate,
         config::highPower ? "HW" : "W",
         config::txPowerDbm,
@@ -865,7 +912,7 @@ Snapshot snapshot() {
     Snapshot result{
         state(),
         detectedVersion,
-        configuredFrequencyHz,
+        currentFrequencyHz.load(),
         configuredBitRate,
         config::txPowerDbm,
         operationalEnabled.load(),
@@ -877,6 +924,7 @@ Snapshot snapshot() {
     result.missedInterrupts = taskStats.missedInterrupts;
     result.moduleRestores = taskStats.moduleRestores;
     result.moduleRestoreFailures = taskStats.moduleRestoreFailures;
+    result.frequencyFaults = taskStats.frequencyFaults;
     result.packets = taskStats.packets;
     result.bytes = taskStats.bytes;
     result.emptyWakeups = taskStats.emptyWakeups;
