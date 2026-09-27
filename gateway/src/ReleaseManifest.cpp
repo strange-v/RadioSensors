@@ -9,7 +9,7 @@
 namespace gateway::release {
 namespace {
 
-constexpr uint8_t kManifestFormat = 1;
+constexpr uint8_t kManifestFormat = 2;
 
 bool parsePart(const char*& cursor, uint16_t& value) {
     if (*cursor < '0' || *cursor > '9') return false;
@@ -44,11 +44,17 @@ bool validFileName(const char* name) {
     return true;
 }
 
-bool readImage(JsonObjectConst object, Image& image) {
+bool positive(JsonVariantConst value) {
+    return value.is<uint32_t>() && value.as<uint32_t>() != 0;
+}
+
+// Firmware: file, size, sha256. Compressed Web UI: also image_size.
+bool readImage(JsonObjectConst object, const bool compressed, Image& image) {
     const char* file = object["file"].as<const char*>();
     const char* sha256 = object["sha256"].as<const char*>();
-    if (object.size() != 3 || file == nullptr || !validFileName(file) ||
-        !object["size"].is<uint32_t>() || object["size"].as<uint32_t>() == 0 ||
+    if (object.size() != (compressed ? 4U : 3U) || file == nullptr ||
+        !validFileName(file) || !positive(object["size"]) ||
+        (compressed && !positive(object["image_size"])) ||
         sha256 == nullptr || strlen(sha256) != kSha256Size * 2) {
         return false;
     }
@@ -60,6 +66,7 @@ bool readImage(JsonObjectConst object, Image& image) {
     }
     memcpy(image.file, file, strlen(file) + 1);
     image.size = object["size"].as<uint32_t>();
+    image.imageSize = compressed ? object["image_size"].as<uint32_t>() : image.size;
     return true;
 }
 
@@ -139,8 +146,8 @@ Status parse(
     if (boardEntry.isNull()) return Status::BoardMissing;
     const JsonObjectConst entry = boardEntry.as<JsonObjectConst>();
     if (entry.isNull() || entry.size() != 2 ||
-        !readImage(entry["firmware"], result.firmware) ||
-        !readImage(entry["ui"], result.ui)) {
+        !readImage(entry["firmware"], false, result.firmware) ||
+        !readImage(entry["ui"], true, result.ui)) {
         return Status::Malformed;
     }
 

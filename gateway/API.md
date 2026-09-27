@@ -331,11 +331,11 @@ The gateway updates its firmware from the signed GitHub release (see the gateway
 | `checking` | fetching and verifying the latest manifest |
 | `up_to_date` | the latest release is not newer |
 | `available` | `available_version` can be installed |
-| `installing` | downloading into the inactive slot; `progress` is 0–100 |
+| `installing` | writing the Web UI, then the firmware into the inactive slot; `progress` is 0–100 over both downloads |
 | `restarting` | installed; the gateway restarts in about a second |
-| `failed` | `error` names the step: `network_unavailable`, `time_not_synchronized`, `not_found`, `download_failed`, `too_large`, `bad_signature`, `malformed`, `unsupported_format`, `board_missing`, `size_mismatch`, `hash_mismatch`, `flash_begin_failed`, `write_failed`, `image_invalid` |
+| `failed` | `error` names the step: `network_unavailable`, `time_not_synchronized`, `not_found`, `download_failed`, `too_large`, `bad_signature`, `malformed`, `unsupported_format`, `board_missing`, `size_mismatch`, `hash_mismatch`, `flash_begin_failed`, `write_failed`, `image_invalid`, `ui_partition_missing`, `ui_size_mismatch`, `out_of_memory` |
 
-`POST /ui/update/check` starts a check and `POST /ui/update/install` installs the checked release; both answer `202` with the status, or `409 update_busy` / `409 update_unavailable`. An install needs state `available`, no running backup, restore or ArduinoOTA upload.
+`POST /ui/update/check` starts a check and `POST /ui/update/install` installs the checked release, Web UI first; both answer `202` with the status, or `409 update_busy` / `409 update_unavailable`. An install needs state `available`, no running backup, restore or ArduinoOTA upload.
 
 `pending_verify` is true while a newly installed image is on trial. The gateway confirms it after 60 s with Ethernet up; a crash before that, or 10 minutes without Ethernet, returns it to the previous image.
 

@@ -10,6 +10,7 @@ for Windows). The public key defaults to the one the firmware embeds.
 """
 
 import base64
+import gzip
 import hashlib
 import json
 import subprocess
@@ -47,8 +48,16 @@ def main():
     for board, images in manifest["boards"].items():
         for kind, image in images.items():
             data = (release / image["file"]).read_bytes()
-            if len(data) != image["size"] or hashlib.sha256(data).hexdigest() != image["sha256"]:
-                failures.append(f"{board} {kind}: {image['file']}")
+            if len(data) != image["size"]:
+                failures.append(f"{board} {kind}: {image['file']} size")
+                continue
+            # The Web UI hash and image_size describe the inflated image.
+            if "image_size" in image:
+                data = gzip.decompress(data)
+                if len(data) != image["image_size"]:
+                    failures.append(f"{board} {kind}: {image['file']} image_size")
+            if hashlib.sha256(data).hexdigest() != image["sha256"]:
+                failures.append(f"{board} {kind}: {image['file']} sha256")
     if failures:
         sys.exit("Image does not match the manifest: " + ", ".join(failures))
     print(f"Release {manifest['version']} verified: signature and "

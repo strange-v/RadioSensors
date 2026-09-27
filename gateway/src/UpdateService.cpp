@@ -4,8 +4,10 @@
 #include <esp_crt_bundle.h>
 #include <esp_http_client.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <mbedtls/sha256.h>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <new>
@@ -14,9 +16,11 @@
 #include "BoardProfile.h"
 #include "EthernetService.h"
 #include "FirmwareVersion.h"
+#include "GzipInflater.h"
 #include "OtaService.h"
 #include "RecoveryService.h"
 #include "TimeService.h"
+#include "WebUiService.h"
 
 // Arduino confirms an image on trial during startup unless this returns true;
 // update::loop() confirms it only once the gateway is reachable again.
@@ -36,6 +40,7 @@ constexpr int kHttpTimeoutMs = 20000;
 constexpr int kHttpBufferSize = 4096;
 constexpr uint8_t kMaxRedirects = 5;
 constexpr size_t kChunkSize = 2048;
+constexpr size_t kSectorSize = 4096;
 // An image on trial is confirmed after this long on the network; a crash
 // before then makes the bootloader return to the previous image.
 constexpr uint32_t kConfirmAfterMs = 60000;
@@ -179,10 +184,22 @@ void check() {
     setState(State::Available);
 }
 
+// Download progress across both images of an install.
+size_t progressDone = 0;
+size_t progressTotal = 1;
+
+void advanceProgress(const size_t bytes) {
+    progressDone += bytes;
+    const uint8_t progress = static_cast<uint8_t>(
+        (static_cast<uint64_t>(progressDone) * 100U) / progressTotal);
+    portENTER_CRITICAL(&statusMux);
+    current.progress = progress;
+    portEXIT_CRITICAL(&statusMux);
+}
+
 struct FirmwareWriter {
     mbedtls_sha256_context hash;
     size_t written;
-    size_t size;
 };
 
 bool writeFirmware(void* context, const uint8_t* data, const size_t size) {
@@ -190,21 +207,15 @@ bool writeFirmware(void* context, const uint8_t* data, const size_t size) {
     mbedtls_sha256_update(&writer->hash, data, size);
     if (Update.write(const_cast<uint8_t*>(data), size) != size) return false;
     writer->written += size;
-    const uint8_t progress = static_cast<uint8_t>(
-        (static_cast<uint64_t>(writer->written) * 100U) / writer->size);
-    portENTER_CRITICAL(&statusMux);
-    current.progress = progress;
-    portEXIT_CRITICAL(&statusMux);
+    advanceProgress(size);
     return true;
 }
 
-void install() {
-    if (const char* error = networkError()) return fail(error);
+const char* installFirmware() {
     const release::Image& image = available.firmware;
-    if (!Update.begin(image.size, U_FLASH)) return fail("flash_begin_failed");
+    if (!Update.begin(image.size, U_FLASH)) return "flash_begin_failed";
 
     FirmwareWriter writer{};
-    writer.size = image.size;
     mbedtls_sha256_init(&writer.hash);
     mbedtls_sha256_starts(&writer.hash, 0);
     char url[192];
@@ -223,9 +234,122 @@ void install() {
     // Only a complete image with the signed hash becomes the boot partition.
     if (error != nullptr) {
         Update.abort();
+        return error;
+    }
+    return Update.end() ? nullptr : "image_invalid";
+}
+
+// Writes the inflated Web UI image over the `web` partition one sector at a
+// time. A sector that already holds the new bytes is left alone, so the mostly
+// empty partition costs a read rather than an erase.
+struct UiWriter {
+    const esp_partition_t* partition;
+    uint8_t* sector;
+    uint8_t* existing;
+    size_t fill;
+    size_t offset;
+    mbedtls_sha256_context hash;
+    gzip::Inflater inflater;
+};
+
+bool erased(const uint8_t* data, const size_t size) {
+    for (size_t index = 0; index < size; ++index) {
+        if (data[index] != 0xff) return false;
+    }
+    return true;
+}
+
+bool commitSector(UiWriter& writer) {
+    const size_t address = writer.offset;
+    if (esp_partition_read(writer.partition, address, writer.existing, kSectorSize) != ESP_OK) {
+        return false;
+    }
+    if (memcmp(writer.existing, writer.sector, kSectorSize) != 0 &&
+        (esp_partition_erase_range(writer.partition, address, kSectorSize) != ESP_OK ||
+         (!erased(writer.sector, kSectorSize) &&
+          esp_partition_write(writer.partition, address, writer.sector, kSectorSize) != ESP_OK))) {
+        return false;
+    }
+    writer.offset += kSectorSize;
+    writer.fill = 0;
+    return true;
+}
+
+bool writeUiImage(void* context, const uint8_t* data, size_t size) {
+    auto& writer = *static_cast<UiWriter*>(context);
+    mbedtls_sha256_update(&writer.hash, data, size);
+    while (size > 0) {
+        if (writer.offset >= writer.partition->size) return false;
+        const size_t chunk = std::min(size, kSectorSize - writer.fill);
+        memcpy(writer.sector + writer.fill, data, chunk);
+        writer.fill += chunk;
+        data += chunk;
+        size -= chunk;
+        if (writer.fill == kSectorSize && !commitSector(writer)) return false;
+    }
+    return true;
+}
+
+bool receiveUi(void* context, const uint8_t* data, const size_t size) {
+    advanceProgress(size);
+    return static_cast<UiWriter*>(context)->inflater.write(data, size);
+}
+
+const char* installUi() {
+    const release::Image& image = available.ui;
+    const esp_partition_t* partition = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "web");
+    if (partition == nullptr) return "ui_partition_missing";
+    // The image is built for this board's partition, so the sizes match exactly.
+    if (image.imageSize != partition->size || partition->size % kSectorSize != 0) {
+        return "ui_size_mismatch";
+    }
+    std::unique_ptr<uint8_t[]> sector(new (std::nothrow) uint8_t[kSectorSize]);
+    std::unique_ptr<uint8_t[]> existing(new (std::nothrow) uint8_t[kSectorSize]);
+    UiWriter writer{};
+    writer.partition = partition;
+    writer.sector = sector.get();
+    writer.existing = existing.get();
+    if (!sector || !existing ||
+        !writer.inflater.begin(release::kUiWindowSize, writeUiImage, &writer)) {
+        return "out_of_memory";
+    }
+    mbedtls_sha256_init(&writer.hash);
+    mbedtls_sha256_starts(&writer.hash, 0);
+
+    char url[192];
+    snprintf(url, sizeof(url), "%s/download/%s/%s",
+             kReleases, available.versionText, image.file);
+    Serial.printf("Update: downloading %s\n", url);
+    web_ui::prepareForFilesystemUpdate();
+    const char* error = download(url, image.size, receiveUi, &writer);
+    uint8_t digest[release::kSha256Size];
+    mbedtls_sha256_finish(&writer.hash, digest);
+    mbedtls_sha256_free(&writer.hash);
+
+    if (error == nullptr && (!writer.inflater.finish() || writer.fill != 0 ||
+                             writer.offset != image.imageSize)) {
+        error = "size_mismatch";
+    }
+    if (error == nullptr && memcmp(digest, image.sha256, sizeof(digest)) != 0) {
+        error = "hash_mismatch";
+    }
+    // A failed image leaves the recovery page, which can install it again.
+    if (error != nullptr) web_ui::recoverAfterFailedFilesystemUpdate();
+    return error;
+}
+
+void install() {
+    if (const char* error = networkError()) return fail(error);
+    progressDone = 0;
+    progressTotal = available.ui.size + available.firmware.size;
+    // The Web UI first: if the firmware then fails, the recovery page of the
+    // running firmware can reinstall a matching UI.
+    if (const char* error = installUi()) return fail(error);
+    if (const char* error = installFirmware()) {
+        web_ui::recoverAfterFailedFilesystemUpdate();
         return fail(error);
     }
-    if (!Update.end()) return fail("image_invalid");
 
     Serial.printf("Update: %s installed; restarting\n", available.versionText);
     setState(State::Restarting);

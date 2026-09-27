@@ -14,6 +14,7 @@ import json
 import re
 import shutil
 import sys
+import zlib
 from pathlib import Path
 
 GATEWAY = Path(__file__).resolve().parents[2]
@@ -22,7 +23,10 @@ BOARDS = {
     "wt32-eth01": "gateway_wt32_eth01",
     "waveshare-s3-eth": "gateway_waveshare_s3_eth",
 }
-MANIFEST_FORMAT = 1
+MANIFEST_FORMAT = 2
+# gzip with a 4 KB deflate window: the gateway inflates the Web UI image with a
+# 4 KB buffer (kUiWindowSize in include/ReleaseManifest.h).
+UI_WINDOW_BITS = 12
 VERSION_PATTERN = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
@@ -41,6 +45,18 @@ def describe(source, target):
         "file": target.name,
         "size": len(data),
         "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def describe_compressed(source, target):
+    image = source.read_bytes()
+    compressor = zlib.compressobj(9, zlib.DEFLATED, 16 + UI_WINDOW_BITS)
+    target.write_bytes(compressor.compress(image) + compressor.flush())
+    return {
+        "file": target.name,
+        "size": target.stat().st_size,
+        "image_size": len(image),
+        "sha256": hashlib.sha256(image).hexdigest(),
     }
 
 
@@ -65,7 +81,8 @@ def main():
         boards[board] = {
             "firmware": describe(
                 build / "firmware.bin", output / f"gateway-{board}-firmware.bin"),
-            "ui": describe(build / "littlefs.bin", output / f"gateway-{board}-ui.bin"),
+            "ui": describe_compressed(
+                build / "littlefs.bin", output / f"gateway-{board}-ui.bin.gz"),
         }
 
     manifest = {"format": MANIFEST_FORMAT, "version": version, "boards": boards}

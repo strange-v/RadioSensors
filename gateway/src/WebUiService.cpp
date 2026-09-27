@@ -22,6 +22,7 @@ bool indexPresent() {
 }
 constexpr size_t kMaximumManifestBytes = 1024;
 constexpr size_t kMaximumVersionLength = 31;
+constexpr uint32_t kUnmountDrainMs = 1000;
 
 State currentState = State::Unavailable;
 char currentVersion[kMaximumVersionLength + 1]{};
@@ -135,6 +136,9 @@ void prepareForFilesystemUpdate() {
     currentState = State::Updating;
     clearManifest();
     if (mounted) {
+        // New page requests now get the recovery page; let responses already
+        // streaming a file finish before the filesystem goes away under them.
+        delay(kUnmountDrainMs);
         LittleFS.end();
         mounted = false;
     }

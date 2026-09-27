@@ -16,6 +16,10 @@ constexpr size_t kMaxSignedManifestSize =
 constexpr size_t kMaxFileNameLength = 64;
 constexpr size_t kMaxVersionLength = 17;  // 65535.65535.65535
 constexpr size_t kSha256Size = 32;
+// The Web UI image is gzip with a 4 KB deflate window (zlib wbits 12), so the
+// gateway inflates it with a 4 KB buffer. make_manifest.py compresses with the
+// same value; a larger window is caught by the hash of the inflated image.
+constexpr size_t kUiWindowSize = 4096;
 
 // The key CI signs manifest.json with; gateway-signing.pub.pem holds the same
 // key and the native test keeps the two equal.
@@ -33,7 +37,11 @@ struct Version {
 
 struct Image {
     char file[kMaxFileNameLength + 1]{};
+    // Bytes downloaded.
     uint32_t size = 0;
+    // Bytes written to flash: `size` for firmware, the inflated size for the
+    // gzip Web UI image. `sha256` covers these bytes.
+    uint32_t imageSize = 0;
     uint8_t sha256[kSha256Size]{};
 };
 
