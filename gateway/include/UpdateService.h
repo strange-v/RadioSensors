@@ -34,6 +34,8 @@ void loop();
 // request does not apply.
 bool startCheck();
 bool startInstall();
+// Reinstalls the Web UI of the running firmware's release, then restarts.
+bool startUiRepair();
 Status status();
 const char* stateName(State state);
 

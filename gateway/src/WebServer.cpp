@@ -1724,8 +1724,10 @@ void sendUpdateStatus(AsyncWebServerRequest* request, const int code = 200) {
 }
 
 void handleUpdateStatus(AsyncWebServerRequest* request) {
+    // Before the first admin exists the recovery page has no session to show
+    // the progress of a Web UI install with.
     authentication::Principal principal{};
-    if (!authorizeSession(request, principal)) return;
+    if (!status::setupRequired() && !authorizeSession(request, principal)) return;
     sendUpdateStatus(request);
 }
 
@@ -1744,6 +1746,30 @@ void handleUpdateInstall(AsyncWebServerRequest* request) {
     if (!authorizeAdmin(request, principal, true)) return;
     if (!update::startInstall()) {
         sendError(request, 409, "update_unavailable");
+        return;
+    }
+    sendUpdateStatus(request, 202);
+}
+
+// The recovery page calls this when the Web UI is missing or incompatible.
+// Before the first admin exists nobody can sign in, so the physical setup
+// window authorizes it instead, as it does initial setup.
+void handleUpdateRepairUi(AsyncWebServerRequest* request) {
+    if (status::setupRequired()) {
+        if (recovery::blocked()) {
+            sendError(request, 409, "recovery_required");
+            return;
+        }
+        if (!status::setupActive()) {
+            sendError(request, 403, "physical_setup_required");
+            return;
+        }
+    } else {
+        authentication::Principal principal{};
+        if (!authorizeAdmin(request, principal, true)) return;
+    }
+    if (!update::startUiRepair()) {
+        sendError(request, 409, "update_busy");
         return;
     }
     sendUpdateStatus(request, 202);
@@ -2272,6 +2298,7 @@ void begin() {
     server.on("/ui/update", HTTP_GET, handleUpdateStatus);
     server.on("/ui/update/check", HTTP_POST, handleUpdateCheck);
     server.on("/ui/update/install", HTTP_POST, handleUpdateInstall);
+    server.on("/ui/update/repair-ui", HTTP_POST, handleUpdateRepairUi);
     server.on("/ui/commands", HTTP_GET, handleCommands);
     auto& queueCommandHandler = server.on(
         "/ui/commands", HTTP_POST, handleQueueCommand);

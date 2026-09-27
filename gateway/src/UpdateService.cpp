@@ -154,22 +154,33 @@ const char* networkError() {
     return nullptr;
 }
 
+// Fetches and verifies manifest.signed from `path` ("latest/download" or
+// "download/<version>"). Returns an error code, or nullptr with `status` set.
+const char* fetchManifest(
+    const char* path, const char* currentVersion, release::Status& status,
+    release::Release& result) {
+    std::unique_ptr<uint8_t[]> manifest(
+        new (std::nothrow) uint8_t[release::kMaxSignedManifestSize]);
+    if (!manifest) return "out_of_memory";
+    Buffer buffer{manifest.get(), release::kMaxSignedManifestSize, 0};
+    char url[128];
+    snprintf(url, sizeof(url), "%s/%s/manifest.signed", kReleases, path);
+    if (const char* error = download(url, buffer.capacity, appendToBuffer, &buffer)) {
+        return error;
+    }
+    status = release::readSigned(
+        buffer.data, buffer.size, board::current.releaseId, currentVersion, result);
+    return nullptr;
+}
+
 void check() {
     if (const char* error = networkError()) return fail(error);
 
-    std::unique_ptr<uint8_t[]> manifest(
-        new (std::nothrow) uint8_t[release::kMaxSignedManifestSize]);
-    if (!manifest) return fail("out_of_memory");
-    Buffer buffer{manifest.get(), release::kMaxSignedManifestSize, 0};
-    char url[128];
-    snprintf(url, sizeof(url), "%s/latest/download/manifest.signed", kReleases);
-    if (const char* error = download(url, buffer.capacity, appendToBuffer, &buffer)) {
+    release::Status status{};
+    release::Release result;
+    if (const char* error = fetchManifest("latest/download", firmware::version, status, result)) {
         return fail(error);
     }
-
-    release::Release result;
-    const release::Status status = release::readSigned(
-        buffer.data, buffer.size, board::current.releaseId, firmware::version, result);
     if (status == release::Status::NotNewer) {
         Serial.println("Update check: firmware is current");
         return setState(State::UpToDate);
@@ -356,6 +367,36 @@ void install() {
     recovery::restartSoon();
 }
 
+// Reinstalls the Web UI published with the running firmware.
+void repairUi() {
+    if (const char* error = networkError()) return fail(error);
+
+    char path[48];
+    snprintf(path, sizeof(path), "download/%s", firmware::version);
+    release::Status status{};
+    release::Release result;
+    // Any real version is newer than 0.0.0, so the running one reads as Ok.
+    if (const char* error = fetchManifest(path, "0.0.0", status, result)) return fail(error);
+    if (status != release::Status::Ok) return fail(release::statusName(status));
+    if (strcmp(result.versionText, firmware::version) != 0) return fail("version_mismatch");
+
+    available = result;
+    progressDone = 0;
+    progressTotal = available.ui.size;
+    if (const char* error = installUi()) return fail(error);
+    // The static asset route is registered at startup, so serve the new UI
+    // after a restart rather than by remounting.
+    Serial.println("Update: Web UI reinstalled; restarting");
+    setState(State::Restarting);
+    recovery::restartSoon();
+}
+
+void repairTask(void*) {
+    repairUi();
+    taskRunning.store(false);
+    vTaskDelete(nullptr);
+}
+
 void checkTask(void*) {
     check();
     taskRunning.store(false);
@@ -422,6 +463,13 @@ bool startInstall() {
         return false;
     }
     return startTask(installTask, "update-install", State::Installing);
+}
+
+bool startUiRepair() {
+    if (recovery::blocked() || backup::busy() || ota::state() == ota::State::Updating) {
+        return false;
+    }
+    return startTask(repairTask, "update-ui", State::Installing);
 }
 
 Status status() {

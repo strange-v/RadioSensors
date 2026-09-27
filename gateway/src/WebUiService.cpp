@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 
 #include "FirmwareVersion.h"
+#include "GatewayStatus.h"
 
 namespace gateway::web_ui {
 namespace {
@@ -31,8 +32,33 @@ bool mounted = false;
 
 constexpr char kRecoveryPage[] PROGMEM = R"html(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OSK Sense Hub</title><style>body{margin:0;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}main{max-width:42rem;margin:12vh auto;padding:2rem}section{background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem}h1{margin-top:0;font-size:1.5rem}p{line-height:1.6;color:#cbd5e1}code{color:#7dd3fc}</style></head>
-<body><main><section><h1>Web UI unavailable</h1><p>The installed Web UI is missing, damaged, or incompatible with this gateway firmware.</p><p>Install a compatible LittleFS image, then reload this page.</p><p>Firmware: <code>%FIRMWARE%</code> &middot; UI state: <code>%STATE%</code></p></section></main></body></html>)html";
+<title>OSK Sense Hub</title><style>:root{--bg:#141a24;--surface:#1a2130;--line:#29323f;--line-strong:#3a4553;--ink:#e5eaf1;--muted:#94a2b5;--primary:#4c9fe0;--primary-strong:#2272c0;--primary-strong-hover:#2678c8;color-scheme:dark}@media (prefers-color-scheme:light){:root{--bg:#f4f6f9;--surface:#fff;--line:#e0e5ec;--line-strong:#c9d2dc;--ink:#16202c;--muted:#5b6879;--primary:#1a72c0;--primary-strong:#1a72c0;--primary-strong-hover:#145d9e;color-scheme:light}}body{margin:0;background:var(--bg);color:var(--ink);font:14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}main{max-width:40rem;margin:12vh auto;padding:0 16px}section{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:24px}h1{margin:0 0 12px;font-size:20px}p{line-height:1.6;color:var(--muted)}code{color:var(--primary);font-family:ui-monospace,Consolas,monospace}form{display:grid;gap:12px;margin-top:20px}input,button{font:inherit;min-height:38px;padding:8px 12px;border-radius:5px;box-sizing:border-box}input{border:1px solid var(--line-strong);outline:none;color:var(--ink);background:var(--bg);transition:border-color 120ms ease}input::placeholder{color:var(--muted)}input:focus{border-color:var(--primary)}button{border:1px solid var(--primary-strong);color:#fff;background:var(--primary-strong);font-weight:600;cursor:pointer}button:hover:not(:disabled){background:var(--primary-strong-hover);border-color:var(--primary-strong-hover)}button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}button:disabled{opacity:.6;cursor:default}#s{min-height:1.6em;margin:0}</style></head>
+<body><main><section><h1>Web UI unavailable</h1><p>The installed Web UI is missing, damaged, or incompatible with this gateway firmware. The gateway can download the Web UI released with its firmware.</p><p>Firmware: <code>%FIRMWARE%</code> &middot; UI state: <code>%STATE%</code></p>
+<form id="f" data-setup="%SETUP%"><input name="username" autocomplete="username" placeholder="Admin username" required><input name="password" type="password" autocomplete="current-password" placeholder="Password" required><button id="b">Install Web UI</button><p id="s" role="status"></p></form></section></main>
+<script>
+const f=document.getElementById('f'),b=document.getElementById('b'),s=document.getElementById('s'),setup=f.dataset.setup==='1';
+const say=t=>{s.textContent=t};
+const wait=m=>new Promise(r=>setTimeout(r,m));
+const post=(u,h,body)=>fetch(u,{method:'POST',headers:h,body});
+const boot=()=>fetch('/health',{cache:'no-store'}).then(r=>r.json()).then(j=>j.boot_id).catch(()=>null);
+if(setup){f.username.remove();f.password.remove();say('No admin exists yet: press the gateway button, then install.')}
+f.onsubmit=async e=>{e.preventDefault();b.disabled=true;
+try{let h={};
+if(!setup){const r=await post('/ui/session',{'Content-Type':'application/json'},JSON.stringify({username:f.username.value,password:f.password.value}));
+if(!r.ok)throw new Error(r.status===401?'Wrong username or password.':'Sign-in failed ('+r.status+').');
+h={'X-CSRF-Token':(await r.json()).csrf_token}}
+const before=await boot();
+const r=await post('/ui/update/repair-ui',h);
+if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error==='physical_setup_required'?'Press the gateway button first.':'Install refused: '+(j.error||r.status)+'.')}
+for(;;){await wait(2000);
+const u=await fetch('/ui/update',{cache:'no-store'}).then(x=>x.ok?x.json():null).catch(()=>null);
+if(u&&u.state==='failed')throw new Error('Install failed: '+u.error+'.');
+if(u&&u.state==='installing'){say('Installing… '+u.progress+'%');continue}
+const now=await boot();
+if(now&&now!==before){location.reload();return}
+say('Restarting…')}
+}catch(err){say(err.message);b.disabled=false}};
+</script></body></html>)html";
 
 void clearManifest() {
     currentVersion[0] = '\0';
@@ -182,6 +208,7 @@ void sendRecoveryPage(AsyncWebServerRequest* request) {
     String page{kRecoveryPage};
     page.replace("%FIRMWARE%", firmware::version);
     page.replace("%STATE%", stateName());
+    page.replace("%SETUP%", status::setupRequired() ? "1" : "0");
     AsyncWebServerResponse* response = request->beginResponse(503, "text/html", page);
     response->addHeader("Cache-Control", "no-store");
     request->send(response);

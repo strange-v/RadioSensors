@@ -72,6 +72,7 @@ Web UI:
 | POST | `/ui/pairing/close` | admin | implemented |
 | GET | `/ui/update` | session | implemented |
 | POST | `/ui/update/check`, `/ui/update/install` | admin session + CSRF | implemented |
+| POST | `/ui/update/repair-ui` | admin session + CSRF; physical setup window before the first admin | implemented |
 | GET, POST, DELETE | `/ui/commands` | session; admin + CSRF for POST and DELETE | implemented |
 | GET | `/ui/export` | admin | planned |
 | POST | `/ui/restore` | admin plus destructive confirmation | planned |
@@ -336,6 +337,8 @@ The gateway updates its firmware from the signed GitHub release (see the gateway
 | `failed` | `error` names the step: `network_unavailable`, `time_not_synchronized`, `not_found`, `download_failed`, `too_large`, `bad_signature`, `malformed`, `unsupported_format`, `board_missing`, `size_mismatch`, `hash_mismatch`, `flash_begin_failed`, `write_failed`, `image_invalid`, `ui_partition_missing`, `ui_size_mismatch`, `out_of_memory` |
 
 `POST /ui/update/check` starts a check and `POST /ui/update/install` installs the checked release, Web UI first; both answer `202` with the status, or `409 update_busy` / `409 update_unavailable`. An install needs state `available`, no running backup, restore or ArduinoOTA upload.
+
+`POST /ui/update/repair-ui` reinstalls the Web UI published with the running firmware (`releases/download/<firmware_version>/`) and restarts; the recovery page calls it. Before the first admin exists it needs the physical setup window instead of a session, and `GET /ui/update` needs no session, so the page can follow it; failure adds `version_mismatch` to the errors above.
 
 `pending_verify` is true while a newly installed image is on trial. The gateway confirms it after 60 s with Ethernet up; a crash before that, or 10 minutes without Ethernet, returns it to the previous image.
 

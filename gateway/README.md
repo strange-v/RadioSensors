@@ -55,7 +55,7 @@ The gateway installs a release itself through `/ui/update` (see API.md, Firmware
 
 ## Web UI filesystem
 
-The Web UI is stored in a LittleFS partition named `web`. Its partition-table subtype remains the legacy `spiffs` value required by the pinned ArduinoOTA/PlatformIO filesystem command; the bytes, generator, and mounted filesystem are LittleFS. The source frontend remains outside the firmware source tree; its production output is copied to `data/` before building the filesystem image. The gateway never formats LittleFS automatically. A missing, damaged, or incompatible image therefore leaves the REST API operational and serves a small recovery page from firmware instead of erasing evidence or configuration.
+The Web UI is stored in a LittleFS partition named `web`. Its partition-table subtype remains the legacy `spiffs` value required by the pinned ArduinoOTA/PlatformIO filesystem command; the bytes, generator, and mounted filesystem are LittleFS. The source frontend remains outside the firmware source tree; its production output is copied to `data/` before building the filesystem image. The gateway never formats LittleFS automatically. A missing, damaged, or incompatible image therefore leaves the REST API operational and serves a small recovery page from firmware instead of erasing evidence or configuration. The page signs in an admin (or, before setup, asks for the gateway button) and reinstalls the Web UI of the running firmware's release through `POST /ui/update/repair-ui`.
 
 Every UI image must contain `/index.html` and `/ui-manifest.json`:
 
