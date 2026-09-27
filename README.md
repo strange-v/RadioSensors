@@ -24,7 +24,7 @@ Runs on either board:
 - Waveshare ESP32-S3-ETH (W5500 Ethernet, optional PoE) — recommended.
 - Wireless-Tag WT32-ETH01 (LAN8720 Ethernet).
 
-Both need an RFM69 module wired as described in the [gateway README](gateway/README.md#hardware). The gateway hosts a web interface for setup, users, pairing, node commands, and status, and updates over the network (OTA).
+Both need an RFM69 module wired as described in the [gateway README](gateway/README.md#hardware). The gateway hosts a web interface for setup, users, pairing, node commands, and status. It installs signed releases from GitHub when an administrator asks (*Administration → Firmware update*).
 
 ## Getting started
 

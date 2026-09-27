@@ -91,7 +91,7 @@ pio run -e gateway_wt32_eth01_ota -t uploadfs
 pio run -e gateway_waveshare_s3_eth_ota -t uploadfs
 ```
 
-Firmware and filesystem uploads are deliberately separate. Firmware retains A/B OTA rollback; the LittleFS partition does not. An interrupted filesystem update can make the UI unavailable, but it does not affect the API, configuration, or the embedded recovery page. Retry `uploadfs` to recover it.
+Firmware and filesystem uploads are deliberately separate. Every new firmware image, from a release or ArduinoOTA, runs on trial with A/B rollback (see API.md, Firmware update); the LittleFS partition has no rollback. An interrupted filesystem update can make the UI unavailable, but it does not affect the API, configuration, or the embedded recovery page. Retry `uploadfs`, or install the release's Web UI from the recovery page.
 
 Changing a partition table is not part of an application OTA. Existing gateways must therefore receive one cable upload with the firmware layout before their first LittleFS upload. Back up important configuration before repartitioning. Subsequent firmware and UI releases can use OTA normally while the layout remains unchanged.
 
