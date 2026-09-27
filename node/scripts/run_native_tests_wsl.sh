@@ -3,14 +3,9 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 node_dir="$(cd "${script_dir}/.." && pwd)"
-protocol_dir="$(cd "${node_dir}/../protocol" && pwd)"
 cd "${node_dir}"
 
-unity_dir="${protocol_dir}/.pio/libdeps/native/Unity/src"
-if [[ ! -f "${unity_dir}/unity.c" ]]; then
-    echo "Unity dependency is missing. Resolve the protocol native test dependencies first." >&2
-    exit 2
-fi
+source ../shared/scripts/native_unity.sh
 
 output="/tmp/radiosensors_test_node_storage"
 g++ -std=c++17 -Ilib/NodeCore/include -I"${unity_dir}" \

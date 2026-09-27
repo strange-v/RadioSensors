@@ -12,6 +12,18 @@ For example, use the same command with `test`, `run typecheck`, `run build`, or 
 
 Do not run `run typecheck` and `run build` together: `build` starts with the same `vue-tsc --noEmit`, so the pair type-checks the workspace twice. Use `typecheck` alone while iterating, and `build` when the bundle matters.
 
+## Native C++ tests
+
+Run them in WSL from the repository root. `pio test -e native` does not work on Windows: there is no host `g++`.
+
+| Component | Command |
+| --- | --- |
+| protocol | `wsl bash protocol/scripts/run_native_tests_wsl.sh` |
+| node | `wsl bash node/scripts/run_native_tests_wsl.sh` |
+| gateway | `wsl bash gateway/scripts/run_native_tests_wsl.sh` |
+
+Firmware images build on Windows with `& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run -e <env>` from `node/` or `gateway/`.
+
 ## Pre-release data and compatibility
 
 The frontend, gateway backend/firmware, and node firmware have not been released and there are no deployed devices whose persisted data must be preserved. Do not add data migrations, legacy readers, compatibility branches, or fallback code solely to retain data written by an earlier development version. Prefer changing formats and contracts cleanly and reinstalling, reflashing, or erasing development data when needed. Add migration or backward compatibility code only when the user explicitly asks for it.
