@@ -50,6 +50,7 @@ const scanNotice = computed(() => ({
   error: scanState.value === 'unsupported' || scanState.value === 'unreadable',
 }))
 const invalidCredentials = computed(() => credentials.uid.length !== PAIRING_UID_HEX_LENGTH || credentials.factoryKey.length !== PAIRING_KEY_HEX_LENGTH)
+const duplicateUid = computed(() => nodes.value.some((node) => node.device_uid.toUpperCase() === credentials.uid.toUpperCase()))
 let pairingTimer: number | undefined
 // Matches the overview, which says "automatically every 10 seconds".
 const LIST_REFRESH_MS = 10_000
@@ -208,6 +209,7 @@ async function closePairing() {
 }
 
 async function beginPairing() {
+  if (invalidCredentials.value || duplicateUid.value || pairingBusy.value) return
   pairingBusy.value = true
   pairingFailure.value = ''
   try {
@@ -225,8 +227,7 @@ async function beginPairing() {
 // The gateway closes the window on success and on expiry alike, and the API
 // reports no outcome, so the registry is the only witness: our UID has to be
 // present *and* the registry has to have been written since we opened. The
-// generation check matters when re-pairing a node that is already registered,
-// where presence alone would call every timeout a success.
+// generation check prevents an unchanged registry from counting as success.
 async function finishPairing() {
   const uid = pairingUid.value
   await load()
@@ -342,8 +343,9 @@ onBeforeUnmount(() => { window.clearInterval(pairingTimer); window.clearInterval
           <p class="pairing-instructions">{{ $t('pairing.instructions') }}</p>
         </template>
         <div v-if="pairingActive" class="physical-status open"><span class="pulse" aria-hidden="true"></span><div><strong>{{ $t('pairing.waiting') }}</strong><p>{{ $t('pairing.active', { seconds: pairingRemaining }) }}</p></div></div>
-        <div v-if="pairingFailure" class="notice error">{{ $t(`error.${pairingFailure}`) }}</div>
-        <div class="modal-actions"><button class="button secondary" type="button" @click="closePairing">{{ pairingActive ? $t('pairing.stop') : $t('common.cancel') }}</button><button v-if="!pairingActive" class="button primary" :disabled="pairingBusy || invalidCredentials" type="button" @click="beginPairing">{{ pairingBusy ? $t('pairing.starting') : $t('pairing.start') }}</button></div>
+        <div v-if="!pairingActive && duplicateUid" class="notice error">{{ $t('error.node_already_exists') }}</div>
+        <div v-else-if="pairingFailure" class="notice error">{{ $t(`error.${pairingFailure}`) }}</div>
+        <div class="modal-actions"><button class="button secondary" type="button" @click="closePairing">{{ pairingActive ? $t('pairing.stop') : $t('common.cancel') }}</button><button v-if="!pairingActive" class="button primary" :disabled="pairingBusy || invalidCredentials || duplicateUid" type="button" @click="beginPairing">{{ pairingBusy ? $t('pairing.starting') : $t('pairing.start') }}</button></div>
       </div>
     </Modal>
   </div>

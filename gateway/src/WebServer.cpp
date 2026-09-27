@@ -1670,6 +1670,20 @@ void handleOpenPairing(AsyncWebServerRequest* request, JsonVariant& json) {
         sendError(request, 422, "invalid_pairing_credentials");
         return;
     }
+    const std::unique_ptr<registry_store::Snapshot> registry(
+        new (std::nothrow) registry_store::Snapshot());
+    if (!registry || !registry_store::snapshot(*registry)) {
+        memset(factoryKey, 0, sizeof(factoryKey));
+        sendError(request, 503, "registry_unavailable");
+        return;
+    }
+    for (size_t index = 0; index < registry->count; ++index) {
+        if (memcmp(registry->records[index].deviceUid, deviceUid, sizeof(deviceUid)) == 0) {
+            memset(factoryKey, 0, sizeof(factoryKey));
+            sendError(request, 409, "node_already_exists");
+            return;
+        }
+    }
     const bool opened = commissioning::open(deviceUid, factoryKey);
     memset(factoryKey, 0, sizeof(factoryKey));
     if (!opened) {

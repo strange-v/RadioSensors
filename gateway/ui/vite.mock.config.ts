@@ -204,7 +204,9 @@ function mockApi(): Plugin {
           let raw = ''
           req.on('data', (chunk) => { raw += chunk })
           req.on('end', () => {
-            openPairingWindow(JSON.parse(raw || '{}').device_uid, !(req.url ?? '').includes('fail=1'))
+            const uid = String(JSON.parse(raw || '{}').device_uid ?? '').toUpperCase()
+            if (nodes.some((node) => node.device_uid.toUpperCase() === uid)) return json(res, 409, { error: 'node_already_exists' })
+            openPairingWindow(uid, !(req.url ?? '').includes('fail=1'))
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify(health.pairing))
           })

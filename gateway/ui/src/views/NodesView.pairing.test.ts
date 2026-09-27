@@ -32,7 +32,7 @@ const gatewayApi = vi.hoisted(() => ({
   openPairing: vi.fn(async () => { state.pairing = { active: true, remaining_seconds: 60 }; return { ...state.pairing } }),
   closePairing: vi.fn(async () => { state.pairing = { active: false, remaining_seconds: 0 }; return undefined }),
 }))
-vi.mock('../api/client', () => ({ api: gatewayApi, errorCode: () => 'generic', gatewayReachable: { value: true } }))
+vi.mock('../api/client', () => ({ api: gatewayApi, errorCode: (error: Error) => error.message, gatewayReachable: { value: true } }))
 
 import NodesView from './NodesView.vue'
 
@@ -130,30 +130,34 @@ describe('pairing window outcome', () => {
     expect(wrapper.get('.modal-actions .button.primary').attributes('disabled')).toBeDefined()
   })
 
-  it('does not mistake a timeout for success when the node was already registered', async () => {
-    // Re-pairing a factory-reset node that is still in the registry: its UID is
-    // present before and after, so presence alone would call this a success.
-    state.registry = { registry_generation: 5, nodes: [node()] }
+  it.each(['active', 'pending', 'disabled'])('blocks an existing %s UID after a scan, regardless of case', async (nodeState) => {
+    state.registry = { registry_generation: 5, nodes: [node({ state: nodeState, device_uid: UID.toLowerCase() })] }
     const wrapper = await mountView()
     await startPairing(wrapper)
 
-    state.pairing = { active: false, remaining_seconds: 0 }
-    await pollOnce()
-
+    expect(gatewayApi.openPairing).not.toHaveBeenCalled()
+    expect(wrapper.get('.modal-actions .button.primary').attributes('disabled')).toBeDefined()
     expect(wrapper.find('node-detail-stub').exists()).toBe(false)
-    expect(wrapper.get('.notice.error').text()).toBe(en.error.pairing_timeout)
+    expect(wrapper.get('.notice.error').text()).toBe(en.error.node_already_exists)
+
+    await wrapper.get('.field-group textarea').setValue('AAAAAAAAAAAAAAAAAAAA')
+    expect(wrapper.find('.notice.error').exists()).toBe(false)
+    expect(wrapper.get('.modal-actions .button.primary').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('.field-group textarea').setValue(UID)
+    expect(wrapper.get('.notice.error').text()).toBe(en.error.node_already_exists)
+    expect(wrapper.get('.modal-actions .button.primary').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
   })
 
-  it('opens the node card when a re-paired node is written to the registry', async () => {
-    state.registry = { registry_generation: 5, nodes: [node()] }
+  it('shows the API conflict when the local list does not contain the UID yet', async () => {
+    gatewayApi.openPairing.mockRejectedValueOnce(new Error('node_already_exists'))
     const wrapper = await mountView()
     await startPairing(wrapper)
 
-    state.registry = { registry_generation: 6, nodes: [node({ node_id: 9 })] }
-    state.pairing = { active: false, remaining_seconds: 0 }
-    await pollOnce()
-
-    expect(wrapper.find('node-detail-stub').exists()).toBe(true)
-    expect(wrapper.find('.modal-backdrop').exists()).toBe(false)
+    expect(wrapper.get('.notice.error').text()).toBe(en.error.node_already_exists)
+    expect(wrapper.find('.physical-status').exists()).toBe(false)
+    expect(wrapper.find('.modal-backdrop').exists()).toBe(true)
+    wrapper.unmount()
   })
 })

@@ -295,6 +295,8 @@ Settings contain hostname, mDNS enabled state, NTP enabled state, up to three NT
 
 The UID is exactly 10 bytes and the factory key exactly 16 bytes, both encoded as hexadecimal. The gateway switches the radio to commissioning network `0`, keeps the key only in RAM, and accepts a `JOIN_REQUEST` only for the supplied UID. The registry holds at most 64 nodes. The key is wiped when pairing succeeds, is closed, or expires. It is never written to settings, secrets, registry, diagnostics, or logs. `POST /ui/pairing/close` ends the window early. Both endpoints require an admin session and CSRF and return the current pairing state and remaining seconds.
 
+An existing UID in any registry state returns `409 node_already_exists` without opening the pairing window.
+
 ## Radio network
 
 `POST /ui/radio/reset` regenerates the installation key and the operational network ID, and requires an admin session plus CSRF. The body is optional:
