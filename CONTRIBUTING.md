@@ -7,7 +7,7 @@ node protocol/scripts/validate_protocol_artifacts.mjs
 node protocol/scripts/generate_protocol_docs.mjs
 wsl bash protocol/scripts/run_native_tests_wsl.sh
 wsl bash node/scripts/run_native_tests_wsl.sh
-wsl bash gateway/scripts/run_backup_tests_wsl.sh
+wsl bash gateway/scripts/run_native_tests_wsl.sh
 ```
 
 Web UI tests and build are in the [gateway README](gateway/README.md#web-ui-filesystem).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds and runs the native backup/recovery tests. Pinned Mbed TLS and
+# Builds and runs the native backup/recovery and release manifest tests. Pinned Mbed TLS and
 # ArduinoJson are downloaded once into a cache on the Linux filesystem, where
 # compiling Mbed TLS is much faster than on a /mnt/c checkout.
 set -euo pipefail
@@ -78,3 +78,6 @@ if [[ -z "${node_command}" ]]; then
     exit 1
 fi
 "${node_command}" test/native/check_interop.mjs "${fixture}"
+
+g++ -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined     -Iinclude -I"${json_dir}" -I"${mbedtls_dir}/include"     test/native/test_release_manifest.cpp src/ReleaseManifest.cpp     "${mbedtls_dir}/library/libmbedcrypto.a" -o "${output_dir}/release-manifest-tests"
+"${output_dir}/release-manifest-tests" gateway-signing.pub.pem

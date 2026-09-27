@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 GATEWAY = Path(__file__).resolve().parents[2]
-# Board ID in the manifest -> PlatformIO environment.
+# releaseId from include/BoardProfile.h -> PlatformIO environment.
 BOARDS = {
     "wt32-eth01": "gateway_wt32_eth01",
     "waveshare-s3-eth": "gateway_waveshare_s3_eth",

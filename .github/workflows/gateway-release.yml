@@ -44,7 +44,7 @@ jobs:
 
       - name: Native tests
         working-directory: gateway
-        run: bash scripts/run_backup_tests_wsl.sh
+        run: bash scripts/run_native_tests_wsl.sh
 
       - name: Firmware and Web UI images
         working-directory: gateway

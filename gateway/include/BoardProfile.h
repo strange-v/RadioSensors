@@ -11,6 +11,8 @@ enum class EthernetController {
 
 struct Profile {
     const char* name;
+    // Board key in a release manifest.
+    const char* releaseId;
     EthernetController ethernetController;
     bool hasPoe;
 };
@@ -40,6 +42,7 @@ struct W5500Pins {
 
 constexpr Profile current{
     "WT32-ETH01",
+    "wt32-eth01",
     EthernetController::Lan8720,
     false,
 };
@@ -64,6 +67,7 @@ constexpr int buttonPin = 32;
 
 constexpr Profile current{
     "Waveshare ESP32-S3-ETH + PoE",
+    "waveshare-s3-eth",
     EthernetController::W5500,
     true,
 };

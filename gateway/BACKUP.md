@@ -77,6 +77,6 @@ Button confirmation persists marker 2 and restarts. Before stores initialize, bo
 
 ## Verification
 
-`wsl bash gateway/scripts/run_backup_tests_wsl.sh` builds native tests against the actual codec, crypto, restore and recovery services with a fault-injected NVS adapter, under ASan/UBSan. It needs `curl`, `make`, `g++` and Node.js (Windows `node.exe` works). The first run downloads the pinned Mbed TLS and ArduinoJson releases, checks their SHA-256, and builds Mbed TLS into `~/.cache/osk-sense-native`; `MBEDTLS_DIR` overrides that with another built 3.x tree. The script then decrypts the test's encrypted fixture with `test/native/check_interop.mjs`, an independent Node.js implementation.
+`wsl bash gateway/scripts/run_native_tests_wsl.sh` builds native tests against the actual codec, crypto, restore and recovery services with a fault-injected NVS adapter, under ASan/UBSan. It needs `curl`, `make`, `g++` and Node.js (Windows `node.exe` works). The first run downloads the pinned Mbed TLS and ArduinoJson releases, checks their SHA-256, and builds Mbed TLS into `~/.cache/osk-sense-native`; `MBEDTLS_DIR` overrides that with another built 3.x tree. The script then decrypts the test's encrypted fixture with `test/native/check_interop.mjs`, an independent Node.js implementation.
 
 The serial log records each factory-reset step, what boot does with the control marker, the outcome and node count of every export, import and restore, and how long export encryption and import decryption took.
