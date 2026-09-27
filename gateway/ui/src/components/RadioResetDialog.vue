@@ -6,6 +6,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, errorCode } from '../api/client'
+import { waitForRestart } from '../utils/restart'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ nodeCount: number }>()
@@ -22,21 +23,6 @@ const invalidId = computed(() => {
   if (!networkId.value) return false
   return !/^\d+$/.test(networkId.value) || Number(networkId.value) < 1 || Number(networkId.value) > 255
 })
-
-// The gateway answers 202 and only then reboots, so the reply is expected to
-// arrive; it is the requests after it that fail until the device is back.
-async function waitForGateway(previousBootId: string) {
-  const deadline = Date.now() + 90_000
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2_000))
-    try {
-      const probe = await api.probe()
-      if (probe.boot_id !== previousBootId) return
-    } catch {
-      // Expected while the gateway is down; keep waiting.
-    }
-  }
-}
 
 async function reset() {
   if (invalidId.value || working.value) return
@@ -56,7 +42,7 @@ async function reset() {
     return
   }
   restarting.value = true
-  await waitForGateway(previousBootId)
+  await waitForRestart(previousBootId)
   await router.replace('/login')
 }
 </script>

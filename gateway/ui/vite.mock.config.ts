@@ -85,10 +85,9 @@ function queueMockCommand(body: Record<string, unknown>) {
   return { status: 201, body: command }
 }
 
+const update = { state: 'idle', current_version: firmwareVersion, available_version: '', progress: 0, error: '', pending_verify: false }
+
 const routes: Record<string, unknown> = {
-  // The public probe is tiny now; everything else the UI shows is behind a
-  // session at /ui/status.
-  '/health': { status: 'ok', boot_id: health.boot_id },
   '/ui/status': health,
   '/api/info': {
     firmware_version: '2.1.0', api_version: 1, stream_version: 1,
@@ -317,6 +316,32 @@ function mockApi(): Plugin {
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ registry_generation: registryGeneration, nodes }))
           return
+        }
+        // Firmware update: a check finds 9.9.9 after a second, an install
+        // counts to 100 % and then stands in for the restart.
+        // The public probe carries only the boot id, read live so a stand-in
+        // restart shows up; everything else is behind a session at /ui/status.
+        if (path === '/health') return json(res, 200, { status: 'ok', boot_id: health.boot_id })
+        if (path === '/ui/update' && req.method === 'GET') return json(res, 200, update)
+        if (path === '/ui/update/check' && req.method === 'POST') {
+          Object.assign(update, { state: 'checking', error: '' })
+          setTimeout(() => Object.assign(update, { state: 'available', available_version: '9.9.9' }), 1_000)
+          return json(res, 202, update)
+        }
+        if (path === '/ui/update/install' && req.method === 'POST') {
+          if (update.state !== 'available') return json(res, 409, { error: 'update_unavailable' })
+          Object.assign(update, { state: 'installing', progress: 0 })
+          const timer = setInterval(() => {
+            update.progress += 10
+            if (update.progress < 100) return
+            clearInterval(timer)
+            update.state = 'restarting'
+            setTimeout(() => {
+              Object.assign(update, { state: 'idle', progress: 0, current_version: update.available_version, available_version: '', pending_verify: true })
+              health.boot_id = 'aabbccddeeff00112233445566778899'
+            }, 2_000)
+          }, 400)
+          return json(res, 202, update)
         }
         if (path === '/ui/radio/reset' && req.method === 'POST') {
           let raw = ''

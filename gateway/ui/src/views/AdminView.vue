@@ -9,6 +9,7 @@ import BackupCard from '../components/BackupCard.vue'
 import Icon from '../components/Icon.vue'
 import RadioResetDialog from '../components/RadioResetDialog.vue'
 import TokensCard from '../components/TokensCard.vue'
+import UpdateCard from '../components/UpdateCard.vue'
 import UsersCard from '../components/UsersCard.vue'
 import { vMasonry } from '../utils/masonry'
 
@@ -37,6 +38,8 @@ onMounted(async () => {
       <UsersCard @signed-out="signedOut" />
 
       <TokensCard />
+
+      <UpdateCard />
 
       <BackupCard />
 

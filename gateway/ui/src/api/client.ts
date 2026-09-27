@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { ApiTokenList, CommandList, CommandRequest, CreatedApiToken, NodeCommand, PatchedNode, PowerPolicyWrite, GatewayProbe, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
+import type { UpdateStatus, ApiTokenList, CommandList, CommandRequest, CreatedApiToken, NodeCommand, PatchedNode, PowerPolicyWrite, GatewayProbe, StreamClientList, GatewayInfo, GatewaySettings, GatewayUser, Health, NodeRegistry, PairingStatus, RadioNetworkReset, RenamedNode, Session, SessionUser, SetupRequest, SetupStatus, UserList, UserWrite } from './types'
 
 export class ApiError extends Error { constructor(public status: number, public code: string) { super(code) } }
 
@@ -75,6 +75,7 @@ export const api = {
   // Same reads, used from the refresh timers.
   poll: {
     status: () => request<Health>('/ui/status', undefined, POLL_TIMEOUT_MS),
+    update: () => request<UpdateStatus>('/ui/update', undefined, POLL_TIMEOUT_MS),
     info: () => request<GatewayInfo>('/api/info', undefined, POLL_TIMEOUT_MS),
     nodes: () => request<NodeRegistry>('/api/nodes', undefined, POLL_TIMEOUT_MS),
     clients: () => request<StreamClientList>('/ui/clients', undefined, POLL_TIMEOUT_MS),
@@ -92,6 +93,8 @@ export const api = {
   closePairing: () => request<PairingStatus>('/ui/pairing/close', { method: 'POST' }),
   // Omitting the id lets the gateway generate one. The gateway restarts right
   // after answering, so this call is the last one the session can make.
+  checkUpdate: () => request<UpdateStatus>('/ui/update/check', { method: 'POST' }),
+  installUpdate: () => request<UpdateStatus>('/ui/update/install', { method: 'POST' }),
   resetRadioNetwork: (networkId?: number) => request<RadioNetworkReset>('/ui/radio/reset', { method: 'POST', body: JSON.stringify(networkId ? { operational_network_id: networkId } : {}) }),
   users: () => request<UserList>('/ui/users'),
   createUser: (user: UserWrite & { password: string }) => request<GatewayUser>('/ui/users', { method: 'POST', body: JSON.stringify(user) }),
