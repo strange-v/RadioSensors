@@ -13,8 +13,6 @@ namespace {
 using namespace radiosensors;
 using Profile = node::BinarySht40Profile;
 
-constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
-
 // PB2/PB3 carry UART only in debug builds.
 #if !defined(NODE_DEBUG)
 constexpr uint8_t kUnusedPins[] = {
@@ -30,7 +28,7 @@ Profile profile(
     NODE_REED_PIN, Wire, NODE_SHT40_ADDRESS,
     NODE_BINARY_CLIMATE_REPORT_INTERVAL_MS);
 node::CommissioningService commissioning(
-    radio, Profile::kProfileId, kFirmwareVersion);
+    radio, Profile::kProfileId);
 node::NodeRuntime<Profile> runtime(
     profile, radio, commissioning, clock, button);
 }

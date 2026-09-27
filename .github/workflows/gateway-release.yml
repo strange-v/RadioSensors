@@ -1,0 +1,73 @@
+name: Gateway release
+
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: gateway/ui/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ hashFiles('gateway/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio==6.1.19
+
+      - name: Web UI
+        working-directory: gateway/ui
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Native tests
+        working-directory: gateway
+        run: bash scripts/run_backup_tests_wsl.sh
+
+      - name: Firmware and Web UI images
+        working-directory: gateway
+        run: |
+          for environment in gateway_wt32_eth01 gateway_waveshare_s3_eth; do
+            pio run -e "$environment"
+            pio run -e "$environment" -t buildfs
+          done
+
+      - name: Manifest
+        run: python gateway/scripts/release/make_manifest.py "$VERSION" dist
+
+      - name: Sign
+        env:
+          SIGNING_KEY: ${{ secrets.GATEWAY_SIGNING_KEY }}
+        run: |
+          key="$RUNNER_TEMP/signing.pem"
+          (umask 077; printf '%s\n' "$SIGNING_KEY" > "$key")
+          openssl dgst -sha256 -sign "$key" -out dist/manifest.sig dist/manifest.json
+          rm -f "$key"
+          python gateway/scripts/release/verify_manifest.py dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$VERSION" dist/* --verify-tag --title "$VERSION" --generate-notes

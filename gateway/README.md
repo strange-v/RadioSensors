@@ -38,17 +38,30 @@ pio run -e gateway_waveshare_s3_eth_ota -t upload
 
 Use a non-OTA target for serial or USB recovery.
 
+## Releases
+
+Pushing a tag `major.minor.patch` that equals `FirmwareVersion.h` runs `.github/workflows/gateway-release.yml`: Web UI and native tests, firmware and Web UI images for both boards, then a GitHub Release with these assets:
+
+| Asset | Content |
+| --- | --- |
+| `gateway-<board>-firmware.bin` | App image for an OTA slot |
+| `gateway-<board>-ui.bin` | LittleFS image of that board's `web` partition |
+| `manifest.json` | Version, and per board each image's file, size and SHA-256 |
+| `manifest.sig` | ECDSA P-256 / SHA-256 signature of the exact `manifest.json` bytes, DER |
+
+Boards are `wt32-eth01` and `waveshare-s3-eth`. The workflow signs with the `GATEWAY_SIGNING_KEY` repository secret; the matching public key is `gateway-signing.pub.pem`. Only the public key is committed. `scripts/release/verify_manifest.py <dir>` checks a downloaded release the way the gateway does.
+
 ## Web UI filesystem
 
-The separately versioned Web UI is stored in a LittleFS partition named `web`. Its partition-table subtype remains the legacy `spiffs` value required by the pinned ArduinoOTA/PlatformIO filesystem command; the bytes, generator, and mounted filesystem are LittleFS. The source frontend remains outside the firmware source tree; its production output is copied to `data/` before building the filesystem image. The gateway never formats LittleFS automatically. A missing, damaged, or incompatible image therefore leaves the REST API operational and serves a small recovery page from firmware instead of erasing evidence or configuration.
+The Web UI is stored in a LittleFS partition named `web`. Its partition-table subtype remains the legacy `spiffs` value required by the pinned ArduinoOTA/PlatformIO filesystem command; the bytes, generator, and mounted filesystem are LittleFS. The source frontend remains outside the firmware source tree; its production output is copied to `data/` before building the filesystem image. The gateway never formats LittleFS automatically. A missing, damaged, or incompatible image therefore leaves the REST API operational and serves a small recovery page from firmware instead of erasing evidence or configuration.
 
 Every UI image must contain `/index.html` and `/ui-manifest.json`:
 
 ```json
-{"ui_version":"0.1.0","required_firmware":"0.8","build":"git-sha"}
+{"ui_version":"0.9.0","required_firmware":"0.9","build":"git-sha"}
 ```
 
-`ui_version` identifies independently released UI fixes. `required_firmware` names the firmware series this image was built for, and the gateway serves it only when the `major.minor` matches its own; the patch level is ignored. `build` is diagnostic metadata and is not used for compatibility. The UI does not gate on `api_version`: that number describes the external client contract under `/api`, which the UI barely uses, while the UI depends on `/ui` and so moves with the firmware.
+Both versions come from `include/FirmwareVersion.h` at build time: `ui_version` is the full version, `required_firmware` its `major.minor`. The gateway serves the image only when that `major.minor` matches its own; the patch level is ignored. `build` is diagnostic metadata and is not used for compatibility. The UI does not gate on `api_version`: that number describes the external client contract under `/api`, which the UI barely uses, while the UI depends on `/ui` and so moves with the firmware.
 
 The Vue 3 frontend source lives in `ui/`. The generated `data/` directory is git-ignored and must not be committed. From `ui/`:
 

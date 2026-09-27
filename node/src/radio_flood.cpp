@@ -17,7 +17,6 @@
 namespace {
 using namespace radiosensors;
 
-constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
 constexpr uint16_t kProfileId =
     protocol::profileIdValue(protocol::ProfileId::Voltage);
 constexpr uint16_t kSummaryFrames = 100;
@@ -33,7 +32,7 @@ node::NodeRadio radio(NODE_RFM69_CS, NODE_RFM69_IRQ);
 node::LowPowerClock clock;
 node::BatteryMonitor battery;
 node::ProvisioningButton button(NODE_BUTTON_PIN);
-node::CommissioningService commissioning(radio, kProfileId, kFirmwareVersion);
+node::CommissioningService commissioning(radio, kProfileId);
 bool radioReady = false;
 uint16_t sent = 0;
 uint16_t acknowledged = 0;

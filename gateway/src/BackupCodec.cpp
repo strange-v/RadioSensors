@@ -9,6 +9,7 @@ namespace {
 
 using namespace radiosensors;
 
+constexpr uint8_t kPayloadVersion = 1;
 constexpr size_t kRootFields = 7;
 constexpr size_t kSettingsFields = 6;
 constexpr size_t kNodeFields = 9;
@@ -136,7 +137,7 @@ bool encode(const Snapshot& snapshot, std::string& output) {
     if (!valid(snapshot)) return false;
     SecretAllocator allocator;
     JsonDocument document(&allocator);
-    document["version"] = 1;
+    document["version"] = kPayloadVersion;
     document["created_at_ms"] = snapshot.createdAt;
 
     const auto& stored = snapshot.settings;
@@ -194,7 +195,7 @@ bool decode(const char* json, const size_t size, Snapshot& snapshot) {
     }
     const JsonObjectConst root = document.as<JsonObjectConst>();
     if (root.size() != kRootFields || !root["version"].is<uint8_t>() ||
-        root["version"].as<uint8_t>() != 1 || !root["created_at_ms"].is<uint64_t>() ||
+        root["version"].as<uint8_t>() != kPayloadVersion || !root["created_at_ms"].is<uint64_t>() ||
         !root["network_id"].is<uint8_t>() || !root["nodes"].is<JsonArrayConst>()) {
         return false;
     }

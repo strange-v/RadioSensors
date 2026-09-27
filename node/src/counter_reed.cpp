@@ -12,8 +12,6 @@ namespace {
 using namespace radiosensors;
 using Profile = node::CounterReedProfile;
 
-constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
-
 // PB0/PB1 are the unpopulated sensor I2C pads; PB2/PB3 carry UART only in
 // debug builds.
 constexpr uint8_t kUnusedPins[] = {
@@ -30,7 +28,7 @@ node::LowPowerClock clock;
 node::ProvisioningButton button(NODE_BUTTON_PIN);
 Profile profile(NODE_REED_PIN, NODE_COUNTER_MINIMUM_PHASE_MS);
 node::CommissioningService commissioning(
-    radio, Profile::kProfileId, kFirmwareVersion);
+    radio, Profile::kProfileId);
 node::NodeRuntime<Profile> runtime(
     profile, radio, commissioning, clock, button);
 }

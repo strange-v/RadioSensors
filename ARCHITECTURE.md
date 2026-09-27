@@ -46,6 +46,21 @@ Passwords use salted PBKDF2-HMAC-SHA256. API tokens contain 32 random bytes, are
 
 The gateway serves HTTP and WebSocket only and is intended exclusively for a trusted private LAN. It does not provide TLS/WSS and must not be exposed directly to the Internet or an untrusted network. LAN traffic capture, DNS/mDNS spoofing, a compromised LAN client, and physical flash access are outside the accepted production threat model; flash encryption and secure boot are not required.
 
+## Versions
+
+Release versions name a build; contract versions decide compatibility. Compatibility never follows from a release version, except the Web UI's `major.minor` check against the firmware.
+
+| Version | Source | Changes when |
+| --- | --- | --- |
+| Gateway release (firmware and Web UI) | `gateway/include/FirmwareVersion.h`, equal to the Git tag | Every release: patch for fixes, minor when `/ui/*` changes |
+| Node release | `node/lib/NodeCore/include/NodeFirmware.h` | Every node release, independently of the gateway |
+| `/api` | `gateway/include/ApiVersion.h` | Incompatible change to `/api` |
+| WebSocket stream | `GatewayStream.h` `kVersion` | Incompatible change to the stream |
+| Radio protocol | `RadioProtocol.h` `kProtocolMajor` | Incompatible frame change |
+| Gateway NVS, node registry | `GatewayStorage.h`, `RegistryPersistence.h` | Incompatible persisted layout |
+| Backup container, payload | `BackupCrypto.cpp` `kPrefix`, `BackupCodec.cpp` `kPayloadVersion` | Incompatible backup file |
+| Release manifest | `make_manifest.py` `MANIFEST_FORMAT` | Incompatible manifest |
+
 ## Documentation ownership
 
 - Radio frames and payload validation: `protocol/PROTOCOL.md`.

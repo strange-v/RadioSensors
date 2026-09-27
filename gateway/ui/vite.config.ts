@@ -3,14 +3,10 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
-import packageJson from './package.json'
+import { firmwareSeries, firmwareVersion } from './firmwareVersion'
 
 const outputDirectory = fileURLToPath(new URL('../data', import.meta.url))
 const repositoryDirectory = fileURLToPath(new URL('../..', import.meta.url))
-// The Web UI depends on /ui/*, which is internal and moves with the firmware,
-// so it declares the firmware series it was built against rather than an API
-// number. The gateway compares major.minor and ignores the patch level.
-const REQUIRED_FIRMWARE = '0.8'
 
 const gatewayTarget = process.env.GATEWAY_URL?.trim() || 'http://osk-hub-a085e3e6cc20'
 const gatewayProxy = { target: gatewayTarget, changeOrigin: true }
@@ -30,7 +26,7 @@ function manifestPlugin(): Plugin {
     name: 'gateway-ui-manifest',
     closeBundle() {
       mkdirSync(outputDirectory, { recursive: true })
-      writeFileSync(`${outputDirectory}/ui-manifest.json`, `${JSON.stringify({ ui_version: packageJson.version, required_firmware: REQUIRED_FIRMWARE, build: gitSha() })}\n`)
+      writeFileSync(`${outputDirectory}/ui-manifest.json`, `${JSON.stringify({ ui_version: firmwareVersion, required_firmware: firmwareSeries, build: gitSha() })}\n`)
     },
   }
 }
@@ -60,5 +56,5 @@ export default defineConfig({
     rollupOptions: { output: { entryFileNames: 'assets/app-[hash].js', chunkFileNames: 'assets/[name]-[hash].js' } },
   },
   server: { proxy: { '/api': gatewayProxy, '/ui': gatewayProxy, '/health': gatewayProxy } },
-  define: { __UI_VERSION__: JSON.stringify(packageJson.version) },
+  define: { __UI_VERSION__: JSON.stringify(firmwareVersion) },
 })

@@ -13,8 +13,6 @@ namespace {
 using namespace radiosensors;
 using Profile = node::ClimateTmp112Profile;
 
-constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
-
 // PA5 is the reed pad; PB2/PB3 carry UART only in debug builds.
 constexpr uint8_t kUnusedPins[] = {
     PIN_PA5,
@@ -40,7 +38,7 @@ node::LowPowerClock clock;
 node::ProvisioningButton button(NODE_BUTTON_PIN);
 Profile profile(Wire, NODE_TMP112_ADDRESS, reportPolicy);
 node::CommissioningService commissioning(
-    radio, Profile::kProfileId, kFirmwareVersion);
+    radio, Profile::kProfileId);
 node::NodeRuntime<Profile> runtime(
     profile, radio, commissioning, clock, button);
 }

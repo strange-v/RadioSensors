@@ -21,9 +21,7 @@ enum class StartStatus : uint8_t {
 
 class CommissioningService {
 public:
-    CommissioningService(
-        NodeRadio& radio, uint16_t profileId,
-        protocol::FirmwareVersion firmware);
+    CommissioningService(NodeRadio& radio, uint16_t profileId);
 
     StartStatus begin();
     bool active() const;
@@ -49,7 +47,6 @@ private:
     storage::NetworkConfig config_{};
     uint8_t deviceUid_[protocol::kDeviceUidSize]{};
     uint16_t profileId_;
-    protocol::FirmwareVersion firmware_;
     storage::FactoryCredentials factoryCredentials_{};
     bool factoryCredentialsValid_ = false;
 };

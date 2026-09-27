@@ -4,3 +4,6 @@
 include/LocalSecrets.h
 ui/node_modules/
 data/
+# Release signing keys; only the public key is committed.
+*.pem
+!gateway-signing.pub.pem

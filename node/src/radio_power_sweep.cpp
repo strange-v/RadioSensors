@@ -23,7 +23,6 @@
 namespace {
 using namespace radiosensors;
 
-constexpr protocol::FirmwareVersion kFirmwareVersion{0, 1, 0};
 constexpr uint16_t kProfileId =
     protocol::profileIdValue(protocol::ProfileId::Voltage);
 
@@ -42,7 +41,7 @@ constexpr uint8_t kUnusedPins[] = {
 node::NodeRadio radio(NODE_RFM69_CS, NODE_RFM69_IRQ);
 node::LowPowerClock clock;
 node::BatteryMonitor battery;
-node::CommissioningService commissioning(radio, kProfileId, kFirmwareVersion);
+node::CommissioningService commissioning(radio, kProfileId);
 uint8_t powerLevel = NODE_POWER_SWEEP_FIRST_LEVEL;
 #if defined(NODE_POWER_SWEEP_BUTTON_LEVEL)
 constexpr uint32_t kReportIntervalMs =

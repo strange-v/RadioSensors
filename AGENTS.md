@@ -20,6 +20,8 @@ The frontend, gateway backend/firmware, and node firmware have not been released
 
 Reference documents describe how the system behaves now. They are not a changelog: no "used to", no "this was added because", no comparison against an earlier version. A reader who has never seen the previous state must not be able to tell there was one. Git holds the history.
 
+The root `README.md` is for users: what the system is, what it needs, how to get started. Developer material belongs in `CONTRIBUTING.md`; component details stay in that component's README or reference documents.
+
 Shorter is better. Prefer a table to a paragraph and a sentence to a paragraph. Drop any sentence that only restates the one before it or that justifies a decision nobody is about to make differently — rationale earns its place only where it stops a plausible wrong turn.
 
 The same applies to code comments, with one addition: a comment explains what the code cannot, which is usually why an obvious alternative was rejected. It never narrates what changed.

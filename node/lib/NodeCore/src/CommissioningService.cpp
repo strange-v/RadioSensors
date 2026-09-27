@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "DebugLog.h"
+#include "NodeFirmware.h"
 
 namespace radiosensors {
 namespace node {
@@ -15,13 +16,11 @@ constexpr uint8_t kConfirmAttempts = 3;
 }
 
 CommissioningService::CommissioningService(
-    NodeRadio& radio, const uint16_t profileId,
-    const protocol::FirmwareVersion firmware)
+    NodeRadio& radio, const uint16_t profileId)
     : radio_(radio),
       factoryStore_(userRow_),
       store_(eeprom_),
-      profileId_(profileId),
-      firmware_(firmware) {}
+      profileId_(profileId) {}
 
 StartStatus CommissioningService::begin() {
     readDeviceUid();
@@ -96,7 +95,7 @@ bool CommissioningService::requestJoin() {
     protocol::JoinRequest request{};
     memcpy(request.deviceUid, deviceUid_, sizeof(deviceUid_));
     request.profileId = profileId_;
-    request.firmware = firmware_;
+    request.firmware = kFirmwareVersion;
     request.requestNonce = createNonce();
     request.maxPowerLevel = NODE_RADIO_MAX_POWER_LEVEL;
     uint8_t requestBytes[protocol::kJoinRequestSize];

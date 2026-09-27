@@ -2,7 +2,7 @@
 // Serves canned /api, /ui and /health responses. Not part of the build.
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
-import packageJson from './package.json'
+import { firmwareSeries, firmwareVersion } from './firmwareVersion'
 import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:crypto'
 
 const now = Date.now()
@@ -20,7 +20,7 @@ const health = {
   },
   ethernet: { state: 'connected', has_ip: true, ip: '192.168.1.42', mac: '50:ff:20:2e:fd:fe' },
   ota: { enabled: true, state: 'idle', progress: 0 },
-  web_ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' },
+  web_ui: { state: 'ok', version: firmwareVersion, required_firmware: firmwareSeries },
   telemetry: { nodes_seen: 5, updates: 14_207, last_node_id: 3, last_received_at_ms: now - 40_000 },
   time: { state: 'synchronized', unix_ms: now, last_sync_ms: now - 1_800_000 },
   websocket: { clients: 2, connections: 9, messages_sent: 2_140, messages_dropped: 0 },
@@ -93,7 +93,7 @@ const routes: Record<string, unknown> = {
   '/api/info': {
     firmware_version: '2.1.0', api_version: 1, stream_version: 1,
     gateway_id: health.gateway_id, boot_id: health.boot_id, uptime_seconds: health.uptime_seconds,
-    ui: { state: 'ok', version: '0.1.0', required_firmware: '0.8' },
+    ui: { state: 'ok', version: firmwareVersion, required_firmware: firmwareSeries },
     board: 'esp32-poe', hostname: 'osk-hub-a085e3',
   },
   '/api/nodes': { registry_generation: 12, nodes },
@@ -379,5 +379,5 @@ function mockApi(): Plugin {
 
 export default defineConfig({
   plugins: [vue(), mockApi()],
-  define: { __UI_VERSION__: JSON.stringify(packageJson.version) },
+  define: { __UI_VERSION__: JSON.stringify(firmwareVersion) },
 })
