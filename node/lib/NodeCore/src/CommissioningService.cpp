@@ -55,6 +55,10 @@ bool CommissioningService::active() const {
         config_.nodeId != 0;
 }
 
+bool CommissioningService::provisional() const {
+    return !active() && config_.nodeId != 0;
+}
+
 const storage::NetworkConfig& CommissioningService::config() const {
     return config_;
 }
@@ -87,7 +91,7 @@ uint32_t CommissioningService::createNonce() const {
 bool CommissioningService::advance() {
     if (active()) return true;
     if (!radio_.ensureConfigured()) return false;
-    if (config_.nodeId != 0) return confirmJoin();
+    if (provisional()) return confirmJoin();
     return requestJoin();
 }
 

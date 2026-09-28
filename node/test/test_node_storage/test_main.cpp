@@ -22,6 +22,7 @@ using radiosensors::node::LoadedSupplyVoltage;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
 using radiosensors::node::HintedSessionPolicy;
+using radiosensors::node::JoinRetrySchedule;
 using radiosensors::node::PowerDecision;
 using radiosensors::node::afterAcknowledged;
 using radiosensors::node::afterUnacknowledged;
@@ -617,6 +618,41 @@ void test_radio_retry_none_never_waits() {
     TEST_ASSERT_TRUE(retry.allowed(4));
 }
 
+void test_join_retries_every_five_minutes_for_twelve_attempts() {
+    constexpr uint32_t minute = 60UL * 1000UL;
+    JoinRetrySchedule schedule;
+    TEST_ASSERT_TRUE(schedule.due(0, false));
+    schedule.attempted(0, false);
+    for (uint32_t attempt = 1; attempt < 12; ++attempt) {
+        const uint32_t at = attempt * 5U * minute;
+        TEST_ASSERT_FALSE(schedule.due(at - 1U, false));
+        TEST_ASSERT_TRUE(schedule.due(at, false));
+        schedule.attempted(at, false);
+    }
+    // An unconfigured node then waits for the button.
+    TEST_ASSERT_FALSE(schedule.due(60U * minute, false));
+    TEST_ASSERT_FALSE(schedule.due(1000U * minute, false));
+
+    // A button press starts another burst.
+    schedule.attempted(1000U * minute, true);
+    TEST_ASSERT_FALSE(schedule.due(1005U * minute - 1U, false));
+    TEST_ASSERT_TRUE(schedule.due(1005U * minute, false));
+}
+
+void test_join_retries_hourly_while_provisional() {
+    constexpr uint32_t minute = 60UL * 1000UL;
+    JoinRetrySchedule schedule;
+    for (uint32_t attempt = 0; attempt < 12; ++attempt) {
+        schedule.attempted(attempt * 5U * minute, false);
+    }
+    const uint32_t last = 55U * minute;
+    TEST_ASSERT_FALSE(schedule.due(last + 60U * minute - 1U, true));
+    TEST_ASSERT_TRUE(schedule.due(last + 60U * minute, true));
+    schedule.attempted(last + 60U * minute, false);
+    TEST_ASSERT_FALSE(schedule.due(last + 120U * minute - 1U, true));
+    TEST_ASSERT_TRUE(schedule.due(last + 120U * minute, true));
+}
+
 void test_climate_schedule_follows_voltage_of_failed_reports() {
     const ClimateReportPolicy policy = ClimateReportPolicy::adaptive(
         64000UL, 320000UL, 2500);
@@ -805,6 +841,8 @@ int main(int, char**) {
     RUN_TEST(test_radio_retry_steps_up_to_fifteen_minutes);
     RUN_TEST(test_radio_retry_turns_hourly_after_a_silent_day);
     RUN_TEST(test_radio_retry_none_never_waits);
+    RUN_TEST(test_join_retries_every_five_minutes_for_twelve_attempts);
+    RUN_TEST(test_join_retries_hourly_while_provisional);
     RUN_TEST(test_climate_schedule_follows_voltage_of_failed_reports);
     RUN_TEST(test_fixed_climate_policy_ignores_supply_voltage);
     RUN_TEST(test_adaptive_climate_policy_uses_v1_threshold_semantics);

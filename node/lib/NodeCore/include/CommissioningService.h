@@ -25,6 +25,8 @@ public:
 
     StartStatus begin();
     bool active() const;
+    // Joined, but the gateway has not yet completed the join.
+    bool provisional() const;
     bool advance();
     const storage::NetworkConfig& config() const;
 

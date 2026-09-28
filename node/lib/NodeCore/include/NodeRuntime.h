@@ -103,7 +103,6 @@ public:
     }
 
 private:
-    static constexpr uint32_t kJoinRetryIntervalMs = 5UL * 60UL * 1000UL;
     static constexpr uint32_t kSessionWindowMs = 250;
     static constexpr uint8_t kSessionAttempts = 3;
     // A radio that failed to start gets a fresh boot; the delay bounds how
@@ -134,16 +133,15 @@ private:
     }
 
     void commissionIfDue(const uint32_t now, const bool requestedByButton) {
-        if (!requestedByButton && joinAttempted_ &&
-            !intervalElapsed(now, lastJoinAttempt_, kJoinRetryIntervalMs)) {
+        if (!requestedByButton &&
+            !joinRetry_.due(now, commissioning_.provisional())) {
             return;
         }
 #if defined(NODE_DEBUG)
         if (requestedByButton) debugLine(F("join btn"));
 #endif
         WatchdogWindow watchdog;
-        joinAttempted_ = true;
-        lastJoinAttempt_ = now;
+        joinRetry_.attempted(now, requestedByButton);
         commissioning_.advance();
     }
 
@@ -285,6 +283,7 @@ private:
     LoadedSupplyVoltage supplyVoltage_;
     RadioRetryBackoff radioRetry_;
     HintedSessionPolicy hintedSessions_;
+    JoinRetrySchedule joinRetry_;
     int8_t downlinkRssi_ = protocol::kNoDownlinkRssi;
     // Held only in RAM: a restart begins at the ceiling and the gateway's next
     // acknowledgement restores its target, so no level change wears the
@@ -292,9 +291,7 @@ private:
     uint8_t powerLevel_ = NODE_RADIO_MAX_POWER_LEVEL;
     bool radioFallback_ = false;
     uint8_t unacknowledgedReports_ = 0;
-    uint32_t lastJoinAttempt_ = 0;
     StartStatus radioStart_ = StartStatus::RadioFailed;
-    bool joinAttempted_ = false;
 };
 
 }  // namespace node

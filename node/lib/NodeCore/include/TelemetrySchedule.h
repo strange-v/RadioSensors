@@ -254,5 +254,38 @@ private:
     bool hasSession_ = false;
 };
 
+// Commissioning attempts: at boot and on every button press, then every five
+// minutes for twelve attempts in all. After that a provisional node retries
+// hourly, because the gateway answers its Join confirm at any time; an
+// unconfigured node waits for the button, because the gateway accepts a Join
+// request only inside a pairing window.
+class JoinRetrySchedule {
+public:
+    static constexpr uint32_t kBurstIntervalMs = 5UL * 60UL * 1000UL;
+    static constexpr uint8_t kBurstAttempts = 12;
+    static constexpr uint32_t kProvisionalIntervalMs = 60UL * 60UL * 1000UL;
+
+    bool due(const uint32_t now, const bool provisional) const {
+        if (!attempted_) return true;
+        if (burstAttempts_ < kBurstAttempts) {
+            return intervalElapsed(now, lastAttempt_, kBurstIntervalMs);
+        }
+        return provisional &&
+            intervalElapsed(now, lastAttempt_, kProvisionalIntervalMs);
+    }
+
+    void attempted(const uint32_t now, const bool requestedByButton) {
+        if (requestedByButton) burstAttempts_ = 0;
+        if (burstAttempts_ < kBurstAttempts) ++burstAttempts_;
+        lastAttempt_ = now;
+        attempted_ = true;
+    }
+
+private:
+    uint32_t lastAttempt_ = 0;
+    uint8_t burstAttempts_ = 0;
+    bool attempted_ = false;
+};
+
 }  // namespace node
 }  // namespace radiosensors

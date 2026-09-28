@@ -87,6 +87,8 @@ PA6 is the active-low provisioning button. A hold is timed with `millis()` while
 | Released within 10 s | Unconfigured or provisional node: commissioning attempt. Active node: command session. |
 | Held for 10 s | Invalidates both network configuration slots and restarts the node unconfigured. USERROW and profile EEPROM, including the counter, are preserved. Refused when the factory credentials are invalid, because the node could never rejoin. |
 
+Without a button press, a node that is not active attempts commissioning at boot, then every 5 minutes for twelve attempts in all; a press starts the series again. After that a provisional node retries hourly, because the gateway answers its Join confirm at any time, and an unconfigured node waits for the button, because the gateway accepts a Join request only inside a pairing window.
+
 The gateway rejects a join request from a UID it still holds as active. To pair a reset node again, also delete it on the gateway (`DELETE /ui/nodes`).
 
 ## Radio power
