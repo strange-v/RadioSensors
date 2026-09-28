@@ -171,6 +171,12 @@ An empty payload has nothing to add. A node ignores a target above `31`. RFM69 A
 
 A node that sees `command_pending` opens a command session in the same wake-up. It limits sessions that the flag starts but that do not end cleanly; the node README specifies the back-off.
 
+## Replay resistance
+
+Telemetry and its acknowledgement carry no frame counter or message authentication code, and RFM69 AES encrypts each 16-byte block alone. A recorded frame is accepted when transmitted again, and equal content produces equal ciphertext. Command sessions and joins are bound to a fresh nonce and are not affected.
+
+This is accepted for every current profile: a counter and authentication code would take a frame past one AES block and add persistent counter state, which costs every node charge and airtime. Nodes whose reports must not be forged, such as intrusion sensors or buttons that switch something, get an authenticated telemetry frame kind from the reserved range. Only images that need it send that kind; every other image keeps kind `0`.
+
 ## Radio power
 
 Radio power is desired state, not a command. The node owns its level and reports it in every telemetry frame; the gateway owns a policy and, while the reported level differs from the one it wants, adds `power_target` to each telemetry acknowledgement. A lost acknowledgement is simply repeated by the next one, so no command ID or session is involved.
