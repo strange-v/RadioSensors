@@ -30,6 +30,9 @@ StartStatus CommissioningService::begin() {
 #if defined(NODE_DEBUG)
         debugLine(F("join no fcred"));
 #endif
+        // The module powers up in standby, about 1.2 mA; the node never
+        // transmits, but must not leave it there.
+        if (radio_.begin(0, 0)) radio_.sleep();
         return StartStatus::NoCredentials;
     }
 #if defined(NODE_DEBUG)
