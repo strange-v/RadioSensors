@@ -5,6 +5,8 @@
 #include <RadioAes.h>
 #include <string.h>
 
+#include "DebugLog.h"
+
 namespace radiosensors {
 namespace node {
 
@@ -27,26 +29,60 @@ bool NodeRadio::begin(const uint8_t nodeId, const uint8_t networkId) {
     // The RFM69 releases MISO while deselected, which would leave the input
     // floating through every sleep. The weak pull-up does not disturb SPI.
     pinMode(PIN_SPI_MISO, INPUT_PULLUP);
+    if (initialized) frequencyMsb_ = radio_.readReg(REG_FRFMSB);
     return initialized;
 }
 
 void NodeRadio::useCommissioningProfile(const uint8_t (&factoryKey)[16]) {
-    radio_.setAddress(0);
-    radio_.setNetwork(0);
-    radio_aes::enable(radio_, factoryKey);
-    radio_.setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
+    applyProfile(0, 0, factoryKey);
+    setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
 }
 
 void NodeRadio::useOperationalProfile(const storage::NetworkConfig& config) {
-    radio_.setAddress(config.nodeId);
-    radio_.setNetwork(config.networkId);
-    radio_aes::enable(radio_, config.installationKey);
+    applyProfile(config.nodeId, config.networkId, config.installationKey);
     // Every boot and every join starts at the ceiling; the gateway lowers it.
-    radio_.setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
+    setPowerLevel(NODE_RADIO_MAX_POWER_LEVEL);
+}
+
+void NodeRadio::applyProfile(
+    const uint8_t address, const uint8_t network, const uint8_t (&key)[16]) {
+    address_ = address;
+    network_ = network;
+    memcpy(key_, key, sizeof(key_));
+    radio_.setAddress(address);
+    radio_.setNetwork(network);
+    radio_aes::enable(radio_, key);
 }
 
 void NodeRadio::setPowerLevel(const uint8_t level) {
+    level_ = level;
     radio_.setPowerLevel(level);
+}
+
+// The module has no reset line, and restarting the MCU would not restore its
+// registers either: rewriting them is the only repair. A module that reset
+// itself comes back on its default frequency, with AES off and sync value 1.
+bool NodeRadio::configured() {
+    return radio_.readReg(REG_FRFMSB) == frequencyMsb_ &&
+        (radio_.readReg(REG_PACKETCONFIG2) & RF_PACKET2_AES_ON) != 0 &&
+        radio_.readReg(REG_SYNCVALUE2) == network_;
+}
+
+bool NodeRadio::ensureConfigured() {
+    if (configured()) return true;
+#if defined(NODE_DEBUG)
+    debugLine(F("rf lost"));
+#endif
+    // initialize() also resynchronizes the library's cached mode with the
+    // module, which a reset left in standby.
+    if (!begin(address_, network_)) {
+        radio_.sleep();
+        return false;
+    }
+    radio_aes::enable(radio_, key_);
+    radio_.setPowerLevel(level_);
+    radio_.sleep();
+    return configured();
 }
 
 bool NodeRadio::sendTelemetry(

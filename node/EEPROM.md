@@ -84,7 +84,7 @@ A new installation starts a new command ID sequence, so commissioning replaces a
 
 Each ring entry contains a one-byte sequence followed by a four-byte unsigned cumulative count. Sequence `0xFF` means invalid/uncommitted; valid sequences wrap from `0xFE` to `0x00`. A save invalidates the destination sequence byte, writes the count, then commits the sequence byte last. There are 32 entries.
 
-Every confirmed LOW-to-HIGH transition increments the count and immediately persists it before telemetry transmission. Capacity planning uses 150,000 pulses/year to include higher winter gas consumption. A 32-entry ring therefore spreads approximately 4,688 writes per cell per year. Against the device's 100,000-cycle minimum EEPROM endurance, this is about 21.3 years of nominal minimum endurance (3.2 million persisted pulses total).
+Every confirmed LOW-to-HIGH transition increments the count and immediately persists it before telemetry transmission. Capacity planning uses 150,000 pulses/year to include higher winter gas consumption. A 32-entry ring therefore visits each entry about 4,688 times per year. The sequence byte is written twice per visit, invalidated and then committed, so it wears first at about 9,375 cycles per year. Against the device's 100,000-cycle minimum EEPROM endurance, this is about 10.7 years of nominal minimum endurance (1.6 million persisted pulses total).
 
 The counter area survives network factory reset.
 

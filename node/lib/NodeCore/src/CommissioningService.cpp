@@ -83,6 +83,7 @@ uint32_t CommissioningService::createNonce() const {
 
 bool CommissioningService::advance() {
     if (active()) return true;
+    if (!radio_.ensureConfigured()) return false;
     if (config_.nodeId != 0) return confirmJoin();
     return requestJoin();
 }

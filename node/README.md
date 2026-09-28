@@ -127,8 +127,9 @@ Sessions started by the flag are limited to one per five minutes, and after one 
 | I2C sensor read fails | The TWI0 bus is freed (up to nine SCL clocks, then STOP), the sensor is put back into its sleep state or reset, and the read is repeated once. A report whose read fails twice carries the invalid-value sentinel. |
 | Radio or sensor work hangs | A watchdog armed only around startup, reports, command sessions, and commissioning attempts resets the MCU after 8 s. It is off in sleep and on radio-free ticks, which keeps the idle current unchanged. |
 | RFM69 fails to initialize | Software restart 5 minutes after boot. A node without network configuration or factory credentials does not restart. |
+| RFM69 loses its registers while the MCU runs | Before each report, command session, and commissioning attempt the node reads back the frequency, the AES flag, and the network sync byte. On a mismatch it reinitializes the module and reapplies its key and power level; if that fails too, the exchange is skipped and counts as unacknowledged. |
 
-Debug builds log `tmp fail`, `rst wdt` after a watchdog reset, and `rst rf` before a radio restart.
+Debug builds log `tmp fail`, `rst wdt` after a watchdog reset, `rst rf` before a radio restart, and `rf lost` before a register repair.
 
 ## Persistence and protocols
 

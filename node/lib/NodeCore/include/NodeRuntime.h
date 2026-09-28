@@ -165,7 +165,7 @@ private:
         bool acknowledged = false;
         protocol::TelemetryAck ack{false, false, 0};
         int8_t ackRssi = protocol::kNoDownlinkRssi;
-        if (size != 0) {
+        if (size != 0 && radio_.ensureConfigured()) {
             acknowledged = radio_.sendTelemetry(
                 commissioning_.config().gatewayId, frame,
                 static_cast<uint8_t>(size),
@@ -216,6 +216,7 @@ private:
     // command that was then applied and answered.
     bool runCommandSession() {
         WatchdogWindow watchdog;
+        if (!radio_.ensureConfigured()) return false;
         const uint8_t gatewayId = commissioning_.config().gatewayId;
         const uint32_t nonce = commissioning_.createNonce();
         uint8_t ready[protocol::kCommandReadySize];
