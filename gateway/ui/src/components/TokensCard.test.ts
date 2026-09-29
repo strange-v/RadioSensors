@@ -95,16 +95,38 @@ describe('TokensCard', () => {
     expect(wrapper.find('.generated-token').exists()).toBe(false)
   })
 
-  it('copies the secret to the clipboard', async () => {
-    const writeText = vi.fn(async () => undefined)
-    Object.assign(navigator, { clipboard: { writeText } })
+  async function clickCopy(result: boolean) {
+    let copiedValue = ''
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: () => {
+        copiedValue = document.querySelector('textarea')?.value ?? ''
+        return result
+      },
+    })
     const wrapper = await mountCard()
     await createThroughDialog(wrapper)
-    await wrapper.get('.revealed-token .button.secondary').trigger('click')
-    await flushPromises()
+    try {
+      await wrapper.get('.revealed-token .button.secondary').trigger('click')
+    } finally {
+      Reflect.deleteProperty(document, 'execCommand')
+    }
+    return { wrapper, copiedValue }
+  }
 
-    expect(writeText).toHaveBeenCalledWith('secret-value-shown-once')
+  it('copies the secret to the clipboard', async () => {
+    const { wrapper, copiedValue } = await clickCopy(true)
+
+    expect(copiedValue).toBe('secret-value-shown-once')
     expect(wrapper.get('.revealed-token .button.secondary').text()).toBe(en.tokens.copied)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('asks for a manual copy when the browser refuses', async () => {
+    const { wrapper } = await clickCopy(false)
+
+    expect(wrapper.get('.revealed-token .button.secondary').text()).toBe(en.tokens.copy)
+    expect(wrapper.get('[role="alert"]').text()).toBe(en.tokens.copyFailed)
   })
 
   it('reloads the list after revoking a key', async () => {

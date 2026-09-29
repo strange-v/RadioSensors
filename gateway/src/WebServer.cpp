@@ -267,6 +267,8 @@ void handleSetupStatus(AsyncWebServerRequest* request) {
 }
 
 constexpr uint32_t kRestartDelayMs = 500;
+// A completed setup or radio reset restarts after its response leaves the socket.
+uint32_t restartAtMs = 0;
 
 uint8_t randomOperationalNetworkId() {
     uint8_t value = 0;
@@ -403,6 +405,7 @@ void handleInitialSetup(AsyncWebServerRequest* request, JsonVariant& json) {
     } else {
         request->send(201, "application/json", "{\"status\":\"configured\"}");
     }
+    if (hostnameLength != 0) restartAtMs = millis() + kRestartDelayMs;
 }
 
 // Wipes the passwords from the parsed document and the raw body it came from.
@@ -1041,11 +1044,6 @@ void handleCancelCommand(AsyncWebServerRequest* request, JsonVariant& json) {
             return;
     }
 }
-
-// Set when a reset has been acknowledged; loop() performs the restart so the
-// response leaves the socket first. Restarting inside the handler would drop
-// the connection and leave the caller unable to tell success from failure.
-uint32_t restartAtMs = 0;
 
 void handleResetRadioNetwork(AsyncWebServerRequest* request, JsonVariant& json) {
     recovery::Guard recoveryGuard(0);
@@ -2324,7 +2322,7 @@ void loop() {
     telemetrySocket.cleanupClients(kMaximumWebSocketClients);
     broadcastRegistryChanges();
     if (restartAtMs != 0 && static_cast<int32_t>(millis() - restartAtMs) >= 0) {
-        Serial.println("Radio network reset: restarting");
+        Serial.println("Gateway configuration: restarting");
         Serial.flush();
         ESP.restart();
     }

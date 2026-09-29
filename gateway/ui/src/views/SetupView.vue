@@ -11,6 +11,8 @@ const { t } = useI18n(), status = ref<SetupStatus | null>(null), loadError = ref
 const form = reactive({ username: '', password: '', hostname: '', networkId: '' })
 const restoring = ref(false)
 const restoreCompleted = ref(false)
+const configuredHostname = ref('')
+const continueUrl = computed(() => !configuredHostname.value ? '/status' : window.location.hostname.endsWith('.local') ? `http://${configuredHostname.value}.local/login` : '/login')
 const modes = [{ restore: false, id: 'setup-tab-new', label: 'backup.newInstallation' }, { restore: true, id: 'setup-tab-restore', label: 'backup.restore' }] as const
 // Arrow keys move between the tabs; Tab itself goes on into the panel.
 function onTabKey(event: KeyboardEvent) {
@@ -35,6 +37,7 @@ async function submit() {
   saving.value = true
   try {
     await api.setup({ username: form.username, password: form.password, ...(form.hostname ? { hostname: form.hostname } : {}), ...(form.networkId ? { operational_network_id: Number(form.networkId) } : {}) })
+    configuredHostname.value = form.hostname
     completed.value = true
   } catch (error) { submitError.value = errorCode(error); await refresh() } finally { saving.value = false }
 }
@@ -42,7 +45,7 @@ onMounted(() => { refresh(); timer = window.setInterval(refresh, 1000) })
 onBeforeUnmount(() => window.clearInterval(timer))
 </script>
 <template><div class="page narrow">
-  <div v-if="completed" class="success-panel"><span class="state-icon success"><Icon name="check" /></span><h1>{{ $t('setup.successTitle') }}</h1><p>{{ $t('setup.success') }}</p><div class="success-actions"><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></div></div>
+  <div v-if="completed" class="success-panel"><span class="state-icon success"><Icon name="check" /></span><h1>{{ $t('setup.successTitle') }}</h1><p>{{ configuredHostname ? $t('setup.restarting', { hostname: configuredHostname }) : $t('setup.success') }}</p><div class="success-actions"><a class="button primary" :href="continueUrl">{{ $t('setup.continue') }}</a></div></div>
   <template v-else><div v-if="!status || status.setup_required" class="page-title"><p class="eyebrow">{{ $t('setup.eyebrow') }}</p><h1>{{ $t('setup.title') }}</h1><p>{{ $t('setup.intro') }}</p></div>
     <div v-if="loadError" class="notice error"><strong>{{ $t('error.title') }}</strong><span>{{ $t(`error.${loadError}`) }}</span></div>
     <section v-else-if="status && !status.setup_required" class="empty-state panel"><span class="state-icon info" aria-hidden="true"><Icon name="check" /></span><h1>{{ $t('setup.alreadyConfigured') }}</h1><p>{{ $t('setup.alreadyConfiguredHint') }}</p><RouterLink class="button primary" to="/status">{{ $t('setup.continue') }}</RouterLink></section>

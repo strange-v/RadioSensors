@@ -366,6 +366,7 @@ button.node-row:hover { background: var(--surface-hover); }
 .generated-token {
   display: block;
   overflow-wrap: anywhere;
+  user-select: all;
   margin: var(--space-3) 0;
   padding: var(--space-3);
   border: 1px solid var(--line);

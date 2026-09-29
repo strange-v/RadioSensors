@@ -14,6 +14,7 @@ import { api, errorCode } from '../api/client'
 import type { ApiToken, CreatedApiToken } from '../api/types'
 import { dateTime } from '../utils/format'
 import { TOKEN_LIMIT, canAddToken } from '../utils/tokens'
+import { copyText } from '../utils/clipboard'
 import Icon from './Icon.vue'
 import Modal from './Modal.vue'
 import TokenDialog from './TokenDialog.vue'
@@ -28,6 +29,7 @@ const removing = ref<ApiToken | null>(null)
 const deleteBusy = ref(false)
 const created = ref<CreatedApiToken | null>(null)
 const copied = ref(false)
+const copyFailed = ref(false)
 
 const full = computed(() => !canAddToken(tokens.value))
 
@@ -46,14 +48,15 @@ async function load() {
 async function afterCreate(token: CreatedApiToken) {
   adding.value = false
   copied.value = false
+  copyFailed.value = false
   created.value = token
   await load()
 }
 
-async function copy() {
+function copy() {
   if (!created.value) return
-  await navigator.clipboard.writeText(created.value.token)
-  copied.value = true
+  copied.value = copyText(created.value.token)
+  copyFailed.value = !copied.value
 }
 
 async function remove() {
@@ -93,6 +96,7 @@ onUnmounted(() => { created.value = null })
         <code class="generated-token">{{ created.token }}</code>
         <div class="revealed-actions">
           <button class="button secondary" type="button" @click="copy">{{ copied ? $t('tokens.copied') : $t('tokens.copy') }}</button>
+          <span v-if="copyFailed" class="notice error" role="alert">{{ $t('tokens.copyFailed') }}</span>
           <button class="button primary" type="button" @click="created = null">{{ $t('tokens.saved') }}</button>
         </div>
       </div>

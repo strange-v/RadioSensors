@@ -13,6 +13,7 @@ import { api, errorCode } from '../api/client'
 import type { ApiToken, CreatedApiToken, GatewayInfo } from '../api/types'
 import Icon from '../components/Icon.vue'
 import { canAddToken, findTokenNamed } from '../utils/tokens'
+import { copyText } from '../utils/clipboard'
 
 const TOKEN_NAME = 'Home Assistant'
 
@@ -21,6 +22,7 @@ const tokens = ref<ApiToken[] | null>(null)
 const created = ref<CreatedApiToken | null>(null)
 const busy = ref(false)
 const copied = ref(false)
+const copyFailed = ref(false)
 const failure = ref('')
 
 // The gateway accepts duplicate names, so an existing key is a warning rather
@@ -35,6 +37,7 @@ async function create() {
   busy.value = true
   failure.value = ''
   copied.value = false
+  copyFailed.value = false
   try {
     created.value = await api.createToken(TOKEN_NAME)
     tokens.value = (await api.tokens()).tokens
@@ -45,10 +48,10 @@ async function create() {
   }
 }
 
-async function copy() {
+function copy() {
   if (!created.value) return
-  await navigator.clipboard.writeText(created.value.token)
-  copied.value = true
+  copied.value = copyText(created.value.token)
+  copyFailed.value = !copied.value
 }
 
 onMounted(async () => {
@@ -88,6 +91,7 @@ onUnmounted(() => { created.value = null })
               <code class="generated-token">{{ created.token }}</code>
               <div class="revealed-actions">
                 <button class="button secondary" type="button" @click="copy">{{ copied ? $t('ha.copied') : $t('ha.copyToken') }}</button>
+                <span v-if="copyFailed" class="notice error" role="alert">{{ $t('ha.copyFailed') }}</span>
                 <button class="button primary" type="button" @click="created = null">{{ $t('tokens.saved') }}</button>
               </div>
             </div>
