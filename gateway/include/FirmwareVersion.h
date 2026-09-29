@@ -2,6 +2,6 @@
 
 namespace gateway::firmware {
 
-inline constexpr char version[] = "0.9.3";
+inline constexpr char version[] = "0.9.4";
 
 }  // namespace gateway::firmware
