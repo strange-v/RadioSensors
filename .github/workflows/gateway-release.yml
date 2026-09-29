@@ -71,4 +71,11 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$VERSION" dist/* --verify-tag --title "$VERSION" --generate-notes
+        # A release drafted ahead of the tag keeps its title and notes.
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/* --clobber
+            gh release edit "$VERSION" --draft=false
+          else
+            gh release create "$VERSION" dist/* --verify-tag --title "$VERSION" --generate-notes
+          fi

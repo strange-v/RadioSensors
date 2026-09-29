@@ -49,6 +49,8 @@ Pushing a tag `major.minor.patch` that equals `FirmwareVersion.h` runs `.github/
 | `manifest.json` | Format 2: version, and per board each image's file, download size and SHA-256; for the Web UI also `image_size`, with the hash over the inflated image |
 | `manifest.signed` | First line: base64 of the DER ECDSA P-256 / SHA-256 signature; then the exact `manifest.json` bytes |
 
+A release already drafted for the tag receives the assets and is published with its own title and notes; otherwise the workflow creates one titled with the version and generated notes.
+
 Boards are `wt32-eth01` and `waveshare-s3-eth`. The workflow signs with the `GATEWAY_SIGNING_KEY` repository secret; the matching public key is `gateway-signing.pub.pem`. Only the public key is committed. `scripts/release/verify_manifest.py <dir>` checks a downloaded release the way the gateway does.
 
 The gateway installs a release itself through `/ui/update` (see API.md, Firmware update): it downloads `manifest.signed` from `releases/latest/download/` over HTTPS with the ESP-IDF certificate bundle, verifies the signature against the embedded key, and installs its board's images. The Web UI is inflated with the ROM miniz and written over the `web` partition sector by sector, skipping sectors that already hold the new bytes; a failure leaves the recovery page. The firmware then streams into the inactive OTA slot, which becomes bootable only when size and SHA-256 match the manifest.
