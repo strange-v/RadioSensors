@@ -205,10 +205,21 @@ bool authorizeAdmin(
     return true;
 }
 
+// Without storage the gateway id falls back to one derived from the MAC, and
+// the tokens are not loaded. Answering 503 keeps an external client from
+// taking that id for another gateway or the rejected token for a revoked one.
+bool rejectWithoutStorage(AsyncWebServerRequest* request) {
+    if (configuration_store::ready()) return false;
+    sendError(request, 503,
+              recovery::blocked() ? recovery::reason() : "storage_unavailable");
+    return true;
+}
+
 // The registry and the stream share one scope: a consumer needs both to be of
 // any use, so gating them separately only produced tokens that authenticate
 // here and fail at /ws, or the reverse.
 bool authorizeRegistryRead(AsyncWebServerRequest* request) {
+    if (rejectWithoutStorage(request)) return false;
     char sessionToken[authentication::kSessionTokenCharacters + 1]{};
     authentication::Principal principal{};
     if (readSessionToken(request, sessionToken) &&
@@ -2154,6 +2165,7 @@ void handleStatus(AsyncWebServerRequest* request) {
 }
 
 void handleInfo(AsyncWebServerRequest* request) {
+    if (rejectWithoutStorage(request)) return;
     JsonDocument document;
     document["firmware_version"] = firmware::version;
     document["api_version"] = api::version;

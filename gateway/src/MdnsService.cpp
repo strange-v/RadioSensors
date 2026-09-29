@@ -42,6 +42,17 @@ void apply() {
         retryAt = millis() + 5000;
         return;
     }
+    active = true;
+    appliedGeneration = generation;
+    retryAt = 0;
+    // Without storage the name still resolves, so the recovery page is
+    // reachable, but the service stays unannounced: its gateway_id would be
+    // the MAC-derived fallback, which discovery would offer as a new gateway.
+    if (!configuration_store::ready()) {
+        Serial.printf("mDNS resolving %s.local, service not announced\n",
+                      identity::hostname());
+        return;
+    }
     MDNS.addService("osk-sense", "tcp", 80);
     MDNS.addServiceTxt("osk-sense", "tcp", "api", String(api::version));
     MDNS.addServiceTxt(
@@ -57,9 +68,6 @@ void apply() {
     MDNS.addServiceTxt("osk-sense", "tcp", "board", board::current.name);
     MDNS.addServiceTxt(
         "osk-sense", "tcp", "hostname", identity::hostname());
-    active = true;
-    appliedGeneration = generation;
-    retryAt = 0;
     Serial.printf("mDNS advertising %s.local\n", identity::hostname());
 }
 
