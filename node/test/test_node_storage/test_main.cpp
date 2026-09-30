@@ -39,10 +39,13 @@ public:
 
     uint8_t read(const size_t address) const { return bytes[address]; }
     void update(const size_t address, const uint8_t value) {
+        if (bytes[address] == value) return;
         bytes[address] = value;
+        ++writes[address];
     }
 
     uint8_t bytes[kEepromSize];
+    uint16_t writes[kEepromSize]{};
 };
 
 NetworkConfig makeConfig(const uint8_t nodeId = 7) {
@@ -325,6 +328,42 @@ void test_counter_ignores_uncommitted_record() {
     uint32_t restored = 0;
     TEST_ASSERT_TRUE(reader.load(restored));
     TEST_ASSERT_EQUAL_UINT32(41, restored);
+}
+
+void test_counter_ignores_count_torn_before_sequence_commit() {
+    FakeStorage memory;
+    CounterStore<FakeStorage> writer(memory);
+    for (uint32_t value = 1; value <= 40; ++value) {
+        TEST_ASSERT_TRUE(writer.save(value));
+    }
+    // The next destination still carries the oldest sequence in the ring.
+    const size_t interrupted = kCounterRingStart + 8 * kCounterRecordSize;
+    uint8_t bytes[4];
+    write32(bytes, 0xDEADBEEFUL);
+    memcpy(memory.bytes + interrupted + 1, bytes, sizeof(bytes));
+
+    CounterStore<FakeStorage> reader(memory);
+    uint32_t restored = 0;
+    TEST_ASSERT_TRUE(reader.load(restored));
+    TEST_ASSERT_EQUAL_UINT32(40, restored);
+    TEST_ASSERT_TRUE(reader.save(41));
+    CounterStore<FakeStorage> afterSave(memory);
+    TEST_ASSERT_TRUE(afterSave.load(restored));
+    TEST_ASSERT_EQUAL_UINT32(41, restored);
+}
+
+void test_counter_writes_each_sequence_byte_once_per_visit() {
+    FakeStorage memory;
+    CounterStore<FakeStorage> writer(memory);
+    constexpr uint16_t kRotations = 10;
+    for (uint32_t value = 1; value <= kRotations * kCounterRecordCount; ++value) {
+        TEST_ASSERT_TRUE(writer.save(value));
+    }
+    for (size_t slot = 0; slot < kCounterRecordCount; ++slot) {
+        TEST_ASSERT_EQUAL_UINT16(
+            kRotations,
+            memory.writes[kCounterRingStart + slot * kCounterRecordSize]);
+    }
 }
 
 void test_set_count_result_round_trip_and_corruption_fallback() {
@@ -825,6 +864,8 @@ int main(int, char**) {
     RUN_TEST(test_factory_reset_preserves_counter_area);
     RUN_TEST(test_counter_ring_restores_latest_across_wraps);
     RUN_TEST(test_counter_ignores_uncommitted_record);
+    RUN_TEST(test_counter_ignores_count_torn_before_sequence_commit);
+    RUN_TEST(test_counter_writes_each_sequence_byte_once_per_visit);
     RUN_TEST(test_set_count_result_round_trip_and_corruption_fallback);
     RUN_TEST(test_set_count_result_generation_wrap_selects_latest);
     RUN_TEST(test_set_count_journal_applies_and_recognizes_redelivery);

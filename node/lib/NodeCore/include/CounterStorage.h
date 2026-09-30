@@ -198,7 +198,9 @@ public:
             kCounterRingStart + nextSlot * kCounterRecordSize;
         uint8_t bytes[4];
         write32(bytes, count);
-        storage_.update(address, 0xFFU);
+        // The destination is not invalidated first: until the sequence is
+        // committed it holds the oldest one in the ring, which load() never
+        // selects, and a second write would double the wear on this byte.
         for (uint8_t index = 0; index < sizeof(bytes); ++index) {
             storage_.update(address + 1U + index, bytes[index]);
         }
