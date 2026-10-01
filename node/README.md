@@ -51,6 +51,8 @@ No input may float in sleep. Each composition root disables the digital input bu
 
 Reported supply voltage is the lower of the measurement taken just before transmission and the one taken immediately after the previous transmission, so it reflects battery sag under radio load.
 
+A node transmits only while its resting supply is above `NODE_MIN_TRANSMIT_MILLIVOLTS` (2000 mV); at or below it, reports, joins, and command sessions wait, and the supply is measured again 60 s later. Transmit sag below that level resets the MCU before it returns the radio to standby, and the module then transmits until the supply is exhausted. The bench images `radio_power_sweep` and `radio_flood` have no minimum.
+
 ## Factory provisioning
 
 Production firmware contains no shared commissioning key. Each ATtiny1614 must receive a unique 16-byte factory key in its 32-byte USERROW after the common firmware is flashed. Install the QR exporter once and provision a connected node through the same SerialUPDI adapter:

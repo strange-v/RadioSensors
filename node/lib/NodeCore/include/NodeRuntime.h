@@ -17,6 +17,10 @@
 #include "TelemetrySchedule.h"
 #include "WatchdogWindow.h"
 
+#if !defined(NODE_MIN_TRANSMIT_MILLIVOLTS)
+#error "NODE_MIN_TRANSMIT_MILLIVOLTS must be defined by the build environment"
+#endif
+
 namespace radiosensors {
 namespace node {
 
@@ -88,9 +92,12 @@ public:
             if (commissioning_.active()) {
                 const bool commandPending = reportIfDue(now);
                 if (gesture == ButtonGesture::ShortPress) {
-                    runCommandSession();
-                    reportIfDue(now);
-                } else if (commandPending && hintedSessions_.allowed(now)) {
+                    if (supplyAllows(now)) {
+                        runCommandSession();
+                        reportIfDue(now);
+                    }
+                } else if (commandPending && hintedSessions_.allowed(now) &&
+                           supplyAllows(now)) {
                     hintedSessions_.finished(now, runCommandSession());
                     reportIfDue(now);
                 }
@@ -137,6 +144,8 @@ private:
             !joinRetry_.due(now, commissioning_.provisional())) {
             return;
         }
+        // Not counted as an attempt: the join runs once the supply recovers.
+        if (!supplyAllows(now)) return;
 #if defined(NODE_DEBUG)
         if (requestedByButton) debugLine(F("join btn"));
 #endif
@@ -147,14 +156,22 @@ private:
 
     // Returns whether the acknowledgement announced a pending command.
     bool reportIfDue(const uint32_t now) {
-        const bool urgent = profile_.takeUrgentReport();
+        const bool urgent = profile_.takeUrgentReport() || urgentHeld_;
+        urgentHeld_ = false;
         if (!profile_.reportDue(now) ||
             (!urgent && !radioRetry_.allowed(now))) {
             return false;
         }
+        // A report held back by the supply is not a failed transmission: it
+        // neither raises the power level nor starts the retry backoff.
+        uint16_t supplyMillivolts = 0;
+        if (!supplyAllows(now, &supplyMillivolts)) {
+            urgentHeld_ = urgent;
+            return false;
+        }
         WatchdogWindow watchdog;
         const protocol::TelemetryPrefix prefix{
-            supplyVoltage_.report(battery_.readMillivolts()),
+            supplyVoltage_.report(supplyMillivolts),
             protocol::encodeRadioState(powerLevel_, radioFallback_),
             downlinkRssi_};
         uint8_t frame[Profile::kTelemetrySize];
@@ -198,6 +215,23 @@ private:
                 NODE_RADIO_MAX_POWER_LEVEL));
         }
         return acknowledged && ack.commandPending;
+    }
+
+    // Measures the resting supply unless the gate holds after a low one.
+    bool supplyAllows(
+        const uint32_t now, uint16_t* const supplyMillivolts = nullptr) {
+        if (supplyGate_.holding(now)) return false;
+        const uint16_t millivolts = battery_.readMillivolts();
+        if (!supplyGate_.measured(now, millivolts)) {
+            supplyVoltage_.forget();
+#if defined(NODE_DEBUG)
+            Serial.print(F("low mv="));
+            Serial.println(millivolts);
+#endif
+            return false;
+        }
+        if (supplyMillivolts != nullptr) *supplyMillivolts = millivolts;
+        return true;
     }
 
     void applyPower(const PowerDecision decision) {
@@ -281,6 +315,7 @@ private:
     ProvisioningButton& button_;
     BatteryMonitor battery_;
     LoadedSupplyVoltage supplyVoltage_;
+    SupplyGate supplyGate_{NODE_MIN_TRANSMIT_MILLIVOLTS};
     RadioRetryBackoff radioRetry_;
     HintedSessionPolicy hintedSessions_;
     JoinRetrySchedule joinRetry_;
@@ -291,6 +326,7 @@ private:
     uint8_t powerLevel_ = NODE_RADIO_MAX_POWER_LEVEL;
     bool radioFallback_ = false;
     uint8_t unacknowledgedReports_ = 0;
+    bool urgentHeld_ = false;
     StartStatus radioStart_ = StartStatus::RadioFailed;
 };
 

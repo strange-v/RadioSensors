@@ -19,6 +19,7 @@ using radiosensors::node::InputChange;
 using radiosensors::node::MinimumPhaseFilter;
 using radiosensors::node::BinaryReportSchedule;
 using radiosensors::node::LoadedSupplyVoltage;
+using radiosensors::node::SupplyGate;
 using radiosensors::node::RollingKeepAlive;
 using radiosensors::node::RadioRetryBackoff;
 using radiosensors::node::HintedSessionPolicy;
@@ -731,6 +732,40 @@ void test_supply_voltage_reports_lower_of_before_and_previous_after() {
     TEST_ASSERT_EQUAL_UINT16(2960, voltage.report(2960));
 }
 
+void test_supply_voltage_forgets_previous_after() {
+    LoadedSupplyVoltage voltage;
+    voltage.transmitted(1950);
+    voltage.forget();
+    TEST_ASSERT_EQUAL_UINT16(2800, voltage.report(2800));
+}
+
+void test_supply_gate_blocks_at_minimum_and_allows_above() {
+    SupplyGate gate(2000);
+    TEST_ASSERT_FALSE(gate.holding(0));
+    TEST_ASSERT_FALSE(gate.measured(0, 2000));
+    SupplyGate above(2000);
+    TEST_ASSERT_TRUE(above.measured(0, 2001));
+    TEST_ASSERT_FALSE(above.holding(1));
+}
+
+void test_supply_gate_holds_without_measuring_then_recovers() {
+    SupplyGate gate(2000);
+    TEST_ASSERT_FALSE(gate.measured(1000, 1900));
+    TEST_ASSERT_TRUE(gate.holding(1000 + SupplyGate::kRecheckMs - 1));
+    TEST_ASSERT_FALSE(gate.holding(1000 + SupplyGate::kRecheckMs));
+    // A fresh resting measurement decides, whatever came before it.
+    TEST_ASSERT_TRUE(gate.measured(1000 + SupplyGate::kRecheckMs, 2600));
+    TEST_ASSERT_FALSE(gate.holding(1000 + SupplyGate::kRecheckMs + 1));
+}
+
+void test_supply_gate_hold_handles_clock_wrap() {
+    SupplyGate gate(2000);
+    const uint32_t lowAt = UINT32_MAX - 1000;
+    TEST_ASSERT_FALSE(gate.measured(lowAt, 1800));
+    TEST_ASSERT_TRUE(gate.holding(lowAt + 30000));
+    TEST_ASSERT_FALSE(gate.holding(lowAt + SupplyGate::kRecheckMs));
+}
+
 void test_confirmed_input_bursts_only_on_disagreeing_read() {
     FakeContact contact;
     ConfirmedInput input(true);
@@ -888,6 +923,10 @@ int main(int, char**) {
     RUN_TEST(test_fixed_climate_policy_ignores_supply_voltage);
     RUN_TEST(test_adaptive_climate_policy_uses_v1_threshold_semantics);
     RUN_TEST(test_supply_voltage_reports_lower_of_before_and_previous_after);
+    RUN_TEST(test_supply_voltage_forgets_previous_after);
+    RUN_TEST(test_supply_gate_blocks_at_minimum_and_allows_above);
+    RUN_TEST(test_supply_gate_holds_without_measuring_then_recovers);
+    RUN_TEST(test_supply_gate_hold_handles_clock_wrap);
     RUN_TEST(test_confirmed_input_bursts_only_on_disagreeing_read);
     RUN_TEST(test_confirmed_input_rejects_glitch_and_unsettled_burst);
     RUN_TEST(test_confirmed_input_counts_boot_inside_low_phase_once);
