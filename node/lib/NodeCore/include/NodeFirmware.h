@@ -5,7 +5,8 @@
 namespace radiosensors {
 namespace node {
 
-// One version for every node image; the gateway records it at pairing.
+// One version for every node image; the gateway records it at pairing and
+// from a ReadInfo command.
 constexpr protocol::FirmwareVersion kFirmwareVersion{1, 0, 1};
 
 }  // namespace node

@@ -29,6 +29,8 @@ pio run -e climate_tmp112 -t upload
 
 For the SHT40 binary node, build `binary_sht40` or `binary_sht40_debug` and upload the chosen environment. It uses the SHT40 at I2C address `0x44`, the active-low contact on PA5, and a five-minute reporting interval; all three settings are in `platformio.ini`.
 
+Uploading to a paired node keeps its network configuration, because the fuses preserve EEPROM on chip erase. The gateway learns the new firmware version and profile only when an administrator sends the *Read node information* command from the node's card ([PROTOCOL.md](../protocol/PROTOCOL.md#command-types)).
+
 Hardware environments inherit serial UPDI upload on COM11 at 115200 baud and serial monitoring on COM12 at 9600 baud. Only the adapter's RX line is connected to COM12.
 
 `radio_power_sweep` is a bench image for an already commissioned node. It sends one acknowledged voltage telemetry frame every 5 seconds, increasing the RFM69 power level from 0 through 31, then sends nothing until reset. `radio_power_sweep_button` sets `NODE_POWER_SWEEP_BUTTON_LEVEL` and sends a frame every 5 seconds at the selected level. It starts at `NODE_POWER_SWEEP_FIRST_LEVEL`; each PA6 press selects the next level, wrapping to the first after `NODE_POWER_SWEEP_LAST_LEVEL`. The frame's radio state contains the level used for that transmission. Keep the gateway close so every level completes in one attempt. Use a current-capable measurement supply and lower `NODE_POWER_SWEEP_LAST_LEVEL` when the board or its supply must not be exposed to all 32 levels.
@@ -121,6 +123,7 @@ An active node opens a command session when its button is short-pressed, or when
 | Command | Handled by | Effect |
 | --- | --- | --- |
 | `set_count` | counter image | Pending result, ring write, Applied result ([EEPROM.md](EEPROM.md)); the new count is reported immediately |
+| `read_info` | every image | Answers with the image's profile ID, firmware version, and power ceiling; writes nothing |
 
 Sessions started by the flag are limited to one per five minutes, and after one the gateway did not answer, to the battery images' telemetry retry delays ([Lost gateway](#lost-gateway)). A button press always opens a session. An event node reports at least hourly, so the button is the prompt way to reach one.
 

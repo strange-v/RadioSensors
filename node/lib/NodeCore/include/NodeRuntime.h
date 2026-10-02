@@ -10,6 +10,7 @@
 #include "CommissioningService.h"
 #include "DebugLog.h"
 #include "LowPowerClock.h"
+#include "NodeFirmware.h"
 #include "NodeRadio.h"
 #include "ProvisioningButton.h"
 #include "RadioPowerState.h"
@@ -288,7 +289,11 @@ private:
         result.sessionNonce = command.sessionNonce;
         result.commandId = command.commandId;
         result.status = protocol::CommandStatus::Unsupported;
-        profile_.applyCommand(command, result);
+        if (command.type == static_cast<uint8_t>(protocol::CommandType::ReadInfo)) {
+            readInfo(command, result);
+        } else {
+            profile_.applyCommand(command, result);
+        }
         uint8_t bytes[protocol::kMaxCommandResultSize];
         const bool sent =
             protocol::encodeCommandResult(result, bytes, sizeof(bytes)) ==
@@ -306,6 +311,21 @@ private:
 #else
         (void)sent;
 #endif
+    }
+
+    // Read-only, so unlike a profile command it records no ID: a redelivery
+    // answers with the current identity.
+    static void readInfo(
+        const protocol::Command& command, protocol::CommandResult& result) {
+        if (command.argumentSize != 0) {
+            result.status = protocol::CommandStatus::InvalidArgument;
+            return;
+        }
+        const protocol::NodeInfo info{
+            Profile::kProfileId, kFirmwareVersion, NODE_RADIO_MAX_POWER_LEVEL};
+        if (!protocol::encodeNodeInfo(info, result.data, sizeof(result.data))) return;
+        result.status = protocol::CommandStatus::Applied;
+        result.dataSize = protocol::kReadInfoResultSize;
     }
 
     Profile& profile_;
