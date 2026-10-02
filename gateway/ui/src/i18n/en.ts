@@ -39,7 +39,7 @@ export const en = {
     uplink: 'Gateway hears the node', downlink: 'Node hears the gateway',
     fallback: 'The node stopped hearing the gateway and raised its level to its maximum.',
     auto: 'Automatic',
-    autoHint: 'The gateway keeps the node heard at about −80 dBm with the lowest level that achieves it.',
+    autoHint: 'The gateway keeps the node heard between −85 and −75 dBm, lowering the level while the signal is stronger.',
     fixedHint: 'The node always transmits at this level. {max} is the maximum set for its hardware and supply.',
     autoValue: 'Controlled automatically', fixedValue: 'Fixed at level {level}',
   },
