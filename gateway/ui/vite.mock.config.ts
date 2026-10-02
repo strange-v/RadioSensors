@@ -57,8 +57,9 @@ const nodes: MockNode[] = [
 
 // The command book with the gateway's one-per-node rule. A queued command is
 // delivered after 3 s and answered after 6 s, standing in for a node whose
-// button was pressed; `set_count` reports the count it replaced.
-type MockCommand = { node_id: number; command_id: number; type: string; arguments: Record<string, number>; queued_at_ms: number; state: string; status?: string; completed_at_ms?: number; result?: { previous_count: number; count: number } }
+// button was pressed; `set_count` reports the count it replaced and
+// `read_info` the node's registry identity.
+type MockCommand = { node_id: number; command_id: number; type: string; arguments: Record<string, number>; queued_at_ms: number; state: string; status?: string; completed_at_ms?: number; result?: Record<string, number | string> }
 const commands: MockCommand[] = []
 let nextCommandId = 4660
 const commandTimers = new Map<number, ReturnType<typeof setTimeout>[]>()
@@ -66,9 +67,12 @@ const commandTimers = new Map<number, ReturnType<typeof setTimeout>[]>()
 function queueMockCommand(body: Record<string, unknown>) {
   const node = nodes.find((entry) => entry.node_id === body.node_id && entry.state === 'active')
   if (!node) return { status: 404, body: { error: 'node_not_found' } }
-  if (node.profile_id !== 6 || body.type !== 'set_count') return { status: 422, body: { error: 'unsupported_command' } }
+  const supported = body.type === 'read_info' || (body.type === 'set_count' && node.profile_id === 6)
+  if (!supported) return { status: 422, body: { error: 'unsupported_command' } }
   const args = (body.arguments ?? {}) as Record<string, number>
-  const valid = Number.isInteger(args.count) && args.count >= 0 && args.count <= 0xffff_ffff
+  const valid = body.type === 'read_info'
+    ? Object.keys(args).length === 0
+    : Number.isInteger(args.count) && args.count >= 0 && args.count <= 0xffff_ffff
   if (!valid) return { status: 422, body: { error: 'invalid_command_arguments' } }
   const existing = commands.findIndex((entry) => entry.node_id === node.node_id)
   if (existing >= 0 && commands[existing].state !== 'completed') return { status: 409, body: { error: 'command_pending' } }
@@ -80,6 +84,9 @@ function queueMockCommand(body: Record<string, unknown>) {
     setTimeout(() => {
       Object.assign(command, { state: 'completed', status: 'applied', completed_at_ms: Date.now() })
       if (command.type === 'set_count') command.result = { previous_count: 1_207, count: args.count }
+      if (command.type === 'read_info') {
+        command.result = { profile_id: node.profile_id, firmware: node.firmware, max_power_level: node.max_power_level ?? 0 }
+      }
     }, 6_000),
   ])
   return { status: 201, body: command }

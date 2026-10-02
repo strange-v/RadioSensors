@@ -33,6 +33,8 @@ Both need an RFM69 module wired as described in the [gateway README](gateway/REA
 3. **Pairing.** In the gateway UI open *Nodes → Add node*, scan the node's QR code or enter its UID and key, press *Add*, then press the button on the node.
 4. **Home Assistant.** On the gateway's *Connect Home Assistant* page create a connection key, then add the [osk-sense-ha](https://github.com/strange-v/osk-sense-ha) integration with it.
 
+After reflashing a paired node, open its card in the gateway UI, send the *Read node information* command, then short-press the node's button. The node stays paired; the gateway records its new firmware version and type.
+
 ## Security
 
 - Every node has its own factory key; there is no shared key in the firmware.

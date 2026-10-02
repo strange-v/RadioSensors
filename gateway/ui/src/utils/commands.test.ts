@@ -39,6 +39,7 @@ describe('parseCommandValue', () => {
 describe('command arguments', () => {
   it('names the argument after the command type', () => {
     expect(commandArguments('set_count', 1234)).toEqual({ count: 1234 })
+    expect(commandArguments('read_info', null)).toEqual({})
     expect(commandValue({ arguments: { count: 0 } })).toBe(0)
   })
 })

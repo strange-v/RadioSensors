@@ -7,7 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api, errorCode, isAdmin } from '../api/client'
 import type { CommandType, GatewayNode, NodeCommand } from '../api/types'
-import { commandArguments, commandValue, parseCommandValue, supportedCommands } from '../utils/commands'
+import { commandArguments, commandTakesValue, commandValue, parseCommandValue, supportedCommands } from '../utils/commands'
 
 const props = defineProps<{ node: GatewayNode }>()
 const { t } = useI18n()
@@ -28,8 +28,10 @@ let timer: number | undefined
 let pollInFlight = false
 
 const waiting = computed(() => command.value?.state === 'pending' || command.value?.state === 'delivered')
+const takesValue = computed(() => commandTakesValue(selectedType.value))
 const parsedValue = computed(() => parseCommandValue(selectedType.value, draftValue.value))
 const invalidValue = computed(() => draftValue.value.trim() !== '' && parsedValue.value === null)
+const ready = computed(() => !takesValue.value || parsedValue.value !== null)
 
 const stateLabel = computed(() => {
   const current = command.value
@@ -46,7 +48,11 @@ const stateHint = computed(() => {
   if (current.state === 'delivered') return t('commands.deliveredHint')
   if (current.status === 'unsupported') return t('commands.unsupportedHint')
   if (current.status === 'invalid_argument') return t('commands.invalidHint')
-  if (current.result) return t('commands.countResult', { previous: current.result.previous_count, count: current.result.count })
+  const result = current.result
+  if (result && 'count' in result) return t('commands.countResult', { previous: result.previous_count, count: result.count })
+  if (result && 'firmware' in result) {
+    return t('commands.infoResult', { firmware: result.firmware, profile: result.profile_id, level: result.max_power_level })
+  }
   return ''
 })
 
@@ -75,13 +81,12 @@ async function compose() {
 }
 
 async function send() {
-  const value = parsedValue.value
-  if (value === null || busy.value) return
+  if (!ready.value || busy.value) return
   busy.value = true
   failure.value = ''
   try {
     command.value = await api.queueCommand({
-      node_id: props.node.node_id, type: selectedType.value, arguments: commandArguments(selectedType.value, value),
+      node_id: props.node.node_id, type: selectedType.value, arguments: commandArguments(selectedType.value, parsedValue.value),
     })
     draftValue.value = ''
     composing.value = false
@@ -136,14 +141,18 @@ onBeforeUnmount(() => window.clearInterval(timer))
       <div v-if="types.length > 1" class="segmented" role="group" :aria-label="$t('commands.kind')">
         <button v-for="type in types" :key="type" type="button" :class="{ active: selectedType === type }" @click="selectedType = type">{{ $t(`commands.type.${type}`) }}</button>
       </div>
-      <label>
+      <label v-if="takesValue">
         <span>{{ $t(`commands.field.${selectedType}`) }}</span>
         <input ref="valueInput" v-model="draftValue" inputmode="numeric" :aria-label="$t(`commands.field.${selectedType}`)" @keydown.enter="send">
         <small :class="{ invalid: invalidValue }">{{ invalidValue ? $t(`commands.invalid.${selectedType}`) : $t(`commands.hint.${selectedType}`) }}</small>
       </label>
+      <div v-else class="command-state">
+        <strong>{{ $t(`commands.describe.${selectedType}`) }}</strong>
+        <p class="command-hint">{{ $t(`commands.hint.${selectedType}`) }}</p>
+      </div>
       <div class="compose-actions">
         <button class="button secondary" type="button" @click="composing = false">{{ $t('common.cancel') }}</button>
-        <button class="button primary" :disabled="busy || parsedValue === null" type="button" @click="send">{{ busy ? $t('commands.sending') : $t('commands.send') }}</button>
+        <button class="button primary" :disabled="busy || !ready" type="button" @click="send">{{ busy ? $t('commands.sending') : $t('commands.send') }}</button>
       </div>
     </template>
 

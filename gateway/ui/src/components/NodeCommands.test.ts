@@ -64,15 +64,38 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('NodeCommands', () => {
-  it('appears only on a profile that has commands', async () => {
+  it('offers the commands of the profile', async () => {
     const counter = await mountCard()
     expect(counter.find('input').exists()).toBe(false)
     await compose(counter)
-    expect(counter.find('.segmented').exists()).toBe(false)
+    expect(counter.findAll('.segmented button').map((button) => button.text()))
+      .toEqual([en.commands.type.set_count, en.commands.type.read_info])
     expect(counter.get('label span').text()).toBe(en.commands.field.set_count)
 
     const climate = await mountCard(node({ profile_id: 2 }))
-    expect(climate.find('.node-commands').exists()).toBe(false)
+    await compose(climate)
+    expect(climate.find('.segmented').exists()).toBe(false)
+    expect(climate.find('input').exists()).toBe(false)
+
+    const unknown = await mountCard(node({ profile_id: 99 }))
+    expect(unknown.find('.node-commands').exists()).toBe(false)
+  })
+
+  it('reads node information without a value and shows what the node reported', async () => {
+    const wrapper = await mountCard(node({ profile_id: 2 }))
+    await compose(wrapper)
+    expect(wrapper.get('.command-hint').text()).toBe(en.commands.hint.read_info)
+    await wrapper.get('.button.primary').trigger('click')
+    await flushPromises()
+    expect(gatewayApi.queueCommand).toHaveBeenCalledWith({ node_id: 6, type: 'read_info', arguments: {} })
+
+    state.commands = [pending({
+      type: 'read_info', arguments: {}, state: 'completed', status: 'applied', completed_at_ms: 2,
+      result: { profile_id: 6, firmware: '1.0.2', max_power_level: 20 },
+    })]
+    await tick()
+    expect(wrapper.get('.command-line strong').text()).toBe(en.commands.describe.read_info)
+    expect(wrapper.get('.command-hint').text()).toBe('Firmware 1.0.2, profile 6, maximum radio level 20.')
   })
 
   it('refuses a count the node cannot store', async () => {

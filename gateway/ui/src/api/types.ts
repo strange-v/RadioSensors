@@ -58,8 +58,10 @@ export type PowerPolicy = 'auto' | 'fixed'
 export interface PowerPolicyWrite { power_policy: PowerPolicy; fixed_power_level?: number }
 export interface PatchedNode { node_id: number; display_name?: string; power_policy?: PowerPolicy; fixed_power_level?: number; registry_generation: number }
 // The command types of protocol/protocol-manifest.json.
-export type CommandType = 'set_count'
+export type CommandType = 'set_count' | 'read_info'
 export interface CommandArguments { count?: number }
+export interface CountResult { previous_count: number; count: number }
+export interface NodeInfoResult { profile_id: number; firmware: string; max_power_level: number }
 export interface NodeCommand {
   node_id: number
   command_id: number
@@ -71,7 +73,7 @@ export interface NodeCommand {
   state: 'pending' | 'delivered' | 'completed'
   status?: 'applied' | 'unsupported' | 'invalid_argument'
   completed_at_ms?: number
-  result?: { previous_count: number; count: number }
+  result?: CountResult | NodeInfoResult
 }
 export interface CommandList { commands: NodeCommand[] }
 export interface CommandRequest { node_id: number; type: CommandType; arguments: CommandArguments }
