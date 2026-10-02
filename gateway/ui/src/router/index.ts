@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { onSessionLost } from '../api/client'
 import { resolveRouteAccess } from './access'
 import HomeView from '../views/HomeView.vue'
 import SetupView from '../views/SetupView.vue'
@@ -30,6 +31,12 @@ export const router = createRouter({
     { path: '/home-assistant', component: () => import('../views/admin').then((views) => views.HomeAssistantView), meta: { requiresAuth: true, requiresAdmin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
+})
+
+onSessionLost(() => {
+  const current = router.currentRoute.value
+  if (current.meta.requiresAuth !== true) return
+  router.replace({ path: '/login', query: { redirect: current.fullPath } })
 })
 
 router.beforeEach(async (to) => {

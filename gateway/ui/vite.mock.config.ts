@@ -163,6 +163,8 @@ function openPairingWindow(deviceUid: string, succeed: boolean) {
   }, 5_000)
 }
 
+let signedIn = true
+
 function mockApi(): Plugin {
   return {
     name: 'mock-gateway-api',
@@ -177,6 +179,16 @@ function mockApi(): Plugin {
           })
           return
         }
+        // Stands in for a gateway restart: sessions live in RAM, so every
+        // request that needs one answers 401 until someone signs in again.
+        if (path === '/ui/mock/restart' && req.method === 'POST') {
+          signedIn = false
+          health.boot_id = randomBytes(16).toString('hex')
+          return json(res, 200, { restarted: true })
+        }
+        if (path === '/ui/session' && req.method === 'POST') signedIn = true
+        const publicPath = path === '/health' || path === '/ui/setup' || (path === '/ui/session' && req.method === 'POST')
+        if (!signedIn && !publicPath) return json(res, 401, { error: 'authentication_required' })
         if (path === '/ui/backup/export' && req.method === 'POST') {
           readBody(req, body => {
             const payload = Buffer.from(JSON.stringify({ version: 1, created_at_ms: Date.now(), settings: { hostname: 'osk-restored', mdns: true, ntp: true, pairing_seconds: 120, setup_seconds: 600, servers: ['pool.ntp.org'] }, network_id: 123, installation_key: '01'.repeat(16), device_secret: '02'.repeat(32), nodes: nodes.map(n => ({ uid: n.device_uid.toLowerCase(), id: n.node_id, profile: n.profile_id, firmware: [1, 0, 0], state: n.state === 'active' ? 2 : 1, nonce: 1, name: n.display_name, max_power: n.max_power_level, power_policy: 0 })) }))

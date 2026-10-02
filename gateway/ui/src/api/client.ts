@@ -26,7 +26,11 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_
     gatewayReachable.value = true
     if (response.ok && binary) return await response.blob() as T
     const body = await response.json().catch(() => ({})) as { error?: string }
-    if (!response.ok) throw new ApiError(response.status, body.error ?? 'generic')
+    if (!response.ok) {
+      const error = new ApiError(response.status, body.error ?? 'generic')
+      if (isLostSession(error)) dropLostSession()
+      throw error
+    }
     return body as T
   } catch (error) {
     if (!(error instanceof ApiError)) gatewayReachable.value = false
@@ -53,6 +57,27 @@ function rememberSession(session: Session): Session {
 export function forgetSession() {
   csrfToken = ''
   sessionUser.value = null
+}
+
+// A gateway restart or the 12-hour idle expiry ends the session behind the
+// page's back, and timer-driven reads swallow their errors so that one missed
+// poll stays quiet. Without this a page would keep showing frozen data until
+// the next navigation ran the route guard. Only a session this page holds
+// counts: the guard's own probe while signed out is not a loss, and
+// `invalid_credentials` from a login is a different code.
+let sessionLostHandler: (() => void) | null = null
+
+export function onSessionLost(handler: () => void) {
+  sessionLostHandler = handler
+}
+
+function isLostSession(error: ApiError) {
+  return error.status === 401 && error.code === 'authentication_required' && sessionUser.value !== null
+}
+
+function dropLostSession() {
+  forgetSession()
+  sessionLostHandler?.()
 }
 
 export const api = {
