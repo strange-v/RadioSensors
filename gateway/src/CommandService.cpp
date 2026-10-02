@@ -21,7 +21,9 @@ using namespace radiosensors::gateway_storage;
 namespace command_book = radiosensors::command_book;
 namespace protocol = radiosensors::protocol;
 
-constexpr uint32_t kTaskStackSize = 6144;
+// As large as the commissioning task's: a read_info result commits the node
+// registry here, and that NVS blob write overflows 6 KiB.
+constexpr uint32_t kTaskStackSize = 8192;
 // Above commissioning, so a node's session reply never waits behind a pairing
 // commit; below the radio owner.
 constexpr UBaseType_t kTaskPriority = 7;
