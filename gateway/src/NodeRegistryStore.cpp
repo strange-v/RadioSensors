@@ -364,6 +364,33 @@ RegistryCommitStatus setPowerPolicyAndSave(
                         : RegistryCommitStatus::StorageError;
 }
 
+RegistryCommitStatus updateInfoAndSave(
+    const uint8_t nodeId, const uint8_t* const deviceUid,
+    const radiosensors::protocol::NodeInfo& info,
+    radiosensors::registry::InfoStatus& result) {
+    gateway::recovery::Guard guard;
+    if (!guard || gateway::recovery::blocked() || !initialized || mutex == nullptr) return RegistryCommitStatus::NotInitialized;
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    const uint64_t lockStartedUs = commitClockUs();
+    const std::unique_ptr<radiosensors::registry::NodeRegistry> candidate(
+        new (std::nothrow) radiosensors::registry::NodeRegistry(nodes));
+    if (!candidate) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::StorageError;
+    }
+    result = candidate->updateInfo(nodeId, deviceUid, info);
+    if (result != radiosensors::registry::InfoStatus::Updated &&
+        result != radiosensors::registry::InfoStatus::ProfileChanged) {
+        xSemaphoreGive(mutex);
+        return RegistryCommitStatus::NoChange;
+    }
+    const CommitTiming timing = commitCandidateLocked(*candidate, lockStartedUs);
+    xSemaphoreGive(mutex);
+    logCommitTiming("node_info", timing);
+    return timing.saved ? RegistryCommitStatus::Ok
+                        : RegistryCommitStatus::StorageError;
+}
+
 RegistryCommitStatus removeAndSave(const uint8_t nodeId, bool& removed) {
     removed = false;
     gateway::recovery::Guard guard;

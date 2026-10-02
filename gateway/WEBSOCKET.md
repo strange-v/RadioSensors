@@ -42,7 +42,9 @@ A zero timestamp means the packet arrived before the gateway synchronized its cl
 
 `REGISTRY_CHANGED` is exactly ten bytes and carries the new durable registry generation. Its common-prefix sequence is the current telemetry watermark.
 
-It is sent when the durable node registry changes while a client is connected: a rename, deletion, completed pairing, state change, or other committed registry mutation. The consumer stops attributing new telemetry whose node mapping may be stale, refetches `GET /api/nodes`, and resumes once the returned generation matches the notification.
+It is sent when the durable node registry changes while a client is connected: a rename, deletion, completed pairing, state change, node information refreshed by `read_info`, or other committed registry mutation. The consumer stops attributing new telemetry whose node mapping may be stale, refetches `GET /api/nodes`, and resumes once the returned generation matches the notification.
+
+A `read_info` refresh can change a node's `profile_id` while its `node_id` and `device_uid` stay the same. A consumer that derives entities from the profile rebuilds them for that node instead of matching on `device_uid` alone.
 
 Radio node IDs are reused. This message is therefore the primary correctness mechanism, not merely an optimization over polling. A radio network reset also clears the registry but restarts the gateway, so reconnect bootstrap covers that case even if the notification is not delivered first.
 

@@ -11,6 +11,7 @@
 #include "NodeRegistryStore.h"
 #include "RadioService.h"
 #include "RecoveryService.h"
+#include "TelemetryStore.h"
 #include "TimeService.h"
 
 namespace gateway::commands {
@@ -197,6 +198,36 @@ void handleCommandReady(const radio::ReceivedFrame& received) {
         nodeId, command.commandId, command.type);
 }
 
+// Call with the mutex held, for a result matching the latest delivery. The
+// registry is written before the command completes, so a failed write leaves
+// the command pending and the node answers it again in a later session.
+bool applyReadInfo(
+    const uint8_t nodeId, const uint8_t* const deviceUid,
+    const protocol::CommandResult& result, bool& profileChanged) {
+    const CommandRecord* const record = command_book::find(book, nodeId);
+    if (record == nullptr || record->state != CommandState::Pending ||
+        record->commandId != result.commandId ||
+        record->type != static_cast<uint8_t>(protocol::CommandType::ReadInfo) ||
+        result.status != protocol::CommandStatus::Applied) {
+        return true;
+    }
+    protocol::NodeInfo info{};
+    if (!protocol::decodeNodeInfo(result.data, result.dataSize, info)) {
+        count(&Counters::rejectedFrames);
+        return false;
+    }
+    radiosensors::registry::InfoStatus status{};
+    const RegistryCommitStatus commit =
+        registry_store::updateInfoAndSave(nodeId, deviceUid, info, status);
+    if (commit == RegistryCommitStatus::StorageError ||
+        commit == RegistryCommitStatus::NotInitialized) {
+        count(&Counters::storageErrors);
+        return false;
+    }
+    profileChanged = status == radiosensors::registry::InfoStatus::ProfileChanged;
+    return true;
+}
+
 void handleCommandResult(const radio::ReceivedFrame& received) {
     protocol::CommandResult result{};
     if (protocol::decodeCommandResult(received.data, received.size, result) !=
@@ -220,6 +251,11 @@ void handleCommandResult(const radio::ReceivedFrame& received) {
         count(&Counters::rejectedFrames);
         return;
     }
+    bool profileChanged = false;
+    if (!applyReadInfo(nodeId, deviceUid, result, profileChanged)) {
+        unlock();
+        return;
+    }
     candidate = book;
     const command_book::CompleteStatus status = command_book::complete(
         candidate, deviceUid, nodeId, result.commandId, result.status,
@@ -240,6 +276,8 @@ void handleCommandResult(const radio::ReceivedFrame& received) {
             break;
     }
     unlock();
+    // The cached frame was decoded under the previous profile.
+    if (profileChanged) telemetry_store::erase(nodeId);
     Serial.printf(
         "Command result: node=%u id=%u status=%u recorded=%s\n",
         nodeId, result.commandId, static_cast<unsigned>(result.status),

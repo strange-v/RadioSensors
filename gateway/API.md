@@ -223,9 +223,9 @@ The info endpoint never returns radio keys, node UIDs, credentials, or tokens. `
 }
 ```
 
-`registry_generation` is an unsigned wrapping 32-bit value changed by every durable registry mutation. Consumers compare it for equality. `node_id` is `1..99`, `device_uid` is exactly 20 uppercase hexadecimal characters, `profile_id` is a nonzero unsigned 16-bit value, and `firmware` is SemVer. `state` is `pending`, `active`, or `disabled`; adding a state is additive, so an unknown value must not make the complete response unreadable.
+`registry_generation` is an unsigned wrapping 32-bit value changed by every durable registry mutation. Consumers compare it for equality. `node_id` is `1..99`, `device_uid` is exactly 20 uppercase hexadecimal characters, `profile_id` is a nonzero unsigned 16-bit value, and `firmware` is SemVer; both come from pairing or the node's last `read_info`. `state` is `pending`, `active`, or `disabled`; adding a state is additive, so an unknown value must not make the complete response unreadable.
 
-`max_power_level` is the transmit power ceiling the node reported at pairing, `0..31`. `power_policy` is `auto` or `fixed`; `fixed_power_level` is present exactly when it is `fixed`. `tx_power_target` is the level the gateway currently wants and is absent before the node's first report since boot or a policy change.
+`max_power_level` is the transmit power ceiling the node reported at pairing or in its last `read_info`, `0..31`. `power_policy` is `auto` or `fixed`; `fixed_power_level` is present exactly when it is `fixed`. `tx_power_target` is the level the gateway currently wants and is absent before the node's first report since boot or a policy change.
 
 `has_telemetry` is always present. `last_seen_at_ms`, `rssi`, `tx_power_level`, and `radio_fallback` are present exactly when it is true; `downlink_rssi` also requires that the node has heard an acknowledgement, and `supply_mv`, the node's supply voltage in millivolts, that the node measured it. These fields come from the node's latest report ([PROTOCOL.md](../protocol/PROTOCOL.md#radio-power)). A zero last-seen timestamp means the frame arrived before gateway time synchronization. The registry response never contains radio payload bytes.
 
@@ -262,7 +262,7 @@ A command changes state on a sleeping node, which fetches it in a radio session 
 | `delivered` | Sent to the node since this boot; its result has not arrived |
 | `completed` | The node reported `status`: `applied`, `unsupported`, or `invalid_argument` |
 
-An applied `set_count` also carries `"result":{"previous_count":1200,"count":1234}`. Timestamps are zero before time synchronization.
+An applied `set_count` also carries `"result":{"previous_count":1200,"count":1234}`, and an applied `read_info` `"result":{"profile_id":6,"firmware":"1.0.2","max_power_level":20}`. Timestamps are zero before time synchronization.
 
 `POST /ui/commands` requires an admin session plus CSRF and queues one command:
 
@@ -273,6 +273,9 @@ An applied `set_count` also carries `"result":{"previous_count":1200,"count":123
 | `type` | `arguments` | Profiles |
 | --- | --- | --- |
 | `set_count` | `count`: unsigned 32-bit | 6 |
+| `read_info` | none: `{}` | All |
+
+`read_info` refreshes the node's registry record from the running firmware ([PROTOCOL.md](../protocol/PROTOCOL.md#command-types)); use it after reflashing a node. The registry changes before the command completes, so an applied result that changed anything has already advanced `registry_generation`.
 
 The response is `201` with the queued command in the listing shape. Errors: `400 invalid_request`, `404 node_not_found` when no active node has the ID, `409 command_pending`, `409 command_capacity_reached`, `422 invalid_command_values`, `422 unsupported_command` for an unknown type or one the node's profile lacks, `422 invalid_command_arguments`, `500 command_storage_failed`, or `503 commands_unavailable`.
 
@@ -376,7 +379,7 @@ A client reads `/api/info`, checks `api_version` and `stream_version`, authentic
 
 Keeping the registry fresh needs two rules and no polling:
 
-- Refetch `/api/nodes` on a `REGISTRY_CHANGED` message, which carries the new `registry_generation`. This covers renames, deletions, completed pairings, and radio network resets that happen while the socket is up.
+- Refetch `/api/nodes` on a `REGISTRY_CHANGED` message, which carries the new `registry_generation`. This covers renames, deletions, completed pairings, `read_info` refreshes, and radio network resets that happen while the socket is up. A refresh may change a node's `profile_id` under the same `device_uid`.
 - Refetch `/api/info` and `/api/nodes` after every reconnect. A dropped socket is also how a client learns the gateway rebooted; `HELLO` confirms both identities and the new sequence space before telemetry is trusted.
 
 If snapshot begin and end carry different registry generations, the consumer discards the snapshot and reconnects after refetching `/api/nodes`. If a `REGISTRY_CHANGED` message arrives during normal streaming, it pauses node-ID attribution until `/api/nodes` returns the announced generation.

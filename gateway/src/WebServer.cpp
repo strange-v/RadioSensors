@@ -888,14 +888,22 @@ const char* commandTypeName(const uint8_t type) {
     switch (static_cast<CommandType>(type)) {
         case CommandType::SetCount:
             return "set_count";
+        case CommandType::ReadInfo:
+            return "read_info";
     }
     return "unknown";
 }
 
 bool parseCommandType(const char* const name, CommandType& type) {
-    if (strcmp(name, "set_count") != 0) return false;
-    type = CommandType::SetCount;
-    return true;
+    if (strcmp(name, "set_count") == 0) {
+        type = CommandType::SetCount;
+        return true;
+    }
+    if (strcmp(name, "read_info") == 0) {
+        type = CommandType::ReadInfo;
+        return true;
+    }
+    return false;
 }
 
 const char* commandStatusName(const CommandStatus status) {
@@ -930,10 +938,22 @@ void writeCommand(JsonObject object, const commands::Entry& entry) {
     object["state"] = "completed";
     object["status"] = commandStatusName(record.status);
     object["completed_at_ms"] = record.completedAtUnixMs;
-    if (type == CommandType::SetCount && record.status == CommandStatus::Applied) {
+    if (record.status != CommandStatus::Applied) return;
+    if (type == CommandType::SetCount) {
         JsonObject result = object["result"].to<JsonObject>();
         result["previous_count"] = radiosensors::protocol::readUint32Le(record.result);
         result["count"] = radiosensors::protocol::readUint32Le(record.result + 4);
+    }
+    radiosensors::protocol::NodeInfo info{};
+    if (type == CommandType::ReadInfo &&
+        radiosensors::protocol::decodeNodeInfo(record.result, record.resultSize, info)) {
+        JsonObject result = object["result"].to<JsonObject>();
+        result["profile_id"] = info.profileId;
+        char firmware[16]{};
+        snprintf(firmware, sizeof(firmware), "%u.%u.%u", info.firmware.major,
+                 info.firmware.minor, info.firmware.patch);
+        result["firmware"] = firmware;
+        result["max_power_level"] = info.maxPowerLevel;
     }
 }
 
@@ -988,7 +1008,7 @@ void handleQueueCommand(AsyncWebServerRequest* request, JsonVariant& json) {
     if (type == CommandType::SetCount && arguments["count"].is<uint32_t>()) {
         radiosensors::protocol::writeUint32Le(encoded, arguments["count"].as<uint32_t>());
         size = radiosensors::protocol::kSetCountArgumentSize;
-    } else {
+    } else if (type != CommandType::ReadInfo || arguments.size() != 0) {
         sendError(request, 422, "invalid_command_arguments");
         return;
     }

@@ -44,6 +44,11 @@ RegistryCommitStatus setPowerPolicyAndSave(
     uint8_t nodeId,
     uint8_t policy,
     radiosensors::registry::PowerPolicyStatus& result);
+RegistryCommitStatus updateInfoAndSave(
+    uint8_t nodeId,
+    const uint8_t* deviceUid,
+    const radiosensors::protocol::NodeInfo& info,
+    radiosensors::registry::InfoStatus& result);
 RegistryCommitStatus removeAndSave(uint8_t nodeId, bool& removed);
 // Drops every record in a single commit. Used by the radio network reset,
 // where removing nodes one at a time would mean one flash write each and a
