@@ -79,6 +79,28 @@
           { "name": "previous_count", "offset": 8, "encoding": "uint32_le" },
           { "name": "count", "offset": 12, "encoding": "uint32_le" }
         ]
+      },
+      {
+        "type": 2,
+        "name": "read_info",
+        "arguments": [],
+        "result": [
+          {
+            "name": "profile_id",
+            "offset": 8,
+            "encoding": "uint16_le",
+            "valid_raw": { "min": 1, "max": 65535 }
+          },
+          { "name": "firmware_major", "offset": 10, "encoding": "uint8" },
+          { "name": "firmware_minor", "offset": 11, "encoding": "uint8" },
+          { "name": "firmware_patch", "offset": 12, "encoding": "uint8" },
+          {
+            "name": "max_power_level",
+            "offset": 13,
+            "encoding": "uint8",
+            "valid_raw": { "min": 0, "max": 31 }
+          }
+        ]
       }
     ]
   },
@@ -250,14 +272,14 @@
         "id": 1,
         "name": "voltage",
         "frame_size": 5,
-        "commands": [],
+        "commands": [2],
         "fields": []
       },
       {
         "id": 2,
         "name": "temperature",
         "frame_size": 7,
-        "commands": [],
+        "commands": [2],
         "fields": [
           {
             "name": "temperature",
@@ -275,7 +297,7 @@
         "id": 3,
         "name": "climate_th",
         "frame_size": 9,
-        "commands": [],
+        "commands": [2],
         "fields": [
           {
             "name": "temperature",
@@ -303,7 +325,7 @@
         "id": 4,
         "name": "climate_thp",
         "frame_size": 11,
-        "commands": [],
+        "commands": [2],
         "fields": [
           {
             "name": "temperature",
@@ -341,7 +363,7 @@
         "id": 5,
         "name": "binary_input",
         "frame_size": 6,
-        "commands": [],
+        "commands": [2],
         "fields": [
           {
             "name": "state",
@@ -356,7 +378,7 @@
         "id": 6,
         "name": "pulse_counter",
         "frame_size": 9,
-        "commands": [1],
+        "commands": [1, 2],
         "fields": [
           {
             "name": "count",
@@ -370,7 +392,7 @@
         "id": 7,
         "name": "binary_climate_th",
         "frame_size": 10,
-        "commands": [],
+        "commands": [2],
         "fields": [
           {
             "name": "state",
@@ -405,7 +427,7 @@
         "id": 8,
         "name": "binary_temperature",
         "frame_size": 8,
-        "commands": [],
+        "commands": [2],
         "fields": [
           {
             "name": "state",

@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "CommandSessionFrames.h"
 #include "JoinRequest.h"
 
 namespace radiosensors {
@@ -50,6 +51,13 @@ enum class RenameStatus : uint8_t {
     InvalidName,
 };
 
+enum class InfoStatus : uint8_t {
+    Updated,
+    ProfileChanged,
+    NoChange,
+    NotFound,
+};
+
 enum class ReserveStatus : uint8_t {
     Created,
     ExistingPendingUpdated,
@@ -93,6 +101,10 @@ public:
     RenameStatus rename(uint8_t nodeId, const char* displayName, size_t length);
     // A fixed level must be within the node's ceiling.
     PowerPolicyStatus setPowerPolicy(uint8_t nodeId, uint8_t policy);
+    // Replaces the identity an active node reported in ReadInfo. A fixed
+    // power level above a lowered ceiling returns to automatic control.
+    InfoStatus updateInfo(
+        uint8_t nodeId, const uint8_t* deviceUid, const protocol::NodeInfo& info);
 
     bool restore(const NodeRecord* records, size_t count);
 

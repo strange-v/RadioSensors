@@ -257,6 +257,33 @@
         "previous_count": 16,
         "count": 305419896
       }
+    },
+    {
+      "name": "read_info",
+      "frame": "command",
+      "command_type": 2,
+      "hex": "44EFCDAB89361202",
+      "decoded": {
+        "session_nonce": 2309737967,
+        "command_id": 4662,
+        "command_type": 2
+      }
+    },
+    {
+      "name": "read_info_applied",
+      "frame": "command_result",
+      "command_type": 2,
+      "hex": "45EFCDAB89361200060001000214",
+      "decoded": {
+        "session_nonce": 2309737967,
+        "command_id": 4662,
+        "status": 0,
+        "profile_id": 6,
+        "firmware_major": 1,
+        "firmware_minor": 0,
+        "firmware_patch": 2,
+        "max_power_level": 20
+      }
     }
   ],
   "gateway_stream": [

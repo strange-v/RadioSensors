@@ -21,9 +21,11 @@ constexpr size_t kMaxCommandResultSize =
 
 constexpr size_t kSetCountArgumentSize = 4;
 constexpr size_t kSetCountResultSize = 8;
+constexpr size_t kReadInfoResultSize = 6;
 
 enum class CommandType : uint8_t {
     SetCount = 1,
+    ReadInfo = 2,
 };
 
 enum class CommandStatus : uint8_t {
@@ -49,6 +51,13 @@ struct CommandResult {
     CommandStatus status;
     uint8_t dataSize;
     uint8_t data[kMaxCommandResultDataSize];
+};
+
+// Result data of ReadInfo: the identity Join request carries.
+struct NodeInfo {
+    uint16_t profileId;
+    FirmwareVersion firmware;
+    uint8_t maxPowerLevel;
 };
 
 enum class CommandSessionCodecStatus : uint8_t {
@@ -250,6 +259,9 @@ inline bool commandArgumentSize(const uint8_t type, size_t& size) {
         case CommandType::SetCount:
             size = kSetCountArgumentSize;
             return true;
+        case CommandType::ReadInfo:
+            size = 0;
+            return true;
     }
     return false;
 }
@@ -258,14 +270,20 @@ inline bool validCommandArguments(
     const uint8_t type, const uint8_t* const arguments, const size_t size) {
     size_t expected = 0;
     return commandArgumentSize(type, expected) && size == expected &&
-        arguments != nullptr;
+        (size == 0 || arguments != nullptr);
 }
 
 // Result data accompanies only an applied command.
 inline size_t commandResultDataSize(
     const CommandType type, const CommandStatus status) {
     if (status != CommandStatus::Applied) return 0;
-    return type == CommandType::SetCount ? kSetCountResultSize : 0;
+    switch (type) {
+        case CommandType::SetCount:
+            return kSetCountResultSize;
+        case CommandType::ReadInfo:
+            return kReadInfoResultSize;
+    }
+    return 0;
 }
 
 inline bool profileSupportsCommand(
@@ -273,8 +291,38 @@ inline bool profileSupportsCommand(
     switch (type) {
         case CommandType::SetCount:
             return profileId == profileIdValue(ProfileId::PulseCounter);
+        case CommandType::ReadInfo:
+            return true;
     }
     return false;
+}
+
+inline bool encodeNodeInfo(
+    const NodeInfo& info, uint8_t* const output, const size_t capacity) {
+    if (output == nullptr || capacity < kReadInfoResultSize ||
+        info.profileId == kUnassignedProfileId ||
+        info.maxPowerLevel > kMaxRadioPowerLevel) {
+        return false;
+    }
+    writeUint16Le(output, info.profileId);
+    output[2] = info.firmware.major;
+    output[3] = info.firmware.minor;
+    output[4] = info.firmware.patch;
+    output[5] = info.maxPowerLevel;
+    return true;
+}
+
+inline bool decodeNodeInfo(
+    const uint8_t* const data, const size_t size, NodeInfo& info) {
+    if (data == nullptr || size != kReadInfoResultSize) return false;
+    const uint16_t profileId = readUint16Le(data);
+    if (profileId == kUnassignedProfileId || data[5] > kMaxRadioPowerLevel) {
+        return false;
+    }
+    info.profileId = profileId;
+    info.firmware = FirmwareVersion{data[2], data[3], data[4]};
+    info.maxPowerLevel = data[5];
+    return true;
 }
 
 }  // namespace protocol

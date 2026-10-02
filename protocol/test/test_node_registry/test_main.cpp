@@ -238,6 +238,43 @@ void test_power_policy_is_bounded_by_the_ceiling_and_persisted() {
     TEST_ASSERT_EQUAL_UINT8(power::kPolicyAuto, record->powerPolicy);
 }
 
+void test_update_info_replaces_the_identity_of_an_active_node() {
+    namespace power = radiosensors::radio_power;
+    NodeRegistry registry;
+    JoinRequest request = makeRequest(0x10, 1, 7);
+    request.maxPowerLevel = 20;
+    const uint8_t nodeId = registry.reserve(request).nodeId;
+    const NodeInfo info{1, FirmwareVersion{1, 2, 4}, 20};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(InfoStatus::NotFound),
+                      static_cast<int>(registry.updateInfo(nodeId, request.deviceUid, info)));
+    registry.confirm(request.deviceUid, nodeId, 7);
+    const JoinRequest other = makeRequest(0x30);
+    TEST_ASSERT_EQUAL(static_cast<int>(InfoStatus::NotFound),
+                      static_cast<int>(registry.updateInfo(nodeId, other.deviceUid, info)));
+    TEST_ASSERT_EQUAL(static_cast<int>(InfoStatus::NotFound),
+                      static_cast<int>(registry.updateInfo(99, request.deviceUid, info)));
+
+    TEST_ASSERT_EQUAL(static_cast<int>(PowerPolicyStatus::Updated),
+                      static_cast<int>(registry.setPowerPolicy(nodeId, power::fixedPolicy(10))));
+    TEST_ASSERT_EQUAL(static_cast<int>(InfoStatus::Updated),
+                      static_cast<int>(registry.updateInfo(nodeId, request.deviceUid, info)));
+    const NodeRecord* record = registry.findByNodeId(nodeId);
+    TEST_ASSERT_EQUAL_UINT8(4, record->firmware.patch);
+    TEST_ASSERT_EQUAL_UINT8(power::fixedPolicy(10), record->powerPolicy);
+    TEST_ASSERT_EQUAL(static_cast<int>(InfoStatus::NoChange),
+                      static_cast<int>(registry.updateInfo(nodeId, request.deviceUid, info)));
+
+    // A new profile with a lower ceiling returns the fixed level to automatic
+    // control.
+    const NodeInfo reflashed{6, FirmwareVersion{1, 2, 4}, 5};
+    TEST_ASSERT_EQUAL(static_cast<int>(InfoStatus::ProfileChanged),
+                      static_cast<int>(registry.updateInfo(nodeId, request.deviceUid, reflashed)));
+    TEST_ASSERT_EQUAL_UINT16(6, record->profileId);
+    TEST_ASSERT_EQUAL_UINT8(5, record->maxPowerLevel);
+    TEST_ASSERT_EQUAL_UINT8(power::kPolicyAuto, record->powerPolicy);
+}
+
 void test_rename_accepts_utf8_and_rejects_invalid_names() {
     NodeRegistry registry;
     registry.reserve(makeRequest(0x10));
@@ -318,6 +355,7 @@ int main(int, char**) {
     RUN_TEST(test_registry_capacity_is_bounded);
     RUN_TEST(test_snapshot_round_trip_preserves_records);
     RUN_TEST(test_power_policy_is_bounded_by_the_ceiling_and_persisted);
+    RUN_TEST(test_update_info_replaces_the_identity_of_an_active_node);
     RUN_TEST(test_rename_accepts_utf8_and_rejects_invalid_names);
     RUN_TEST(test_snapshot_rejects_crc_corruption);
     RUN_TEST(test_dual_slot_falls_back_to_previous_valid_generation);

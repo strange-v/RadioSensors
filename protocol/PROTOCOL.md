@@ -116,14 +116,17 @@ Every status except `storage_failure` completes the command. The node sends Comm
 | Type | Name | Profiles | Arguments | Result data |
 | ---: | --- | --- | --- | --- |
 | 1 | `set_count` | 6 | `count`: uint32 LE | `previous_count`: uint32 LE, `count`: uint32 LE |
+| 2 | `read_info` | All | None | `profile_id`: uint16 LE, `firmware.major`, `firmware.minor`, `firmware.patch`, `max_power_level`: unsigned bytes |
 
 Commands are one-shot actions. Configuration the gateway maintains, such as radio power, is desired state carried by the telemetry acknowledgement instead.
 
 `set_count` replaces the cumulative pulse count. `previous_count` is the count immediately before the command. The node sends pulse-counter telemetry with the updated count in the same wake-up.
 
+`read_info` returns the identity Join request carries, as compiled into the running image. The gateway replaces the registry record's profile ID, firmware version, and transmit power ceiling with it before recording the result, so a node reflashed in place needs no new pairing. A changed profile discards the node's cached telemetry, and a fixed power level above a lowered ceiling returns to automatic control. Its result is bound to the gateway-issued command ID, so a recorded result cannot be replayed into the registry. The node keeps no state for it and answers every delivery afresh.
+
 ### Command IDs and redelivery
 
-The gateway allocates command IDs from one wrapping 16-bit sequence per installation and never issues zero. The node records the ID of the last applied command of each type in the same atomic write as its effect ([EEPROM.md](../node/EEPROM.md)). A command whose ID equals the recorded one is a redelivery: the node does not apply it again and resends the stored result with the new session nonce. Commissioning clears the recorded IDs, so a reinstalled gateway's sequence cannot collide with them.
+The gateway allocates command IDs from one wrapping 16-bit sequence per installation and never issues zero. The node records the ID of the last applied command of each type that changes its state in the same atomic write as its effect ([EEPROM.md](../node/EEPROM.md)). A command whose ID equals the recorded one is a redelivery: the node does not apply it again and resends the stored result with the new session nonce. Commissioning clears the recorded IDs, so a reinstalled gateway's sequence cannot collide with them.
 
 The gateway marks the pending command complete only after a matching result is durably recorded. If the result is lost, a later session delivers the same command ID and payload.
 
@@ -183,7 +186,7 @@ Radio power is desired state, not a command. The node owns its level and reports
 
 | Rule | Owner | Behaviour |
 | --- | --- | --- |
-| Ceiling | Node | A build constant for its hardware and supply, reported as `max_power_level` in Join request |
+| Ceiling | Node | A build constant for its hardware and supply, reported as `max_power_level` in Join request and `read_info` |
 | Clamp | Node | Every level it uses — from a target, a fallback, or commissioning — is at most its ceiling |
 | Start | Node | After commissioning and after every restart it transmits at its ceiling |
 | Apply | Node | A target takes effect after the acknowledgement that carried it; the node keeps the level only in RAM |
@@ -191,7 +194,7 @@ Radio power is desired state, not a command. The node owns its level and reports
 | Target | Gateway | A per-node policy: automatic, or a fixed level within the ceiling |
 | Hold | Gateway | While it averages a newly reported level it keeps wanting its previous level, so the next acknowledgement returns a restarted node there; a `radio_fallback` report is taken at its word |
 
-Registration stores one stable numeric profile ID. The profile defines the complete node contract: telemetry layout, logical category, supported commands, and Home Assistant entities. A wire-incompatible telemetry layout or different command set requires a new profile ID. The profile ID is not repeated in normal telemetry.
+Registration stores one stable numeric profile ID; `read_info` replaces it after a reflash. The profile defines the complete node contract: telemetry layout, logical category, supported commands, and Home Assistant entities. A wire-incompatible telemetry layout or different command set requires a new profile ID. The profile ID is not repeated in normal telemetry.
 
 ## Join request
 

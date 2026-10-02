@@ -166,6 +166,33 @@ void test_queue_rejects_invalid_requests() {
     TEST_ASSERT_EQUAL_UINT8(1, book.count);
 }
 
+void test_read_info_queues_without_arguments_and_records_the_identity() {
+    CommandBook book = defaultCommandBook();
+    uint16_t id = 0;
+    const Uid uid = uidFor(7);
+    const uint8_t readInfo = static_cast<uint8_t>(protocol::CommandType::ReadInfo);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(QueueStatus::Queued),
+                          static_cast<int>(command_book::queue(
+                              book, uid.bytes, 7, readInfo, nullptr, 0, 0, id)));
+    const uint8_t info[protocol::kReadInfoResultSize] = {6, 0, 1, 0, 2, 20};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CompleteStatus::InvalidResult),
+                          static_cast<int>(command_book::complete(
+                              book, uid.bytes, 7, id, CommandStatus::Applied, info, 5, 0)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CompleteStatus::Completed),
+                          static_cast<int>(command_book::complete(
+                              book, uid.bytes, 7, id, CommandStatus::Applied, info, sizeof(info), 0)));
+    TEST_ASSERT_EQUAL_UINT8(sizeof(info), command_book::find(book, 7)->resultSize);
+
+    uint8_t snapshot[kCommandsSnapshotSize]{};
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok),
+                          static_cast<int>(encodeCommandBook(book, 1, snapshot, sizeof(snapshot))));
+    CommandBook decoded{};
+    uint32_t generation = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(CodecStatus::Ok),
+                          static_cast<int>(decodeCommandBook(snapshot, sizeof(snapshot), decoded, generation)));
+    TEST_ASSERT_TRUE(commandBooksEqual(book, decoded));
+}
+
 void test_complete_records_result_and_rejects_mismatches() {
     CommandBook book = defaultCommandBook();
     uint16_t id = 0;
@@ -365,6 +392,7 @@ int main(int, char**) {
     RUN_TEST(test_empty_command_store_loads_defaults);
     RUN_TEST(test_command_book_known_layout);
     RUN_TEST(test_queue_rejects_invalid_requests);
+    RUN_TEST(test_read_info_queues_without_arguments_and_records_the_identity);
     RUN_TEST(test_complete_records_result_and_rejects_mismatches);
     RUN_TEST(test_record_of_a_previous_node_does_not_block_a_reused_id);
     RUN_TEST(test_command_ids_skip_zero_on_wrap);

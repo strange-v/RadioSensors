@@ -164,22 +164,65 @@ void test_command_catalogue() {
     TEST_ASSERT_TRUE(commandArgumentSize(
         static_cast<uint8_t>(CommandType::SetCount), size));
     TEST_ASSERT_EQUAL_UINT32(4, size);
-    TEST_ASSERT_FALSE(commandArgumentSize(2, size));
+    TEST_ASSERT_TRUE(commandArgumentSize(
+        static_cast<uint8_t>(CommandType::ReadInfo), size));
+    TEST_ASSERT_EQUAL_UINT32(0, size);
+    TEST_ASSERT_FALSE(commandArgumentSize(3, size));
     TEST_ASSERT_EQUAL_UINT32(8, commandResultDataSize(
         CommandType::SetCount, CommandStatus::Applied));
     TEST_ASSERT_EQUAL_UINT32(0, commandResultDataSize(
         CommandType::SetCount, CommandStatus::InvalidArgument));
+    TEST_ASSERT_EQUAL_UINT32(6, commandResultDataSize(
+        CommandType::ReadInfo, CommandStatus::Applied));
 
     const uint8_t count[4]{};
     TEST_ASSERT_TRUE(validCommandArguments(1, count, sizeof(count)));
     TEST_ASSERT_FALSE(validCommandArguments(1, count, 3));
+    TEST_ASSERT_FALSE(validCommandArguments(1, nullptr, 4));
+    TEST_ASSERT_TRUE(validCommandArguments(2, nullptr, 0));
     TEST_ASSERT_FALSE(validCommandArguments(2, count, 1));
+    TEST_ASSERT_FALSE(validCommandArguments(3, nullptr, 0));
 
     for (uint16_t profile = 0; profile <= 9; ++profile) {
         TEST_ASSERT_EQUAL(
             profile == 6,
             profileSupportsCommand(profile, CommandType::SetCount));
+        TEST_ASSERT_TRUE(profileSupportsCommand(profile, CommandType::ReadInfo));
     }
+}
+
+void test_node_info_known_vector() {
+    const uint8_t expected[] = {0x06, 0x00, 0x01, 0x00, 0x02, 0x14};
+    const NodeInfo info{6, FirmwareVersion{1, 0, 2}, 20};
+    uint8_t encoded[kReadInfoResultSize]{};
+    TEST_ASSERT_TRUE(encodeNodeInfo(info, encoded, sizeof(encoded)));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, encoded, sizeof(expected));
+
+    NodeInfo decoded{};
+    TEST_ASSERT_TRUE(decodeNodeInfo(expected, sizeof(expected), decoded));
+    TEST_ASSERT_EQUAL_UINT16(6, decoded.profileId);
+    TEST_ASSERT_EQUAL_UINT8(1, decoded.firmware.major);
+    TEST_ASSERT_EQUAL_UINT8(0, decoded.firmware.minor);
+    TEST_ASSERT_EQUAL_UINT8(2, decoded.firmware.patch);
+    TEST_ASSERT_EQUAL_UINT8(20, decoded.maxPowerLevel);
+}
+
+void test_node_info_rejects_invalid_values() {
+    uint8_t encoded[kReadInfoResultSize]{};
+    TEST_ASSERT_FALSE(encodeNodeInfo(
+        NodeInfo{0, FirmwareVersion{1, 0, 0}, 20}, encoded, sizeof(encoded)));
+    TEST_ASSERT_FALSE(encodeNodeInfo(
+        NodeInfo{6, FirmwareVersion{1, 0, 0}, 32}, encoded, sizeof(encoded)));
+    TEST_ASSERT_FALSE(encodeNodeInfo(
+        NodeInfo{6, FirmwareVersion{1, 0, 0}, 20}, encoded, sizeof(encoded) - 1));
+
+    NodeInfo decoded{};
+    const uint8_t zeroProfile[] = {0x00, 0x00, 0x01, 0x00, 0x00, 0x14};
+    const uint8_t highCeiling[] = {0x06, 0x00, 0x01, 0x00, 0x00, 0x20};
+    const uint8_t valid[] = {0x06, 0x00, 0x01, 0x00, 0x00, 0x14};
+    TEST_ASSERT_FALSE(decodeNodeInfo(zeroProfile, sizeof(zeroProfile), decoded));
+    TEST_ASSERT_FALSE(decodeNodeInfo(highCeiling, sizeof(highCeiling), decoded));
+    TEST_ASSERT_FALSE(decodeNodeInfo(valid, sizeof(valid) - 1, decoded));
 }
 
 void test_telemetry_ack_payload() {
@@ -624,6 +667,8 @@ int main(int, char**) {
     RUN_TEST(test_command_frames_reject_invalid_envelopes);
     RUN_TEST(test_unknown_command_type_decodes_for_an_unsupported_reply);
     RUN_TEST(test_command_catalogue);
+    RUN_TEST(test_node_info_known_vector);
+    RUN_TEST(test_node_info_rejects_invalid_values);
     RUN_TEST(test_telemetry_ack_payload);
     RUN_TEST(test_radio_state_and_downlink_rssi);
     RUN_TEST(test_initial_profile_ids_are_stable);

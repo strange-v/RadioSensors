@@ -242,6 +242,29 @@ PowerPolicyStatus NodeRegistry::setPowerPolicy(
     return PowerPolicyStatus::Updated;
 }
 
+InfoStatus NodeRegistry::updateInfo(
+    const uint8_t nodeId, const uint8_t* const deviceUid,
+    const protocol::NodeInfo& info) {
+    NodeRecord* const record = findMutableByNodeId(nodeId);
+    if (record == nullptr || record->state != NodeState::Active ||
+        !uidEquals(record->deviceUid, deviceUid)) {
+        return InfoStatus::NotFound;
+    }
+    const bool profileChanged = record->profileId != info.profileId;
+    if (!profileChanged && firmwareEquals(record->firmware, info.firmware) &&
+        record->maxPowerLevel == info.maxPowerLevel) {
+        return InfoStatus::NoChange;
+    }
+    record->profileId = info.profileId;
+    record->firmware = info.firmware;
+    record->maxPowerLevel = info.maxPowerLevel;
+    if (radio_power::isFixedPolicy(record->powerPolicy) &&
+        radio_power::fixedLevel(record->powerPolicy) > info.maxPowerLevel) {
+        record->powerPolicy = radio_power::kPolicyAuto;
+    }
+    return profileChanged ? InfoStatus::ProfileChanged : InfoStatus::Updated;
+}
+
 bool NodeRegistry::restore(const NodeRecord* records, const size_t count) {
     if ((records == nullptr && count != 0) || count > kMaxNodes) {
         return false;
